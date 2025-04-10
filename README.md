@@ -4,7 +4,7 @@
 
 **A secure, offline file management system with self-destruction capabilities and advanced file scanning**
 
-[![BAR Application Interface](resources/app_interface.png)](resources/app_interface.png)
+[![BAR Application ](resources/BAR_logo.ico)](resources/BAR_logo.ico)
 
 </div>
 
