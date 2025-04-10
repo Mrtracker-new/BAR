@@ -676,6 +676,47 @@ class MainWindow(QMainWindow):
                 except Exception as e:
                     QMessageBox.critical(self, "Error", f"Failed to import portable file: {str(e)}")
     
+    def _import_shared_file(self):
+        """Import an encrypted file shared from another device.
+        
+        This method specifically handles files created on different hardware,
+        ensuring proper decryption regardless of hardware binding differences.
+        """
+        # Ask for file to import
+        import_path, _ = QFileDialog.getOpenFileName(
+            self, "Import Shared File", "", "BAR Files (*.bar);;All Files (*)")
+        
+        if import_path:
+            # Ask for password
+            password, ok = QInputDialog.getText(
+                self, "Enter Password", "Enter the file password:", QLineEdit.Password)
+            
+            if ok and password:
+                try:
+                    # Import the shared file
+                    file_id = self.file_manager.import_portable_file(import_path, password)
+                    
+                    QMessageBox.information(
+                        self, 
+                        "Shared File Imported", 
+                        "The encrypted file shared from another device has been successfully imported."
+                    )
+                    
+                    self._refresh_files()
+                except ValueError as e:
+                    if "hardware binding" in str(e).lower():
+                        QMessageBox.critical(
+                            self, 
+                            "Hardware Binding Error", 
+                            "This file appears to be bound to different hardware. "
+                            "Please ensure you're using the correct password and that the file "
+                            "was properly exported for sharing between devices."
+                        )
+                    else:
+                        QMessageBox.critical(self, "Error", f"Failed to import shared file: {str(e)}")
+                except Exception as e:
+                    QMessageBox.critical(self, "Error", f"Failed to import shared file: {str(e)}")
+    
     def _delete_file(self):
         """Delete a secure file."""
         if not self.current_user:

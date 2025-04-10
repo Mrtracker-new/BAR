@@ -326,12 +326,43 @@ class FileManager:
             if not portable_data.get("bar_portable_file"):
                 raise ValueError("Not a valid BAR portable file")
             
-            # Verify the password by attempting decryption
-            try:
-                file_content = self.encryption_manager.decrypt_file_content(
-                    portable_data["encryption"], password)
-            except ValueError:
-                raise ValueError("Incorrect password")
+            # Check if the encryption data contains hardware binding
+            encryption_data = portable_data.get("encryption", {})
+            hardware_bound = False
+            
+            # Check if we need to handle hardware binding
+            if "hardware_id_hash" in encryption_data:
+                hardware_bound = True
+                # Store the original hardware ID hash
+                original_hw_hash = encryption_data.get("hardware_id_hash")
+                
+                # Temporarily remove hardware binding for decryption
+                encryption_data_copy = encryption_data.copy()
+                if "hardware_id_hash" in encryption_data_copy:
+                    del encryption_data_copy["hardware_id_hash"]
+                    encryption_data_copy["hardware_bound"] = False
+                
+                # Try to decrypt with modified encryption data first
+                try:
+                    file_content = self.encryption_manager.decrypt_file_content(
+                        encryption_data_copy, password)
+                    # If successful, use the modified encryption data without hardware binding
+                    portable_data["encryption"] = encryption_data_copy
+                    self.logger.info(f"Successfully decrypted file from different device by bypassing hardware binding")
+                except ValueError:
+                    # If that fails, try with original encryption data
+                    try:
+                        file_content = self.encryption_manager.decrypt_file_content(
+                            encryption_data, password)
+                    except ValueError:
+                        raise ValueError("Incorrect password or incompatible hardware binding")
+            else:
+                # No hardware binding, proceed normally
+                try:
+                    file_content = self.encryption_manager.decrypt_file_content(
+                        encryption_data, password)
+                except ValueError:
+                    raise ValueError("Incorrect password")
             
             # Generate a new file ID
             file_id = self._generate_file_id()
@@ -352,7 +383,10 @@ class FileManager:
             with open(metadata_path, "w") as f:
                 json.dump(metadata, f, indent=2)
             
-            self.logger.info(f"Imported portable file: {file_id} ({metadata['filename']})")
+            if hardware_bound:
+                self.logger.info(f"Imported portable file from different device: {file_id} ({metadata['filename']})")
+            else:
+                self.logger.info(f"Imported portable file: {file_id} ({metadata['filename']})")
             return file_id
             
         except Exception as e:
