@@ -199,3 +199,19 @@ BAR is designed for scenarios where secure, temporary file storage and sharing a
 - Scan removable devices before importing files
 - Check the logs in `~/.bar/logs` directory if you encounter any issues
 - If you forget your password, your data cannot be recovered
+
+---
+
+## 👨‍💻 About the Author
+
+BAR was created by me (**Rolan Lobo**), a passionate cybersecurity enthusiast and software developer dedicated to creating tools that enhance digital privacy and security.
+
+### Why I Created BAR
+
+I developed BAR to address the growing need for secure, offline file management solutions that put users in complete control of their sensitive data. In today's interconnected world, I believe everyone deserves access to powerful security tools that don't require technical expertise to use effectively.
+
+### My Vision
+
+My goal with BAR is to make advanced security features accessible to everyone while maintaining the highest standards of privacy and data protection. I'm committed to continuing development on this project to expand its capabilities and keep it at the cutting edge of secure file management.
+
+I welcome feedback, suggestions, and contributions from the community to help make BAR even better!
