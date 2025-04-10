@@ -3,6 +3,7 @@ import json
 import logging
 import re
 import hashlib
+import base64
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Tuple
 from pathlib import Path
@@ -270,6 +271,7 @@ class UserManager:
         # Check if account is hardware-bound and verify hardware ID
         if user_data.get("hardware_bound", False):
             # Get current hardware ID
+            from ..security.hardware_id import HardwareIdentifier
             hw_id = HardwareIdentifier().get_hardware_id()
             current_hw_hash = hashlib.sha256(hw_id.encode('utf-8')).hexdigest()
             
