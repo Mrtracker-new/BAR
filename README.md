@@ -2,6 +2,8 @@
 
 A secure, offline file management system with self-destruction capabilities and advanced file scanning.
 
+![BAR Application Interface](resources/app_interface.png)
+
 ## Overview
 
 BAR (Burn After Reading) is a standalone desktop application that provides secure file management with advanced security features. It runs entirely offline with no server dependencies, ensuring your sensitive data never leaves your machine. The application includes powerful file scanning capabilities to detect and manage .bar files across your devices.
@@ -66,14 +68,34 @@ BAR (Burn After Reading) is a standalone desktop application that provides secur
 ## Usage
 
 1. **First-Time Setup**: Create a local user account with a strong password
+   
+   ![Create New Account](resources/Create_new_account_page.png)
+
 2. **Login**: Access your secure file storage
+   
+   ![Login Page](resources/login_page.png)
+
 3. **File Operations**:
    - Create new secure files with custom security settings
+     
+     ![Add Secure File](resources/add_secure_file_page.png)
+   
    - Access existing files (subject to security constraints)
+     
+     ![File Details](resources/Detail_of_dummy_file.png)
+   
    - Export files for sharing
+     
+     ![Export Original File](resources/Export_original_file.png)
+     
+     ![Export Encrypted File](resources/Export_portable_encrypted_file.png)
+   
    - Import shared files
    - Scan devices for .bar files
+
 4. **Configuration**: Adjust application settings and themes
+   
+   ![Settings Page](resources/Settings_page.png)
 
 ## Technical Details
 
