@@ -1,0 +1,10 @@
+# BAR - Burn After Reading dependencies
+
+# GUI
+PyQt5==5.15.9
+
+# Cryptography
+cryptography==41.0.3
+
+# Packaging
+pyinstaller==6.0.0
