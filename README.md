@@ -12,7 +12,7 @@
 
 ## 📋 Overview
 
-BAR (Burn After Reading) is a standalone desktop application that provides secure file management with advanced security features. It runs entirely offline with no server dependencies, ensuring your sensitive data never leaves your machine. The application includes powerful file scanning capabilities to detect and manage .bar files across your devices.
+BAR (Burn After Reading) is a standalone desktop application that provides secure file management with advanced security features. It runs entirely offline with no server dependencies, ensuring your sensitive data never leaves your machine. The application includes powerful file scanning capabilities to detect and manage .bar files across your devices, with robust security measures to protect against unauthorized access attempts.
 
 ---
 
@@ -43,6 +43,7 @@ BAR (Burn After Reading) is a standalone desktop application that provides secur
 - AES-256 in GCM mode for authenticated encryption
 - Unique encryption key for each file
 - Key derivation using PBKDF2-HMAC-SHA256
+- Hardware-binding option for enhanced security
 </details>
 
 <details>
@@ -51,6 +52,7 @@ BAR (Burn After Reading) is a standalone desktop application that provides secur
 - Time-based: Files automatically delete after a specified time
 - Access-count: Files delete after being accessed a certain number of times
 - Deadman switch: Files delete if not accessed within a specified period
+- Secure deletion using multi-pass overwrite techniques
 </details>
 
 <details>
@@ -59,6 +61,16 @@ BAR (Burn After Reading) is a standalone desktop application that provides secur
 - All data stored locally in the `~/.bar` directory with proper encryption
 - No plaintext storage of sensitive information
 - Secure key management
+- Blacklist system to prevent reimporting of deleted sensitive files
+</details>
+
+<details>
+<summary><b>Anti-Brute Force Protection</b></summary>
+
+- Automatic file deletion after multiple failed password attempts
+- Account lockout after excessive login failures
+- Failed attempt tracking and logging
+- Blacklisting of compromised file signatures
 </details>
 
 <details>
@@ -68,6 +80,7 @@ BAR (Burn After Reading) is a standalone desktop application that provides secur
 - Version compatibility checking
 - Secure detection of .bar files across all connected devices
 - Support for removable media scanning
+- Multi-threaded scanning for improved performance
 </details>
 
 ---
@@ -77,8 +90,9 @@ BAR (Burn After Reading) is a standalone desktop application that provides secur
 <details>
 <summary><b>Option 1: Running the Executable</b></summary>
 
-1. Download the latest release of BAR.exe
+1. Download the latest release of BAR.exe from the releases page
 2. No installation required - simply double-click the executable to run
+3. On first run, you'll need to create a user account with a strong password
 </details>
 
 <details>
@@ -87,6 +101,7 @@ BAR (Burn After Reading) is a standalone desktop application that provides secur
 1. Ensure you have Python 3.8 or higher installed
 2. Clone or download the repository
 3. Install dependencies: `pip install -r requirements.txt`
+   - Required dependencies include PyQt5 (v5.15.9), cryptography (v41.0.3)
 4. Run the application: `python main.py`
 </details>
 
@@ -94,8 +109,18 @@ BAR (Burn After Reading) is a standalone desktop application that provides secur
 <summary><b>Option 3: Building Your Own Executable</b></summary>
 
 1. Install dependencies: `pip install -r requirements.txt`
+   - Includes PyInstaller (v6.0.0) for building the executable
 2. Run the build script: `python build.py`
 3. Find the executable in the `dist` directory
+</details>
+
+<details>
+<summary><b>System Requirements</b></summary>
+
+- Operating System: Windows 10/11 (primary support), limited support for Linux/macOS
+- RAM: 4GB minimum, 8GB recommended
+- Storage: 100MB for application, additional space for secure files
+- No internet connection required for operation
 </details>
 
 ---
@@ -150,13 +175,16 @@ Adjust application settings and themes
 
 ## 🔧 Technical Details
 
-- Built with Python 3.8+ and PyQt5
+- Built with Python 3.8+ and PyQt5 for cross-platform compatibility
 - Packaged as a standalone Windows executable using PyInstaller
 - All data stored locally with proper encryption
 - No external dependencies or internet connection required
 - File scanning engine supports all Windows drive types (Fixed, Removable, Network, etc.)
 - Multi-threaded scanning for improved performance
 - Validation of .bar files using signature verification and version compatibility checks
+- Secure deletion using industry-standard techniques to prevent data recovery
+- Blacklist system to prevent reimporting of deleted sensitive files
+- Comprehensive logging system for security auditing and troubleshooting
 
 ---
 
@@ -184,20 +212,25 @@ BAR is designed for scenarios where secure, temporary file storage and sharing a
    - Time-based expiration ensures files are automatically deleted after a specified period
    - Access count limits delete files after being viewed a set number of times
    - Deadman switch removes files that haven't been accessed within a defined timeframe
+   - Anti-brute force protection permanently deletes files after multiple failed password attempts
 3. **Device Scanning**: The advanced scanning engine can locate and validate .bar files across all connected devices
 4. **Secure Sharing**: Export encrypted files that maintain all security constraints when shared
 5. **Offline Security**: All security features function without internet connectivity
+6. **Blacklist Protection**: Files that have been securely deleted are added to a blacklist to prevent reimporting
+7. **Continuous Monitoring**: Background threads constantly check for security condition violations
 
 ---
 
 ## 📝 Best Practices
 
-- Use strong, unique passwords
-- Set appropriate security parameters based on sensitivity
-- Regularly back up non-sensitive data
-- Remember that destroyed files cannot be recovered
-- Scan removable devices before importing files
+- Use strong, unique passwords with a mix of uppercase, lowercase, numbers, and special characters
+- Set appropriate security parameters based on sensitivity level of your data
+- Regularly back up non-sensitive data (remember that securely deleted files CANNOT be recovered)
+- Be cautious with the deadman switch feature - files will be permanently deleted if not accessed within the specified period
+- Scan removable devices before importing files to ensure integrity
 - Check the logs in `~/.bar/logs` directory if you encounter any issues
+- Consider enabling hardware binding for critical files to prevent unauthorized access from different devices
+- Remember that after 3 failed password attempts, files will be permanently deleted as an anti-brute force measure
 - If you forget your password, your data cannot be recovered
 
 ---
