@@ -6,6 +6,8 @@ import shutil
 import threading
 import logging
 import base64
+import hashlib
+import re
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Tuple
 from pathlib import Path
@@ -27,24 +29,26 @@ class FileManager:
         self.base_directory = Path(base_directory)
         self.files_directory = self.base_directory / "files"
         self.metadata_directory = self.base_directory / "metadata"
+        self.blacklist_directory = self.base_directory / "blacklist"
         
         # Create directories if they don't exist
         self.files_directory.mkdir(parents=True, exist_ok=True)
         self.metadata_directory.mkdir(parents=True, exist_ok=True)
+        self.blacklist_directory.mkdir(parents=True, exist_ok=True)
         
         # Initialize the encryption manager
         self.encryption_manager = EncryptionManager()
         
-        # Start the file monitoring thread
-        self.monitoring_active = True
-        self.monitor_thread = threading.Thread(target=self._monitor_files, daemon=True)
-        self.monitor_thread.start()
-        
-        # Setup logging
+        # Setup logging first
         self._setup_logging()
         
         # Initialize the file scanner
         self.file_scanner = FileScanner(self)
+        
+        # Start the file monitoring thread AFTER all other initialization
+        self.monitoring_active = True
+        self.monitor_thread = threading.Thread(target=self._monitor_files, daemon=True)
+        self.monitor_thread.start()
     
     def _setup_logging(self):
         """Set up logging for the file manager."""
@@ -136,16 +140,38 @@ class FileManager:
         # Check security constraints
         if not self._check_security_constraints(metadata):
             # File has expired or reached max access count
-            self._delete_file(file_id)
+            self._secure_delete_file(file_id)
             raise ValueError("File has expired or reached maximum access count")
+        
+        # Initialize failed attempts tracking if not present
+        if "failed_password_attempts" not in metadata:
+            metadata["failed_password_attempts"] = 0
+            
+        # Define max failed attempts
+        max_failed_attempts = 3  # Maximum number of failed password attempts allowed
         
         # Decrypt the file content
         try:
             file_content = self.encryption_manager.decrypt_file_content(
                 metadata["encryption"], password)
+            # Reset failed attempts on successful decryption
+            metadata["failed_password_attempts"] = 0
         except ValueError:
-            self.logger.warning(f"Failed decryption attempt for file: {file_id}")
-            raise ValueError("Incorrect password")
+            # Increment failed attempts
+            metadata["failed_password_attempts"] += 1
+            self.logger.warning(f"Failed decryption attempt for file: {file_id}. Attempt {metadata['failed_password_attempts']} of {max_failed_attempts}")
+            
+            # Save updated metadata with failed attempts count
+            with open(metadata_path, "w") as f:
+                json.dump(metadata, f, indent=2)
+                
+            # Check if max failed attempts reached
+            if metadata["failed_password_attempts"] >= max_failed_attempts:
+                self.logger.warning(f"Maximum failed attempts reached for file: {file_id}. Permanently deleting file.")
+                self._secure_delete_file(file_id)
+                raise ValueError(f"File has been permanently deleted after {max_failed_attempts} failed password attempts")
+            
+            raise ValueError(f"Incorrect password. {max_failed_attempts - metadata['failed_password_attempts']} attempts remaining before permanent deletion")
         
         # Update access metadata
         current_time = datetime.now()
@@ -160,7 +186,7 @@ class FileManager:
         if metadata["security"]["max_access_count"] and \
            metadata["access_count"] >= metadata["security"]["max_access_count"]:
             # Schedule deletion after returning the content
-            threading.Thread(target=self._delete_file, args=(file_id,), daemon=True).start()
+            threading.Thread(target=self._secure_delete_file, args=(file_id,), daemon=True).start()
         
         self.logger.info(f"Accessed file: {file_id} ({metadata['filename']})")
         return file_content, metadata
@@ -221,6 +247,141 @@ class FileManager:
         metadata_path.unlink()
         
         self.logger.info(f"Deleted file: {file_id} ({filename})")
+        return True
+        
+    def _secure_delete_file(self, file_id: str, blacklist: bool = True) -> bool:
+        """Securely delete a file and its metadata to prevent recovery.
+        
+        This method uses secure deletion techniques to permanently remove the file
+        from the device, making it unrecoverable even with specialized recovery tools.
+        It also adds the file's content hash to a blacklist to prevent reimporting.
+        
+        Args:
+            file_id: The ID of the file to delete
+            blacklist: Whether to add the file to the blacklist (default: True)
+            
+        Returns:
+            True if the file was deleted, False if it doesn't exist
+        """
+        from ..security.secure_delete import SecureDelete
+        
+        # Validate file_id
+        if not file_id or not isinstance(file_id, str):
+            self.logger.error(f"Invalid file_id provided: {type(file_id)}")
+            return False
+            
+        metadata_path = self.metadata_directory / f"{file_id}.json"
+        
+        if not metadata_path.exists():
+            return False
+        
+        # Default filename in case we can't read it from metadata
+        filename = "unknown"
+        
+        # Get filename for logging and check for any file paths
+        try:
+            with open(metadata_path, "r") as f:
+                try:
+                    metadata = json.load(f)
+                    filename = metadata.get("filename", "unknown")
+                    
+                    # If blacklisting is enabled, add file information to blacklist
+                    # Handle this in a separate try block to prevent it from affecting the rest of the deletion
+                    if blacklist:
+                        try:
+                            self._add_to_blacklist(metadata)
+                        except Exception as blacklist_error:
+                            self.logger.error(f"Error adding file to blacklist: {str(blacklist_error)}")
+                            # Continue with deletion even if blacklisting fails
+                    
+                    # Process associated files in separate try blocks to ensure one failure doesn't stop others
+                    
+                    # If there's an actual file stored on disk (for BAR files), delete it too
+                    if "file_path" in metadata:
+                        try:
+                            file_path = Path(metadata["file_path"])
+                            if file_path.exists() and file_path.is_file():
+                                # Initialize secure delete
+                                secure_delete = SecureDelete(self.logger)
+                                # Securely delete the actual file
+                                secure_delete.secure_delete_file(str(file_path))
+                                self.logger.info(f"Securely deleted actual file at: {file_path}")
+                        except Exception as file_error:
+                            self.logger.error(f"Error deleting associated file: {str(file_error)}")
+                    
+                    # Check for any exported files that might be associated with this file_id
+                    try:
+                        export_dir = self.base_directory / "exports"
+                        if export_dir.exists() and export_dir.is_dir():
+                            for export_file in export_dir.glob(f"*{file_id}*"):
+                                if export_file.exists() and export_file.is_file():
+                                    secure_delete = SecureDelete(self.logger)
+                                    secure_delete.secure_delete_file(str(export_file))
+                                    self.logger.info(f"Securely deleted exported file: {export_file}")
+                    except Exception as export_error:
+                        self.logger.error(f"Error deleting exported files: {str(export_error)}")
+                    
+                    # Check for any temporary files that might be associated with this file_id
+                    try:
+                        temp_dir = self.base_directory / "temp"
+                        if temp_dir.exists() and temp_dir.is_dir():
+                            for temp_file in temp_dir.glob(f"*{file_id}*"):
+                                if temp_file.exists() and temp_file.is_file():
+                                    secure_delete = SecureDelete(self.logger)
+                                    secure_delete.secure_delete_file(str(temp_file))
+                                    self.logger.info(f"Securely deleted temporary file: {temp_file}")
+                    except Exception as temp_error:
+                        self.logger.error(f"Error deleting temporary files: {str(temp_error)}")
+                    
+                    # Check for any portable files that might be associated with this file_id
+                    try:
+                        portable_dir = self.base_directory / "portable"
+                        if portable_dir.exists() and portable_dir.is_dir():
+                            for portable_file in portable_dir.glob(f"*{file_id}*"):
+                                if portable_file.exists() and portable_file.is_file():
+                                    secure_delete = SecureDelete(self.logger)
+                                    secure_delete.secure_delete_file(str(portable_file))
+                                    self.logger.info(f"Securely deleted portable file: {portable_file}")
+                    except Exception as portable_error:
+                        self.logger.error(f"Error deleting portable files: {str(portable_error)}")
+                    
+                    # Search for and delete any .bar files with matching content hash across the system
+                    # Do this in a separate thread to prevent blocking and potential crashes
+                    if "content_hash" in metadata:
+                        content_hash = metadata.get("content_hash")
+                        if content_hash:
+                            try:
+                                # Use a thread with a timeout to prevent hanging
+                                search_thread = threading.Thread(
+                                    target=self._find_and_delete_matching_bar_files,
+                                    args=(content_hash,),
+                                    daemon=True
+                                )
+                                search_thread.start()
+                                # Don't wait for completion - let it run in background
+                            except Exception as thread_error:
+                                self.logger.error(f"Error starting search thread: {str(thread_error)}")
+                except json.JSONDecodeError as json_error:
+                    self.logger.error(f"Error parsing metadata JSON: {str(json_error)}")
+        except Exception as e:
+            self.logger.error(f"Error reading metadata during secure deletion: {str(e)}")
+        
+        # Initialize secure delete
+        secure_delete = SecureDelete(self.logger)
+        
+        # Securely delete the metadata file
+        try:
+            secure_delete.secure_delete_file(str(metadata_path))
+        except Exception as delete_error:
+            self.logger.error(f"Error securely deleting metadata file: {str(delete_error)}")
+            # Try regular deletion as fallback
+            try:
+                os.remove(str(metadata_path))
+                self.logger.warning(f"Fell back to regular deletion for metadata file: {metadata_path}")
+            except Exception as fallback_error:
+                self.logger.error(f"Failed to delete metadata file even with fallback: {str(fallback_error)}")
+        
+        self.logger.info(f"Securely deleted file: {file_id} ({filename})")
         return True
     
     def export_file(self, file_id: str, export_path: str) -> bool:
@@ -326,6 +487,11 @@ class FileManager:
             if not portable_data.get("bar_portable_file"):
                 raise ValueError("Not a valid BAR portable file")
             
+            # Check if the file is in the blacklist
+            content_hash = portable_data.get("content_hash")
+            if content_hash and self._is_blacklisted(content_hash):
+                raise ValueError("This file has been permanently deleted due to security violations and cannot be reimported")
+            
             # Check if the encryption data contains hardware binding
             encryption_data = portable_data.get("encryption", {})
             hardware_bound = False
@@ -375,7 +541,8 @@ class FileManager:
                 "last_accessed": datetime.now().isoformat(),
                 "access_count": 0,
                 "security": portable_data["security"],
-                "encryption": portable_data["encryption"]
+                "encryption": portable_data["encryption"],
+                "content_hash": content_hash or self._hash_content(file_content)
             }
             
             # Save the metadata file
@@ -530,7 +697,7 @@ class FileManager:
                         # Check security constraints
                         if not self._check_security_constraints(metadata):
                             file_id = metadata["file_id"]
-                            self._delete_file(file_id)
+                            self._secure_delete_file(file_id)
                     except Exception as e:
                         self.logger.error(f"Error monitoring file {metadata_file}: {str(e)}")
                 
@@ -632,3 +799,194 @@ class FileManager:
             List of dictionaries containing device information
         """
         return self.file_scanner.get_available_devices()
+
+    def _add_to_blacklist(self, metadata: Dict[str, Any]) -> bool:
+        """Add a file's content hash to the blacklist to prevent reimporting.
+        
+        Args:
+            metadata: The file metadata containing content hash and other information
+            
+        Returns:
+            True if the file was added to the blacklist, False otherwise
+        """
+        try:
+            # Extract content hash and other relevant information
+            content_hash = metadata.get("content_hash")
+            
+            # Safely handle encryption data if content_hash is not available
+            if not content_hash and "encryption" in metadata:
+                try:
+                    # If content hash is not available but we have the encrypted content,
+                    # we can still create a hash of the encrypted data
+                    encryption_data = metadata.get("encryption", {})
+                    
+                    # Handle different types of encryption data
+                    if isinstance(encryption_data, dict):
+                        content_str = json.dumps(encryption_data, sort_keys=True)
+                    elif isinstance(encryption_data, str):
+                        content_str = encryption_data
+                    else:
+                        content_str = str(encryption_data)
+                        
+                    content_hash = hashlib.sha256(content_str.encode('utf-8')).hexdigest()
+                except Exception as hash_error:
+                    self.logger.warning(f"Failed to create hash from encryption data: {str(hash_error)}")
+                    # Generate a fallback hash using file_id and timestamp to ensure uniqueness
+                    fallback_str = f"{metadata.get('file_id', 'unknown')}_{datetime.now().isoformat()}"
+                    content_hash = hashlib.sha256(fallback_str.encode('utf-8')).hexdigest()
+            
+            if not content_hash:
+                self.logger.warning("Cannot add file to blacklist: no content hash available")
+                return False
+            
+            # Ensure the blacklist directory exists
+            self.blacklist_directory.mkdir(parents=True, exist_ok=True)
+            
+            # Create blacklist entry
+            blacklist_entry = {
+                "content_hash": content_hash,
+                "filename": metadata.get("filename", "unknown"),
+                "file_id": metadata.get("file_id", "unknown"),
+                "blacklisted_at": datetime.now().isoformat(),
+                "reason": "security_violation",  # Default reason
+                "original_creation_time": metadata.get("creation_time")
+            }
+            
+            # Create a safe filename for the blacklist entry
+            # Replace any potentially problematic characters with underscores
+            safe_hash = re.sub(r'[^a-zA-Z0-9_-]', '_', content_hash)
+            
+            # Save to blacklist file
+            blacklist_path = self.blacklist_directory / f"{safe_hash}.json"
+            with open(blacklist_path, "w") as f:
+                json.dump(blacklist_entry, f, indent=2)
+            
+            self.logger.info(f"Added file to blacklist: {metadata.get('filename', 'unknown')} (hash: {content_hash[:8] if len(content_hash) >= 8 else content_hash}...)")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error adding file to blacklist: {str(e)}")
+            # Don't let blacklist errors crash the application
+            return False
+    
+    def _is_blacklisted(self, content_hash: str) -> bool:
+        """Check if a file's content hash is in the blacklist.
+        
+        Args:
+            content_hash: The content hash to check
+            
+        Returns:
+            True if the file is blacklisted, False otherwise
+        """
+        try:
+            # Create a safe filename for the blacklist entry
+            # Replace any potentially problematic characters with underscores
+            safe_hash = re.sub(r'[^a-zA-Z0-9_-]', '_', content_hash)
+            
+            # Check if the hash exists in the blacklist directory
+            blacklist_path = self.blacklist_directory / f"{safe_hash}.json"
+            return blacklist_path.exists()
+        except Exception as e:
+            self.logger.error(f"Error checking blacklist: {str(e)}")
+            return False
+    
+    def _find_and_delete_matching_bar_files(self, content_hash: str) -> int:
+        """Find and securely delete any .bar files with matching content hash across the system.
+        
+        This helps ensure that when a file is deleted due to security violations,
+        all copies of it are removed from the device.
+        
+        Args:
+            content_hash: The content hash to search for
+            
+        Returns:
+            Number of matching files deleted
+        """
+        try:
+            # Validate content_hash to prevent crashes
+            if not content_hash or not isinstance(content_hash, str):
+                self.logger.warning(f"Invalid content hash provided: {type(content_hash)}")
+                return 0
+                
+            from ..security.secure_delete import SecureDelete
+            secure_delete = SecureDelete(self.logger)
+            deleted_count = 0
+            
+            # Get all available devices - handle potential errors
+            try:
+                devices = self.file_scanner.get_available_devices()
+            except Exception as dev_error:
+                self.logger.error(f"Error getting available devices: {str(dev_error)}")
+                return 0
+            
+            # Limit search to prevent excessive resource usage
+            max_search_time = 60  # seconds
+            start_time = time.time()
+            
+            for device in devices:
+                # Check if we've exceeded the maximum search time
+                if time.time() - start_time > max_search_time:
+                    self.logger.warning("Maximum search time exceeded, stopping search")
+                    break
+                    
+                device_path = device.get("path")
+                if not device_path:
+                    continue
+                    
+                # Skip network drives and CD-ROMs for performance and permission reasons
+                if device.get("type") in ["Network", "CD-ROM"]:
+                    continue
+                
+                try:
+                    # Search for .bar files in common directories
+                    search_dirs = [
+                        Path(device_path) / "Users",  # Windows user directories
+                        Path(device_path) / "Documents",  # Common document location
+                        Path(device_path) / "Downloads",  # Common download location
+                    ]
+                    
+                    for search_dir in search_dirs:
+                        if not search_dir.exists() or not search_dir.is_dir():
+                            continue
+                            
+                        # Search for .bar files with a timeout check
+                        try:
+                            for bar_file in search_dir.rglob("*.bar"):
+                                # Check timeout periodically
+                                if time.time() - start_time > max_search_time:
+                                    self.logger.warning("Maximum search time exceeded during directory scan")
+                                    break
+                                    
+                                try:
+                                    # Check if this .bar file contains the matching content hash
+                                    with open(bar_file, "r") as f:
+                                        try:
+                                            data = json.load(f)
+                                            file_hash = data.get("content_hash")
+                                            
+                                            if file_hash and file_hash == content_hash:
+                                                # Found a match, securely delete it
+                                                if secure_delete.secure_delete_file(str(bar_file)):
+                                                    self.logger.info(f"Deleted matching .bar file: {bar_file}")
+                                                    deleted_count += 1
+                                        except (json.JSONDecodeError, UnicodeDecodeError):
+                                            # Not a valid JSON file, skip
+                                            pass
+                                except (PermissionError, OSError, FileNotFoundError):
+                                    # Can't access file, skip
+                                    pass
+                        except Exception as rglob_error:
+                            self.logger.warning(f"Error during directory scan of {search_dir}: {str(rglob_error)}")
+                            continue
+                except Exception as e:
+                    self.logger.warning(f"Error searching device {device_path}: {str(e)}")
+            
+            if deleted_count > 0:
+                hash_prefix = content_hash[:8] if len(content_hash) >= 8 else content_hash
+                self.logger.info(f"Deleted {deleted_count} matching .bar files with content hash {hash_prefix}...")
+            
+            return deleted_count
+        except Exception as e:
+            self.logger.error(f"Error finding and deleting matching files: {str(e)}")
+            # Don't let file search errors crash the application
+            return 0
