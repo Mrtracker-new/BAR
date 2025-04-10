@@ -11,6 +11,8 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.constant_time import bytes_eq
 from cryptography.fernet import Fernet
 
+from ..security.hardware_id import HardwareIdentifier
+
 
 class EncryptionManager:
     """Handles all encryption/decryption operations for the BAR application."""
@@ -155,24 +157,41 @@ class EncryptionManager:
         return Fernet.generate_key().decode('utf-8')
     
     @staticmethod
-    def hash_password(password: str) -> Dict[str, str]:
+    def hash_password(password: str, bind_to_hardware: bool = True) -> Dict[str, str]:
         """Create a secure hash of a password for storage.
         
         Args:
             password: The password to hash
+            bind_to_hardware: Whether to bind the password hash to the current hardware
             
         Returns:
             A dictionary containing the password hash and salt
         """
         salt = EncryptionManager.generate_salt()
-        key = EncryptionManager.derive_key(password, salt)
         
-        return {
+        # If hardware binding is enabled, incorporate hardware ID into the password
+        if bind_to_hardware:
+            hw_id = HardwareIdentifier().get_hardware_id()
+            # Combine password with hardware ID
+            combined_password = f"{password}:{hw_id}"
+        else:
+            combined_password = password
+        
+        key = EncryptionManager.derive_key(combined_password, salt)
+        
+        result = {
             'hash': base64.b64encode(key).decode('utf-8'),
             'salt': base64.b64encode(salt).decode('utf-8'),
             'method': 'PBKDF2-HMAC-SHA256',
-            'iterations': EncryptionManager.PBKDF2_ITERATIONS
+            'iterations': EncryptionManager.PBKDF2_ITERATIONS,
+            'hardware_bound': bind_to_hardware
         }
+        
+        # If hardware binding is enabled, store the hardware ID hash
+        if bind_to_hardware:
+            result['hardware_id_hash'] = hashlib.sha256(hw_id.encode('utf-8')).hexdigest()
+            
+        return result
     
     @staticmethod
     def verify_password(password: str, password_hash: Dict[str, str]) -> bool:
@@ -188,8 +207,27 @@ class EncryptionManager:
         salt = base64.b64decode(password_hash['salt'])
         stored_hash = base64.b64decode(password_hash['hash'])
         
+        # Check if the password is hardware-bound
+        is_hardware_bound = password_hash.get('hardware_bound', False)
+        
+        if is_hardware_bound:
+            # Get current hardware ID
+            hw_id = HardwareIdentifier().get_hardware_id()
+            
+            # Verify hardware ID if it's stored in the hash
+            if 'hardware_id_hash' in password_hash:
+                current_hw_hash = hashlib.sha256(hw_id.encode('utf-8')).hexdigest()
+                if current_hw_hash != password_hash['hardware_id_hash']:
+                    # Hardware ID doesn't match, authentication fails
+                    return False
+            
+            # Combine password with hardware ID as was done during hashing
+            combined_password = f"{password}:{hw_id}"
+        else:
+            combined_password = password
+        
         # Derive the key from the provided password
-        derived_key = EncryptionManager.derive_key(password, salt)
+        derived_key = EncryptionManager.derive_key(combined_password, salt)
         
         # Compare in constant time to prevent timing attacks
         return bytes_eq(derived_key, stored_hash)

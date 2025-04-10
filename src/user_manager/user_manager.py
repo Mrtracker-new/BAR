@@ -2,6 +2,7 @@ import os
 import json
 import logging
 import re
+import hashlib
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Tuple
 from pathlib import Path
@@ -10,6 +11,7 @@ from ..crypto.encryption import EncryptionManager
 from ..security.two_factor_auth import TwoFactorAuth
 from ..security.session_manager import SessionManager
 from ..security.audit_log import AuditLog
+from ..security.hardware_id import HardwareIdentifier
 
 
 class UserManager:
@@ -74,8 +76,20 @@ class UserManager:
         
         self.logger = logging.getLogger("UserManager")
     
-    def register_user(self, username: str, password: str, display_name: str = None, role: str = None) -> Tuple[bool, Optional[str]]:
+    def register_user(self, username: str, password: str, display_name: str = None, role: str = None, bind_to_hardware: bool = True) -> Tuple[bool, Optional[str]]:
         """Register a new user.
+        
+        Args:
+            username: The username for the new account
+            password: The password for the new account
+            display_name: Optional display name for the user
+            role: Optional user role (defaults to ROLE_USER if not specified)
+            bind_to_hardware: Whether to bind the user credentials to this device
+            
+        Returns:
+            Tuple containing (success, error_message)
+            success: True if registration was successful, False otherwise
+            error_message: Error message if registration failed, None otherwise
         
         Args:
             username: The username for the new account
@@ -101,8 +115,8 @@ class UserManager:
             self.logger.warning(f"Registration failed for {username}: {error_msg}")
             return False, error_msg
         
-        # Hash the password
-        password_hash = self.encryption_manager.hash_password(password)
+        # Hash the password with optional hardware binding
+        password_hash = self.encryption_manager.hash_password(password, bind_to_hardware)
         
         # Create user data
         user_data = {
@@ -117,6 +131,7 @@ class UserManager:
             "locked_until": None,
             "two_factor_enabled": False,
             "two_factor_secret": None,
+            "hardware_bound": bind_to_hardware,
             "settings": {
                 "theme": "default",
                 "default_security": {
@@ -187,6 +202,35 @@ class UserManager:
                     user_data["locked_until"] = None
                     user_data["failed_login_attempts"] = 0
         
+        # Check if account is hardware-bound and verify hardware ID
+        if user_data.get("hardware_bound", False):
+            # Get the password hash data
+            password_hash = user_data.get("password", {})
+            
+            # Check if the password hash indicates hardware binding
+            if password_hash.get("hardware_bound", False):
+                # Try to verify the password with hardware binding
+                # This will internally check if the hardware ID matches
+                if not self.encryption_manager.verify_password(password, password_hash):
+                    # Check if it's a hardware mismatch or wrong password
+                    # We'll try to verify without checking hardware ID to determine
+                    from ..security.hardware_id import HardwareIdentifier
+                    hw_id = HardwareIdentifier().get_hardware_id()
+                    current_hw_hash = hashlib.sha256(hw_id.encode('utf-8')).hexdigest()
+                    
+                    if password_hash.get("hardware_id_hash") and current_hw_hash != password_hash.get("hardware_id_hash"):
+                        # It's a hardware mismatch
+                        error_msg = "Authentication failed: This account can only be accessed from the device it was created on."
+                        self.logger.warning(f"Hardware binding authentication failed for user: {username}")
+                        
+                        self.audit_log.log_event(
+                            self.audit_log.SECURITY_ALERT,
+                            username,
+                            {"reason": "hardware_id_mismatch", "current_hw_hash": current_hw_hash},
+                            level=self.audit_log.WARNING
+                        )
+                        return False, error_msg, None
+        
         # Verify password
         if not self.encryption_manager.verify_password(password, user_data["password"]):
             # Increment failed login attempts
@@ -222,6 +266,31 @@ class UserManager:
                 level=self.audit_log.WARNING
             )
             return False, error_msg, None
+        
+        # Check if account is hardware-bound and verify hardware ID
+        if user_data.get("hardware_bound", False):
+            # Get current hardware ID
+            hw_id = HardwareIdentifier().get_hardware_id()
+            current_hw_hash = hashlib.sha256(hw_id.encode('utf-8')).hexdigest()
+            
+            # Get the password hash data
+            password_hash = user_data.get("password", {})
+            
+            # Check if the password hash indicates hardware binding
+            if password_hash.get("hardware_bound", False) and password_hash.get("hardware_id_hash"):
+                # Check if hardware ID matches
+                if current_hw_hash != password_hash.get("hardware_id_hash"):
+                    # It's a hardware mismatch
+                    error_msg = "Authentication failed: This account can only be accessed from the device it was created on."
+                    self.logger.warning(f"Hardware binding authentication failed for user: {username}")
+                    
+                    self.audit_log.log_event(
+                        self.audit_log.SECURITY_ALERT,
+                        username,
+                        {"reason": "hardware_id_mismatch", "current_hw_hash": current_hw_hash},
+                        level=self.audit_log.WARNING
+                    )
+                    return False, error_msg, None
         
         # Check if two-factor authentication is enabled
         if user_data.get("two_factor_enabled", False) and user_data.get("two_factor_secret"):
@@ -492,8 +561,11 @@ class UserManager:
             self.logger.warning(f"Password change failed for {username}: {error_msg}")
             return False, error_msg
         
-        # Hash the new password
-        password_hash = self.encryption_manager.hash_password(new_password)
+        # Check if the account is hardware-bound
+        is_hardware_bound = user_data.get("hardware_bound", False)
+        
+        # Hash the new password, maintaining hardware binding status
+        password_hash = self.encryption_manager.hash_password(new_password, is_hardware_bound)
         user_data["password"] = password_hash
         
         # Save updated user data

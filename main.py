@@ -13,6 +13,7 @@ from src.config.config_manager import ConfigManager
 from src.crypto.encryption import EncryptionManager
 from src.file_manager.file_manager import FileManager
 from src.user_manager.user_manager import UserManager
+from src.security.hardware_id import HardwareIdentifier
 from src.gui.main_window import MainWindow
 
 # Import PyQt5 modules

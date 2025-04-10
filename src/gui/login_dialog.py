@@ -102,11 +102,16 @@ class LoginDialog(QDialog):
             QMessageBox.warning(self, "Login Failed", "Please enter both username and password.")
             return
         
-        if self.user_manager.authenticate_user(username, password):
+        # The authenticate_user method returns a tuple (success, error_message, session_id)
+        success, error_message, session_id = self.user_manager.authenticate_user(username, password)
+        
+        if success:
             self.username = username
             self.accept()
         else:
-            QMessageBox.warning(self, "Login Failed", "Invalid username or password.")
+            # Display the specific error message from the authentication process
+            error_msg = error_message if error_message else "Invalid username or password."
+            QMessageBox.warning(self, "Login Failed", error_msg)
             self.password_edit.clear()
             self.password_edit.setFocus()
     
