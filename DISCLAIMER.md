@@ -62,4 +62,4 @@ This disclaimer outlines important legal and security considerations for users o
 
 By using BAR, you acknowledge that you have read this disclaimer and agree to its terms. If you do not agree with these terms, do not use the BAR application.
 
-*Last updated: [Current Date]*
+*Last updated: [4/11/2025]*
