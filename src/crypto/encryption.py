@@ -12,7 +12,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.constant_time import bytes_eq
 from cryptography.fernet import Fernet
 
-from ..security.hardware_id import HardwareIdentifier
+from ..security.hardware_id_bridge import HardwareIdentifier
 
 
 class EncryptionManager:

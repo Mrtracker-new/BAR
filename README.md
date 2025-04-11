@@ -266,6 +266,19 @@ For complete legal information, please refer to the [DISCLAIMER.md](DISCLAIMER.m
 
 ---
 
+## 📄 License
+
+BAR is licensed under the GNU General Public License v3.0 (GPL-3.0).
+
+- **Free Software**: You are free to use, modify, and distribute this software.
+- **Copyleft**: Any derivative works must also be distributed under the same license terms.
+- **Source Code**: If you distribute this software, you must make the source code available.
+- **No Warranty**: This software is provided without warranty of any kind.
+
+For the full license text, see the [LICENSE](LICENSE) file included with this application or visit the [GNU GPL v3.0 website](https://www.gnu.org/licenses/gpl-3.0.en.html).
+
+---
+
 ## 👨‍💻 About the Author
 
 BAR was created by me (**Rolan Lobo**), a passionate cybersecurity enthusiast and software developer dedicated to creating tools that enhance digital privacy and security.

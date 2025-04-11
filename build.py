@@ -134,10 +134,34 @@ def build_executable():
         return False
 
 
+def build_cython_extensions():
+    """Build Cython extensions for obfuscation and performance."""
+    print("Building Cython extensions...")
+    try:
+        # Check if Cython is installed
+        try:
+            import Cython
+        except ImportError:
+            print("Cython not found. Installing Cython...")
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "Cython"])
+            print("Cython installed successfully.")
+        
+        # Run the setup.py script to build the extensions
+        subprocess.check_call([sys.executable, "setup.py", "build_ext", "--inplace"])
+        print("Cython extensions built successfully.")
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"Error building Cython extensions: {e}")
+        print("Continuing with pure Python implementation...")
+        return False
+
 def main():
     """Main entry point for the build script."""
     # Clean build directories
     clean_build_directories()
+    
+    # Build Cython extensions for obfuscation
+    build_cython_extensions()
     
     # Build executable
     build_success = build_executable()

@@ -12,7 +12,7 @@ from ..crypto.encryption import EncryptionManager
 from ..security.two_factor_auth import TwoFactorAuth
 from ..security.session_manager import SessionManager
 from ..security.audit_log import AuditLog
-from ..security.hardware_id import HardwareIdentifier
+from ..security.hardware_id_bridge import HardwareIdentifier
 
 
 class UserManager:
@@ -215,7 +215,7 @@ class UserManager:
                 if not self.encryption_manager.verify_password(password, password_hash):
                     # Check if it's a hardware mismatch or wrong password
                     # We'll try to verify without checking hardware ID to determine
-                    from ..security.hardware_id import HardwareIdentifier
+                    from ..security.hardware_id_bridge import HardwareIdentifier
                     hw_id = HardwareIdentifier().get_hardware_id()
                     current_hw_hash = hashlib.sha256(hw_id.encode('utf-8')).hexdigest()
                     
@@ -271,7 +271,7 @@ class UserManager:
         # Check if account is hardware-bound and verify hardware ID
         if user_data.get("hardware_bound", False):
             # Get current hardware ID
-            from ..security.hardware_id import HardwareIdentifier
+            from ..security.hardware_id_bridge import HardwareIdentifier
             hw_id = HardwareIdentifier().get_hardware_id()
             current_hw_hash = hashlib.sha256(hw_id.encode('utf-8')).hexdigest()
             
