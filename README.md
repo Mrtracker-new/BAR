@@ -8,7 +8,22 @@
 
 </div>
 
+> **IMPORTANT**: Before using BAR, please read the [DISCLAIMER.md](DISCLAIMER.md) file for important legal and security information.
+
 ---
+
+## ⚠️ Important Notice
+
+**Before using BAR, please read the [DISCLAIMER.md](DISCLAIMER.md) file for important legal and security information.**
+
+BAR includes powerful security features like self-destruction mechanisms and secure deletion that can result in **permanent data loss**. By using this application, you acknowledge that:
+
+- Files deleted through BAR's security features **CANNOT be recovered**
+- You are responsible for ensuring your use complies with local laws and regulations
+- The security of your data depends on the strength of your passwords
+- No security measure is 100% foolproof
+
+See the full disclaimer for complete details on legal considerations and proper usage.
 
 ## 📋 Overview
 
@@ -232,6 +247,22 @@ BAR is designed for scenarios where secure, temporary file storage and sharing a
 - Consider enabling hardware binding for critical files to prevent unauthorized access from different devices
 - Remember that after 3 failed password attempts, files will be permanently deleted as an anti-brute force measure
 - If you forget your password, your data cannot be recovered
+
+---
+
+## 📜 Legal Considerations
+
+BAR is designed for legitimate security purposes. Please be aware of the following important legal considerations:
+
+- **Encryption Regulations**: The use of encryption software may be regulated or restricted in certain countries or jurisdictions. It is your responsibility to ensure your use of BAR complies with all applicable laws.
+
+- **Data Protection Laws**: When using BAR to store or process data subject to data protection regulations (such as GDPR, CCPA, HIPAA, etc.), ensure your usage complies with all relevant requirements.
+
+- **Legitimate Use**: BAR should only be used for lawful purposes. Do not use this application to circumvent legal data retention requirements or for any illegal activities.
+
+- **No Warranty**: BAR is provided "AS IS" without warranty of any kind. The developers are not liable for any damages or data loss resulting from the use of this application.
+
+For complete legal information, please refer to the [DISCLAIMER.md](DISCLAIMER.md) file included with this application.
 
 ---
 
