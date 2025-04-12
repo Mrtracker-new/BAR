@@ -451,7 +451,9 @@ class FileManager:
             "creation_time": metadata["creation_time"],
             "security": metadata["security"],
             "encryption": metadata["encryption"],
-            "content_hash": self._hash_content(file_content)
+            "content_hash": self._hash_content(file_content),
+            "failed_password_attempts": metadata.get("failed_password_attempts", 0),
+            "access_count": metadata.get("access_count", 0)  # Preserve access count when exporting
         }
         
         # Save the portable file
@@ -539,10 +541,13 @@ class FileManager:
                 "filename": portable_data["filename"],
                 "creation_time": portable_data["creation_time"],
                 "last_accessed": datetime.now().isoformat(),
-                "access_count": 0,
+                # Preserve access count from the exported file instead of resetting to 0
+                "access_count": portable_data.get("access_count", 0),
                 "security": portable_data["security"],
                 "encryption": portable_data["encryption"],
-                "content_hash": content_hash or self._hash_content(file_content)
+                "content_hash": content_hash or self._hash_content(file_content),
+                # Preserve the failed password attempts counter from the exported file
+                "failed_password_attempts": portable_data.get("failed_password_attempts", 0)
             }
             
             # Save the metadata file
