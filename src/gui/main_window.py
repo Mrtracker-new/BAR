@@ -801,5 +801,6 @@ class MainWindow(QMainWindow):
             "About BAR - Burn After Reading",
             "BAR - Burn After Reading v1.0.0\n\n"
             "A secure file management application with self-destructing files.\n\n"
-            "© 2023 BAR Security Team"
+            "Created by Rolan\n\n"
+            "© 2025 BAR BY RNR"
         )
