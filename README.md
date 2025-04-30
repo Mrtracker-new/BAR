@@ -18,7 +18,7 @@
 
 ## 📋 Overview
 
-BAR (Burn After Reading) is a powerful desktop application designed for secure file management with advanced security features including self-destruction capabilities. Operating entirely offline with no server dependencies, BAR ensures your sensitive data never leaves your machine. 
+BAR (Burn After Reading) is a powerful desktop application designed for secure file management with advanced security features including self-destruction capabilities. Operating entirely offline with no server dependencies, BAR ensures your sensitive data never leaves your machine.
 
 <div align="center">
 <img src="resources/Social_preview.png" alt="BAR Preview" width="600">
@@ -197,8 +197,6 @@ Manage your secure files and access application features
 2. Enter the password when prompted
 3. View file details and content (subject to security constraints)
 4. Note that accessing the file may count toward access limits if configured
-
-[![File Details](resources/Detail_of_dummy_file.png)](resources/Detail_of_dummy_file.png)
 </details>
 
 <details>
@@ -310,16 +308,6 @@ For the full license text, see the [LICENSE](LICENSE) file included with this ap
 ## 👨‍💻 About the Author
 
 BAR was created by **Rolan Lobo**, a passionate cybersecurity enthusiast and software developer dedicated to creating tools that enhance digital privacy and security.
-
-### Why I Created BAR
-
-I developed BAR to address the growing need for secure, offline file management solutions that put users in complete control of their sensitive data. In today's interconnected world, I believe everyone deserves access to powerful security tools that don't require technical expertise to use effectively.
-
-### My Vision
-
-My goal with BAR is to make advanced security features accessible to everyone while maintaining the highest standards of privacy and data protection. I'm committed to continuing development on this project to expand its capabilities and keep it at the cutting edge of secure file management.
-
-I welcome feedback, suggestions, and contributions from the community to help make BAR even better!
 
 ---
 
