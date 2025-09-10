@@ -1,40 +1,629 @@
 # BAR - Burn After Reading: .gitignore file
+# Security-Critical Application - Comprehensive File Exclusions
 
-# Build artifacts
-build/
-dist/
-*.spec
+# ================================================
+# CRITICAL SECURITY FILES - NEVER COMMIT THESE
+# ================================================
+
+# Project-specific sensitive documentation
+PROJECT_RULES.md
+SECURITY_AUDIT.md
+THREAT_MODEL.md
+SECURITY_REVIEW.md
+VULNERABILITY_ASSESSMENT.md
+PENETRATION_TEST_RESULTS.md
+SECURITY_ASSESSMENT.md
+COMPLIANCE_REPORT.md
+INTERNAL_SECURITY.md
+
+# Cryptographic materials (comprehensive patterns)
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.cer
+*.der
+*.keystore
+*.jks
+*.pkcs12
+*.pkcs8
+*.rsa
+*.dsa
+*.ecdsa
+*.ed25519
+keyfile*
+private_key*
+public_key*
+master.key
+device.key
+encryption.key
+hardware.key
+*.gpg
+*.pgp
+*.asc
+
+# Device-specific authentication files
+device.json
+master.key
+device_config.*
+authentication.*
+hardware_binding.*
+device_fingerprint.*
+
+# User data and sensitive directories (comprehensive)
+~/.bar/
+%USERPROFILE%\.bar/
+%APPDATA%\BAR/
+%LOCALAPPDATA%\BAR/
+user_data/
+my_keys/
+test_data/
+temp/
+logs/
+audit_logs/
+secure_storage/
+encrypted_files/
+.bar_data/
+.bar_config/
+.bar_cache/
+.bar_temp/
+runtime_data/
+session_data/
+cache/
+backups/
+recovery/
+vault/
+secure/
+protected/
+confidential/
+restricted/
+classified/
+
+# Sensitive configuration files (expanded patterns)
+secrets.*
+credentials.*
+config_local.*
+config_prod.*
+config_dev.*
+config_staging.*
+passwords.*
+secrets.txt
+.secrets*
+.credentials*
+.env.local
+.env.production
+.env.development
+.env.staging
+.env.*.local
+api_keys.*
+auth_tokens.*
+session_keys.*
+encryption_config.*
+security_config.*
+
+# ================================================
+# BUILD ARTIFACTS AND COMPILED FILES
+# ================================================
+
+# Python compiled files
 __pycache__/
 *.py[cod]
+*.pyo
 *$py.class
 *.so
+*.pyd
 .Python
 
-# User data and configuration
-~/.bar/
-*.log
+# Build directories
+build/
+dist/
+*.egg-info/
+.eggs/
+*.spec
 
-# Environment
+# C extensions and Cython
+*.c
+*.cpp  # Only if auto-generated
+*.html  # Cython annotation files
+
+# ================================================
+# DEVELOPMENT ENVIRONMENT
+# ================================================
+
+# Virtual environments
 .env
 .venv
 env/
 venv/
 ENV/
+env.bak/
+venv.bak/
+.python-version
 
-# IDE files
+# Package managers
+Pipfile.lock
+poetry.lock
+requirements-dev.txt
+requirements-test.txt
+
+# ================================================
+# IDE AND EDITOR FILES
+# ================================================
+
+# JetBrains IDEs (PyCharm, IntelliJ)
 .idea/
+*.iml
+*.ipr
+*.iws
+
+# Visual Studio Code
 .vscode/
+*.code-workspace
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim/Neovim
 *.swp
 *.swo
+*.tmp
+*~
+.netrwhist
 
-# OS specific files
-.DS_Store
-Thumbs.db
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# Atom
+.atom/
+
+# ================================================
+# TESTING AND COVERAGE
+# ================================================
+
+# Test artifacts
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.tox/
+.cache
+nosetests.xml
+coverage/
+htmlcov/
+.testmondata
+
+# Performance profiling
+*.prof
+*.lprof
+.prof/
+
+# ================================================
+# LOGGING AND TEMPORARY FILES
+# ================================================
+
+# Log files
+*.log
+*.log.*
+logs/
+*.out
+*.err
+debug.log
+error.log
+access.log
+audit.log
+security.log
 
 # Temporary files
 *.tmp
+*.temp
 *.bak
 *.backup
+*.orig
+*.rej
+*~
+.tmp/
+temp/
+tmp/
 
-# Local development configuration
+# Lock files
+*.lock
+*.pid
+
+# ================================================
+# DATABASE AND DATA FILES
+# ================================================
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+*.db3
+*.s3db
+*.sl3
+
+# Data files that might contain sensitive information
+*.csv  # Only if containing sensitive data
+*.json  # Only if containing sensitive configuration
+*.xml   # Only if containing sensitive data
+data/
+datasets/
+exports/
+
+# ================================================
+# OPERATING SYSTEM SPECIFIC
+# ================================================
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ================================================
+# DEPLOYMENT AND INFRASTRUCTURE
+# ================================================
+
+# Docker
+.dockerignore
+Dockerfile.prod
+docker-compose.override.yml
+.docker/
+
+# Kubernetes
+*.yaml  # Only if containing sensitive configs
+*.yml   # Only if containing sensitive configs
+kube-config
+
+# Terraform
+*.tfstate
+*.tfstate.*
+*.tfvars
+.terraform/
+.terraform.lock.hcl
+
+# ================================================
+# SECURITY SCANNING AND ANALYSIS
+# ================================================
+
+# Security scan results
+security_scan_results/
+bandit_report.json
+safety_report.json
+vulnerability_report.json
+pentest_results/
+
+# Static analysis
+.pylint.d/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# ================================================
+# DOCUMENTATION BUILD ARTIFACTS
+# ================================================
+
+# Sphinx documentation
+docs/_build/
+docs/.doctrees/
+.sphinx/
+
+# MkDocs
+site/
+
+# ================================================
+# MISCELLANEOUS
+# ================================================
+
+# pip-audit
+.pip-audit-cache/
+
+# Local development overrides
 local_settings.py
+dev_settings.py
+local_config.py
+
+# Jupyter Notebooks (if any)
+.ipynb_checkpoints/
+*.ipynb
+
+# Environment variable files
+.env*
+!.env.example
+
+# Backup files
+*.backup
+*.bckp
+*.old
+
+# Archive files (potentially containing sensitive data)
+*.zip
+*.tar
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.7z
+*.rar
+
+# ================================================
+# CUSTOM APPLICATION-SPECIFIC EXCLUSIONS
+# ================================================
+
+# BAR-specific directories that may contain sensitive data
+portable_files/
+exported_files/
+imported_files/
+scan_results/
+blacklist/
+temp_decrypt/
+recovery_keys/
+device_data/
+hardware_profiles/
+fingerprint_data/
+biometric_data/
+authentication_logs/
+security_events/
+forensic_artifacts/
+wipe_logs/
+emergency_data/
+
+# Process and memory dump files
+*.dmp
+*.dump
+*.mdmp
+*.hdmp
+*.pmdmp
+core.*
+*.crashdump
+memory.dump
+process.dump
+heap.dump
+stack.dump
+
+# Test files with potentially sensitive content
+test_files/
+test_keys/
+sample_data/
+mock_data/
+fixtures/sensitive/
+
+# Performance and profiling
+profile_results/
+benchmark_results/
+performance_logs/
+
+# ================================================
+# ANTI-FORENSICS AND PRIVACY PROTECTION
+# ================================================
+
+# Windows forensics artifacts
+$Recycle.Bin/
+Recycler/
+System Volume Information/
+pagefile.sys
+hiberfil.sys
+swapfile.sys
+*.evt
+*.evtx
+*.etl
+Prefetch/
+RecentDocs/
+JumpListCache/
+IconCache.db
+thumbs.db
+
+# Browser forensics
+*.sqlite-wal
+*.sqlite-shm
+History
+Cookies
+"Web Data"
+"Login Data"
+Bookmarks
+"Secure Preferences"
+Preferences
+"Local State"
+Cache/
+"Application Cache"/
+IndexedDB/
+"Local Storage"/
+"Session Storage"/
+
+# System and application logs (Windows)
+*.wer
+*.dmp
+*.mdmp
+Setupapi.dev.log
+Setupapi.app.log
+*.log1
+*.log2
+
+# Network and connection artifacts
+arp.cache
+route.cache
+dns.cache
+connections.log
+network.log
+firewall.log
+
+# ================================================
+# DEVELOPMENT AND DEBUGGING ARTIFACTS
+# ================================================
+
+# Debug symbols and crash reports
+*.pdb
+*.sym
+*.symbols
+*.crashlog
+*.crash
+crash_reports/
+debug_logs/
+trace_logs/
+
+# Performance monitoring
+*.trace
+*.perf
+*.prof
+*.profile
+performance_data/
+monitoring_logs/
+metrics_data/
+
+# ================================================
+# VERSION CONTROL AND MERGE ARTIFACTS
+# ================================================
+
+# Git-specific (additional)
+*.orig
+*.rej
+.gitattributes.local
+.gitconfig.local
+.gitignore.local
+
+# Merge conflict artifacts
+*.BACKUP.*
+*.BASE.*
+*.LOCAL.*
+*.REMOTE.*
+*_BACKUP_*
+*_BASE_*
+*_LOCAL_*
+*_REMOTE_*
+
+# ================================================
+# FUTURE-PROOFING PATTERNS
+# ================================================
+
+# Common sensitive file naming patterns
+*secret*
+*private*
+*confidential*
+*sensitive*
+*password*
+*credential*
+*token*
+*key*
+*auth*
+*secure*
+# But be careful not to exclude legitimate files
+
+# Cloud storage sync artifacts
+.dropbox
+.dropbox.attr
+.dropbox.cache/
+*.cloud
+*.sync
+*.syncing
+.onedrive
+.googledrive
+
+# Container and virtualization
+*.vdi
+*.vmdk
+*.vhd
+*.vhdx
+*.qcow2
+*.img
+*.ova
+*.ovf
+
+# Mobile development (if applicable)
+*.apk
+*.ipa
+*.app
+*.mobileprovision
+*.p12
+*.certSigningRequest
+
+# AI/ML models (potentially sensitive)
+*.model
+*.weights
+*.checkpoint
+*.ckpt
+*.pkl
+*.joblib
+models/
+checkpoints/
+weights/
+
+# ================================================
+# ADDITIONAL FILE EXTENSIONS TO WATCH
+# ================================================
+
+# Archive formats (may contain sensitive data)
+*.7z
+*.zip
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.rar
+*.cab
+*.msi
+*.dmg
+*.iso
+*.bin
+*.img
+
+# Document formats (may contain sensitive metadata)
+*.docx
+*.xlsx
+*.pptx
+*.pdf
+# Only if they contain sensitive information
+
+# Media files (may contain metadata)
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.mp4
+*.avi
+*.mov
+*.mp3
+*.wav
+# Only if they contain sensitive information or metadata
+
+# End of .gitignore

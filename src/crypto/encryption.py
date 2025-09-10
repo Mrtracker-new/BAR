@@ -11,8 +11,10 @@ from cryptography.hazmat.primitives import hashes, hmac
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.constant_time import bytes_eq
 from cryptography.fernet import Fernet
+import secrets
 
 from ..security.hardware_id_bridge import HardwareIdentifier
+from ..security.secure_memory import SecureBytes, secure_compare, secure_zero_memory
 
 
 class EncryptionManager:
@@ -40,14 +42,36 @@ class EncryptionManager:
     
     @staticmethod
     def derive_key(password: str, salt: bytes) -> bytes:
-        """Derive an encryption key from a password and salt using PBKDF2."""
-        kdf = PBKDF2HMAC(
-            algorithm=hashes.SHA256(),
-            length=EncryptionManager.KEY_SIZE,
-            salt=salt,
-            iterations=EncryptionManager.PBKDF2_ITERATIONS,
-        )
-        return kdf.derive(password.encode('utf-8'))
+        """Derive an encryption key from a password and salt using PBKDF2.
+        
+        Args:
+            password: Password string to derive key from
+            salt: Random salt bytes for key derivation
+            
+        Returns:
+            Derived key bytes
+        
+        Note:
+            This method uses secure memory handling to prevent password exposure
+        """
+        # Use secure memory for password handling
+        with SecureBytes(password) as secure_password:
+            password_bytes = secure_password.get_bytes()
+            
+            kdf = PBKDF2HMAC(
+                algorithm=hashes.SHA256(),
+                length=EncryptionManager.KEY_SIZE,
+                salt=salt,
+                iterations=EncryptionManager.PBKDF2_ITERATIONS,
+            )
+            
+            derived_key = kdf.derive(password_bytes)
+            
+            # Securely clear the password bytes
+            if isinstance(password_bytes, bytearray):
+                secure_zero_memory(password_bytes)
+            
+            return derived_key
     
     @staticmethod
     def encrypt_data(data: bytes, key: bytes) -> Dict[str, bytes]:
@@ -102,7 +126,22 @@ class EncryptionManager:
             
         Returns:
             A dictionary containing all necessary data for decryption
+            
+        Raises:
+            ValueError: If input parameters are invalid
+            TypeError: If input types are incorrect
         """
+        # Input validation
+        if not isinstance(content, bytes):
+            raise TypeError("Content must be bytes")
+        if not isinstance(password, str):
+            raise TypeError("Password must be a string")
+        if len(password) == 0:
+            raise ValueError("Password cannot be empty")
+        if len(content) == 0:
+            raise ValueError("Content cannot be empty")
+        if len(content) > 1024 * 1024 * 1024:  # 1GB limit
+            raise ValueError("Content size exceeds maximum limit (1GB)")
         salt = EncryptionManager.generate_salt()
         key = EncryptionManager.derive_key(password, salt)
         encrypted_data = EncryptionManager.encrypt_data(content, key)
@@ -132,12 +171,42 @@ class EncryptionManager:
             The decrypted file content
             
         Raises:
-            ValueError: If decryption fails
+            ValueError: If decryption fails or input is invalid
+            TypeError: If input types are incorrect
         """
-        # Convert base64 data back to binary
-        ciphertext = base64.b64decode(encrypted_content['ciphertext'])
-        nonce = base64.b64decode(encrypted_content['nonce'])
-        salt = base64.b64decode(encrypted_content['salt'])
+        # Input validation
+        if not isinstance(encrypted_content, dict):
+            raise TypeError("Encrypted content must be a dictionary")
+        if not isinstance(password, str):
+            raise TypeError("Password must be a string")
+        if len(password) == 0:
+            raise ValueError("Password cannot be empty")
+        
+        # Validate required fields
+        required_fields = ['ciphertext', 'nonce', 'salt']
+        for field in required_fields:
+            if field not in encrypted_content:
+                raise ValueError(f"Missing required field: {field}")
+        
+        # Validate field types
+        for field in required_fields:
+            if not isinstance(encrypted_content[field], str):
+                raise ValueError(f"Field {field} must be a base64 encoded string")
+        # Convert base64 data back to binary with validation
+        try:
+            ciphertext = base64.b64decode(encrypted_content['ciphertext'])
+            nonce = base64.b64decode(encrypted_content['nonce'])
+            salt = base64.b64decode(encrypted_content['salt'])
+        except Exception as e:
+            raise ValueError(f"Invalid base64 encoding in encrypted data: {str(e)}")
+        
+        # Validate decoded sizes
+        if len(nonce) != EncryptionManager.NONCE_SIZE:
+            raise ValueError(f"Invalid nonce size: expected {EncryptionManager.NONCE_SIZE}, got {len(nonce)}")
+        if len(salt) != EncryptionManager.SALT_SIZE:
+            raise ValueError(f"Invalid salt size: expected {EncryptionManager.SALT_SIZE}, got {len(salt)}")
+        if len(ciphertext) == 0:
+            raise ValueError("Ciphertext cannot be empty")
         
         # Derive the key and decrypt
         key = EncryptionManager.derive_key(password, salt)
@@ -156,6 +225,18 @@ class EncryptionManager:
             A secure random key as a URL-safe base64 encoded string
         """
         return Fernet.generate_key().decode('utf-8')
+    
+    @staticmethod
+    def generate_token(length: int = 32) -> str:
+        """Generate a cryptographically secure random token.
+        
+        Args:
+            length: Length of the token in bytes (default: 32)
+            
+        Returns:
+            Hex-encoded secure random token
+        """
+        return secrets.token_hex(length)
     
     @staticmethod
     def hash_password(password: str, bind_to_hardware: bool = True) -> Dict[str, str]:
@@ -231,4 +312,10 @@ class EncryptionManager:
         derived_key = EncryptionManager.derive_key(combined_password, salt)
         
         # Compare in constant time to prevent timing attacks
-        return bytes_eq(derived_key, stored_hash)
+        result = secure_compare(derived_key, stored_hash)
+        
+        # Securely clear derived key from memory
+        if isinstance(derived_key, bytearray):
+            secure_zero_memory(derived_key)
+        
+        return result

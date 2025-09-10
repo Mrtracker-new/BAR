@@ -18,7 +18,7 @@ class FileScanner:
     BAR_FILE_EXTENSION = ".bar"
     BAR_FILE_SIGNATURE = "bar_portable_file"
     BAR_FILE_MIN_SIZE = 50  # Minimum size in bytes for a valid .bar file
-    BAR_FILE_VERSION_PATTERN = r'^\d+\.\d+$'  # Pattern for valid version numbers (e.g., 1.0)
+    BAR_FILE_VERSION_PATTERN = r'^\d+\.\d+(\.\d+)?$'  # Pattern for valid version numbers (e.g., 2.0.0)
     
     def __init__(self, file_manager):
         """Initialize the file scanner.

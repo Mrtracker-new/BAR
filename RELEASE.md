@@ -1,5 +1,5 @@
 ![BAR_logo](https://github.com/user-attachments/assets/2424e744-755d-4de2-9ce1-4362f7729521)
-# BAR - Burn After Reading v1.0.0
+# BAR - Burn After Reading v2.0.0
 
 ## 🔥 Secure File Management with Self-Destruction Capabilities 🔥
 
@@ -78,7 +78,7 @@ BAR is a completely offline file management system designed for users who need t
 
 ### Latest Updates
 
-#### Version 1.0.0 (Current)
+#### Version 2.0.0 (Current)
 - Initial public release
 - Enhanced screenshot prevention system
 - Two-factor authentication support

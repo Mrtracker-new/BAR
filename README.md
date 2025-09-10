@@ -59,10 +59,10 @@ See the [full disclaimer](DISCLAIMER.md) for complete details on legal considera
 - **🗑️ Secure Deletion**: Multi-pass overwrite techniques to prevent data recovery
 
 ### User Experience
-- **👤 User Authentication**: Local user registration and login with 2FA options
+- **🔐 Device Authentication**: Single-user device-bound authentication with hardware binding
 - **💻 Intuitive Interface**: Clean UI showing file security status and expiration details
-- **🎨 Customizable Themes**: Personalize your experience with different visual themes
-- **📊 Comprehensive Logging**: Detailed security audit logs for monitoring and troubleshooting
+- **🎨 Dark Theme**: Professional dark theme optimized for security applications
+- **⚡ Fast Operation**: Streamlined authentication flow with direct access after device unlock
 
 ---
 
@@ -126,7 +126,7 @@ See the [full disclaimer](DISCLAIMER.md) for complete details on legal considera
 
 1. Download the latest release of BAR.exe from the releases page
 2. No installation required - simply double-click the executable to run
-3. On first run, you'll need to create a user account with a strong password
+3. On first run, you'll need to initialize the device with a strong master password
 4. The application will automatically create the necessary directories and configuration files
 </details>
 
@@ -156,16 +156,14 @@ See the [full disclaimer](DISCLAIMER.md) for complete details on legal considera
 ## 📱 Usage Guide
 
 ### First-Time Setup
-Create a local user account with a strong password
+Initialize your device with a strong master password (hardware-bound)
    
-[![Create New Account](resources/Create_new_account_page.png)](resources/Create_new_account_page.png)
+*Note: v2.0.0 uses single-user device authentication - no separate user accounts needed*
 
-### Login
-Access your secure file storage
+### Device Authentication
+Unlock your secure file storage with your master password
 
-<div align="center">
-<img src="resources/Login_interface.png" alt="Login Interface" width="500">
-</div>
+*Note: Device unlock is the only authentication step - no separate login required*
 
 ### Main Interface
 Manage your secure files and access application features

@@ -1,29 +1,22 @@
-import os
 import sys
-import time
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Dict, List, Any, Optional
 
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QFileDialog, QMessageBox, QTabWidget, QTableWidget, QTableWidgetItem,
     QHeaderView, QComboBox, QSpinBox, QDateTimeEdit, QCheckBox, QDialog,
-    QFormLayout, QGroupBox, QStackedWidget, QSplitter, QFrame, QAction, QMenu,
-    QToolBar, QStatusBar, QSystemTrayIcon, QApplication, QStyle, QInputDialog, QTextEdit,
-    QScrollArea
+    QFormLayout, QGroupBox, QAction, QMenu,
+    QStatusBar, QApplication, QInputDialog, QTextEdit
 )
-from PyQt5.QtCore import Qt, QTimer, QDateTime, pyqtSignal, QSize, QEvent
-from PyQt5.QtGui import QIcon, QPixmap, QFont, QPalette, QColor
+from PyQt5.QtCore import Qt, QTimer, QDateTime
+from PyQt5.QtGui import QFont, QColor
 
 from ..config.config_manager import ConfigManager
 from ..crypto.encryption import EncryptionManager
 from ..file_manager.file_manager import FileManager
-from ..user_manager.user_manager import UserManager
-from .login_dialog import LoginDialog
-from .register_dialog import RegisterDialog
+# Removed: UserManager and login dialogs (single-user device authentication)
 from .file_dialog import FileDialog
-from .settings_dialog import SettingsDialog
 from .styles import StyleManager
 
 
@@ -31,13 +24,13 @@ class MainWindow(QMainWindow):
     """Main window for the BAR application."""
     
     def __init__(self, config_manager: ConfigManager, file_manager: FileManager, 
-                 user_manager: UserManager, parent=None):
+                 device_auth, parent=None):
         """Initialize the main window.
         
         Args:
             config_manager: The application configuration manager
             file_manager: The secure file manager
-            user_manager: The user account manager
+            device_auth: The device authentication manager (already authenticated)
             parent: The parent widget
         """
         super().__init__(parent)
@@ -45,14 +38,14 @@ class MainWindow(QMainWindow):
         # Store managers
         self.config_manager = config_manager
         self.file_manager = file_manager
-        self.user_manager = user_manager
+        self.device_auth = device_auth
         
         # Set up window properties
         self.setWindowTitle("BAR - Burn After Reading")
         self.setMinimumSize(900, 600)
         
         # Initialize UI components
-        self.current_user = None
+        self.current_user = "Device User"  # Single user system
         self.auto_lock_timer = QTimer(self)
         self.auto_lock_timer.timeout.connect(self.lock_application)
         
@@ -60,8 +53,8 @@ class MainWindow(QMainWindow):
         self._setup_ui()
         self._apply_theme()
         
-        # Show login dialog
-        self._show_login_dialog()
+        # Device is already authenticated, show main app directly
+        self._initialize_main_app()
     
     def _setup_ui(self):
         """Set up the user interface."""
@@ -70,22 +63,9 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.central_widget)
         self.main_layout = QVBoxLayout(self.central_widget)
         
-        # Create stacked widget for different screens
-        self.stacked_widget = QStackedWidget()
-        self.main_layout.addWidget(self.stacked_widget)
-        
-        # Create login screen
-        self.login_screen = QWidget()
-        self.stacked_widget.addWidget(self.login_screen)
-        
-        # Create main application screen
-        self.app_screen = QWidget()
-        self.app_layout = QVBoxLayout(self.app_screen)
-        self.stacked_widget.addWidget(self.app_screen)
-        
         # Create tab widget for different sections
         self.tab_widget = QTabWidget()
-        self.app_layout.addWidget(self.tab_widget)
+        self.main_layout.addWidget(self.tab_widget)
         
         # Create file management tab
         self.files_tab = QWidget()
@@ -219,16 +199,16 @@ class MainWindow(QMainWindow):
         self.exit_action.triggered.connect(self.close)
         self.file_menu.addAction(self.exit_action)
         
-        # User menu
-        self.user_menu = self.menu_bar.addMenu("&User")
+        # Device menu
+        self.device_menu = self.menu_bar.addMenu("&Device")
         
-        self.change_password_action = QAction("Change &Password", self)
+        self.change_password_action = QAction("Change &Master Password", self)
         self.change_password_action.triggered.connect(self._change_password)
-        self.user_menu.addAction(self.change_password_action)
+        self.device_menu.addAction(self.change_password_action)
         
-        self.logout_action = QAction("&Logout", self)
-        self.logout_action.triggered.connect(self._logout)
-        self.user_menu.addAction(self.logout_action)
+        self.lock_action_menu = QAction("&Lock Device", self)
+        self.lock_action_menu.triggered.connect(self.lock_application)
+        self.device_menu.addAction(self.lock_action_menu)
         
         # Help menu
         self.help_menu = self.menu_bar.addMenu("&Help")
@@ -242,39 +222,12 @@ class MainWindow(QMainWindow):
         theme = self.config_manager.get_value("theme", "dark").lower()
         StyleManager.apply_theme(theme)
     
-    def _show_login_dialog(self):
-        """Show the login dialog."""
-        login_dialog = LoginDialog(self.user_manager, self)
-        result = login_dialog.exec_()
-        
-        if result == QDialog.Accepted:
-            self.current_user = login_dialog.get_username()
-            self._refresh_files()
-            self.stacked_widget.setCurrentWidget(self.app_screen)
-            self.status_bar.showMessage(f"Logged in as {self.current_user}")
-            self._start_auto_lock_timer()
-        else:
-            # Check if we need to show registration dialog
-            if login_dialog.register_requested:
-                self._show_register_dialog()
-            else:
-                # Exit if login was cancelled
-                QApplication.quit()
-                sys.exit(0)  # Ensure application exits completely
-    
-    def _show_register_dialog(self):
-        """Show the registration dialog."""
-        register_dialog = RegisterDialog(self.user_manager, self)
-        result = register_dialog.exec_()
-        
-        if result == QDialog.Accepted:
-            self.current_user = register_dialog.get_username()
-            self.stacked_widget.setCurrentWidget(self.app_screen)
-            self.status_bar.showMessage(f"Registered and logged in as {self.current_user}")
-            self._start_auto_lock_timer()
-        else:
-            # Show login dialog again
-            self._show_login_dialog()
+    def _initialize_main_app(self):
+        """Initialize the main application after device authentication."""
+        # Device is already authenticated, set up the main UI
+        self._refresh_files()
+        self.status_bar.showMessage(f"BAR Device - Authenticated")
+        self._start_auto_lock_timer()
     
     def _start_auto_lock_timer(self):
         """Start the auto-lock timer."""
@@ -288,16 +241,27 @@ class MainWindow(QMainWindow):
             self._start_auto_lock_timer()
     
     def lock_application(self):
-        """Lock the application and show the login dialog."""
+        """Lock the application and show device authentication dialog."""
         if self.current_user:
             self.auto_lock_timer.stop()
-            self.current_user = None
-            self.stacked_widget.setCurrentWidget(self.login_screen)
-            self._show_login_dialog()
-    
-    def _logout(self):
-        """Log out the current user."""
-        self.lock_application()
+            
+            # Log out from device auth
+            self.device_auth.logout()
+            
+            # Hide the main window and show device auth dialog
+            self.hide()
+            
+            from .device_auth_dialog import DeviceAuthDialog
+            auth_dialog = DeviceAuthDialog(self.device_auth, self)
+            auth_result = auth_dialog.exec_()
+            
+            if auth_result == QDialog.Accepted and auth_dialog.is_authenticated():
+                # Re-authenticated successfully
+                self.show()
+                self._initialize_main_app()
+            else:
+                # Authentication failed or cancelled - exit application
+                QApplication.quit()
     
     def _refresh_files(self):
         """Refresh the file list."""
@@ -981,29 +945,53 @@ class MainWindow(QMainWindow):
             "default_security": security_settings
         })
         
-        # Update user settings
-        if self.current_user:
-            self.user_manager.update_user_settings(self.current_user, {
-                "default_security": security_settings
-            })
-        
         QMessageBox.information(self, "Settings Saved", "Your settings have been saved.")
     
     def _change_password(self):
-        """Change the current user's password."""
-        if not self.current_user:
+        """Change the device master password."""
+        if not self.device_auth.is_authenticated():
+            QMessageBox.warning(self, "Authentication Required", "Please authenticate first.")
             return
         
         # Ask for current password
         current_password, ok = QInputDialog.getText(
-            self, "Current Password", "Enter your current password:", QLineEdit.Password)
+            self, "Current Master Password", "Enter your current master password:", QLineEdit.Password)
+        
+        if not ok or not current_password:
+            return
+        
+        # Ask for new password
+        new_password, ok = QInputDialog.getText(
+            self, "New Master Password", "Enter your new master password:", QLineEdit.Password)
+        
+        if not ok or not new_password:
+            return
+        
+        # Confirm new password
+        confirm_password, ok = QInputDialog.getText(
+            self, "Confirm New Password", "Confirm your new master password:", QLineEdit.Password)
+        
+        if not ok or not confirm_password:
+            return
+        
+        if new_password != confirm_password:
+            QMessageBox.warning(self, "Password Mismatch", "The new passwords do not match.")
+            return
+        
+        # Change the password
+        success, message = self.device_auth.change_master_password(current_password, new_password)
+        
+        if success:
+            QMessageBox.information(self, "Password Changed", "Master password changed successfully.")
+        else:
+            QMessageBox.critical(self, "Password Change Failed", message)
 
     def _show_about(self):
         """Show the about dialog."""
         QMessageBox.about(
             self,
             "About BAR - Burn After Reading",
-            "BAR - Burn After Reading v1.0.0\n\n"
+            "BAR - Burn After Reading v2.0.0\n\n"
             "A secure file management application with self-destructing files.\n\n"
             "Created by Rolan\n\n"
             "© 2025 BAR BY RNR"
