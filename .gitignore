@@ -5,9 +5,11 @@
 # CRITICAL SECURITY FILES - NEVER COMMIT THESE
 # ================================================
 
-# Project-specific sensitive documentation
+# Project-specific sensitive files
 PROJECT_RULES.md
 SECURITY_AUDIT.md
+test_crypto_fixes.py
+test_device_auth.py
 THREAT_MODEL.md
 SECURITY_REVIEW.md
 VULNERABILITY_ASSESSMENT.md

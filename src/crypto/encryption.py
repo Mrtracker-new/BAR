@@ -13,7 +13,7 @@ from cryptography.hazmat.primitives.constant_time import bytes_eq
 from cryptography.fernet import Fernet
 import secrets
 
-from ..security.hardware_id_bridge import HardwareIdentifier
+from ..security.hardware_id import HardwareIdentifier
 from ..security.secure_memory import SecureBytes, secure_compare, secure_zero_memory
 
 
@@ -24,7 +24,7 @@ class EncryptionManager:
     SALT_SIZE = 32  # 256 bits
     KEY_SIZE = 32   # 256 bits for AES-256
     NONCE_SIZE = 12  # 96 bits for AES-GCM
-    PBKDF2_ITERATIONS = 100000  # High iteration count for security
+    PBKDF2_ITERATIONS = 300000  # Increased iteration count for stronger security
     
     def __init__(self):
         """Initialize the encryption manager."""
@@ -74,19 +74,20 @@ class EncryptionManager:
             return derived_key
     
     @staticmethod
-    def encrypt_data(data: bytes, key: bytes) -> Dict[str, bytes]:
-        """Encrypt data using AES-256-GCM.
+    def encrypt_data(data: bytes, key: bytes, aad: Optional[bytes] = None) -> Dict[str, bytes]:
+        """Encrypt data using AES-256-GCM with optional associated data (AAD).
         
         Args:
             data: The data to encrypt
             key: The encryption key
+            aad: Optional associated data to bind to the ciphertext (not stored)
             
         Returns:
-            A dictionary containing the encrypted data, nonce, and tag
+            A dictionary containing the encrypted data and nonce
         """
         nonce = EncryptionManager.generate_nonce()
         aesgcm = AESGCM(key)
-        ciphertext = aesgcm.encrypt(nonce, data, None)
+        ciphertext = aesgcm.encrypt(nonce, data, aad)
         
         return {
             'ciphertext': ciphertext,
@@ -94,12 +95,13 @@ class EncryptionManager:
         }
     
     @staticmethod
-    def decrypt_data(encrypted_data: Dict[str, bytes], key: bytes) -> bytes:
+    def decrypt_data(encrypted_data: Dict[str, bytes], key: bytes, aad: Optional[bytes] = None) -> bytes:
         """Decrypt data using AES-256-GCM.
         
         Args:
             encrypted_data: Dictionary containing ciphertext and nonce
             key: The decryption key
+            aad: Optional associated data; must match that used during encryption
             
         Returns:
             The decrypted data
@@ -112,9 +114,10 @@ class EncryptionManager:
         
         aesgcm = AESGCM(key)
         try:
-            return aesgcm.decrypt(nonce, ciphertext, None)
-        except Exception as e:
-            raise ValueError(f"Decryption failed: {str(e)}")
+            return aesgcm.decrypt(nonce, ciphertext, aad)
+        except Exception:
+            # Do not leak specific errors from crypto operations
+            raise ValueError("Decryption failed")
     
     @staticmethod
     def encrypt_file_content(content: bytes, password: str) -> Dict[str, Any]:
@@ -144,7 +147,9 @@ class EncryptionManager:
             raise ValueError("Content size exceeds maximum limit (1GB)")
         salt = EncryptionManager.generate_salt()
         key = EncryptionManager.derive_key(password, salt)
-        encrypted_data = EncryptionManager.encrypt_data(content, key)
+        # Bind ciphertext to context using AAD derived from salt and app/version marker
+        aad = b"BAR|v2|" + salt
+        encrypted_data = EncryptionManager.encrypt_data(content, key, aad)
         
         # Convert binary data to base64 for storage
         result = {
@@ -214,17 +219,19 @@ class EncryptionManager:
             'ciphertext': ciphertext,
             'nonce': nonce
         }
+        # Reconstruct AAD exactly as used during encryption
+        aad = b"BAR|v2|" + salt
         
-        return EncryptionManager.decrypt_data(encrypted_data, key)
+        return EncryptionManager.decrypt_data(encrypted_data, key, aad)
     
     @staticmethod
     def generate_secure_key() -> str:
         """Generate a secure random key for file encryption.
         
         Returns:
-            A secure random key as a URL-safe base64 encoded string
+            A secure random key as a URL-safe base64 encoded string (32 bytes)
         """
-        return Fernet.generate_key().decode('utf-8')
+        return base64.urlsafe_b64encode(os.urandom(32)).decode('utf-8')
     
     @staticmethod
     def generate_token(length: int = 32) -> str:
@@ -299,7 +306,7 @@ class EncryptionManager:
             # Verify hardware ID if it's stored in the hash
             if 'hardware_id_hash' in password_hash:
                 current_hw_hash = hashlib.sha256(hw_id.encode('utf-8')).hexdigest()
-                if current_hw_hash != password_hash['hardware_id_hash']:
+                if not secure_compare(current_hw_hash.encode(), password_hash['hardware_id_hash'].encode()):
                     # Hardware ID doesn't match, authentication fails
                     return False
             
