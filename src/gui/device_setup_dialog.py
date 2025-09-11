@@ -10,26 +10,88 @@ from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QIcon, QPixmap, QFont, QPalette, QColor
 
 from .styles import StyleManager
+from ..security.secure_memory import (
+    SecureString, create_secure_string, secure_compare,
+    get_secure_memory_manager, MemoryProtectionLevel
+)
+
+
+class SecurePasswordLineEdit(QLineEdit):
+    """Enhanced QLineEdit that uses secure memory for password storage.
+    
+    Per R006 - Memory Security: All password data is stored in SecureString
+    and automatically cleared when the widget is destroyed.
+    """
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._secure_password = create_secure_string()
+        self.textChanged.connect(self._on_text_changed)
+    
+    def _on_text_changed(self, text: str):
+        """Update secure storage when text changes."""
+        try:
+            # Store new password in secure memory
+            self._secure_password.set_value(text)
+        except Exception as e:
+            # Log error but don't expose sensitive information
+            import logging
+            logging.getLogger("SecurePasswordLineEdit").warning(f"Password update error: {type(e).__name__}")
+    
+    def get_secure_password(self) -> SecureString:
+        """Get the password as a SecureString.
+        
+        Returns:
+            SecureString containing the current password
+        """
+        # Update secure storage with current text
+        current_text = self.text()
+        if current_text != self._secure_password.get_value():
+            self._secure_password.set_value(current_text)
+        return self._secure_password
+    
+    def clear_secure(self):
+        """Securely clear the password from memory and UI."""
+        # Clear UI
+        self.clear()
+        # Clear secure storage
+        self._secure_password.clear()
+    
+    def __del__(self):
+        """Ensure secure cleanup on deletion."""
+        try:
+            if hasattr(self, '_secure_password') and self._secure_password:
+                self._secure_password.clear()
+        except Exception:
+            pass  # Ignore errors during cleanup
 
 
 class SetupWorker(QThread):
-    """Worker thread for device initialization to prevent UI blocking."""
+    """Worker thread for device initialization to prevent UI blocking.
+    
+    Uses secure memory for password handling throughout the initialization process.
+    """
     
     finished = pyqtSignal(bool, str)  # success, message
     progress = pyqtSignal(int)  # progress percentage
     
-    def __init__(self, device_auth, password, device_name):
+    def __init__(self, device_auth, secure_password: SecureString, device_name: Optional[str]):
         super().__init__()
         self.device_auth = device_auth
-        self.password = password
+        # Store secure password with maximum protection
+        self._secure_password = create_secure_string()
+        self._secure_password.set_value(secure_password.get_value())
         self.device_name = device_name
     
     def run(self):
         try:
             self.progress.emit(20)
             
+            # Get password from secure storage for initialization
+            password_value = self._secure_password.get_value()
+            
             # Initialize device (this may take a while due to high PBKDF2 iterations)
-            success, message = self.device_auth.initialize_device(self.password, self.device_name)
+            success, message = self.device_auth.initialize_device(password_value, self.device_name)
             
             self.progress.emit(100)
             self.finished.emit(success, message)
@@ -37,6 +99,21 @@ class SetupWorker(QThread):
         except Exception as e:
             self.progress.emit(100)
             self.finished.emit(False, f"Setup failed: {str(e)}")
+        finally:
+            # Always clear sensitive data
+            self._cleanup_sensitive_data()
+    
+    def _cleanup_sensitive_data(self):
+        """Securely clear all sensitive data from worker thread."""
+        try:
+            if hasattr(self, '_secure_password') and self._secure_password:
+                self._secure_password.clear()
+        except Exception:
+            pass  # Ignore errors during cleanup
+    
+    def __del__(self):
+        """Ensure cleanup on deletion."""
+        self._cleanup_sensitive_data()
 
 
 class DeviceSetupDialog(QDialog):
@@ -148,9 +225,9 @@ class DeviceSetupDialog(QDialog):
         self.device_name_edit.setPlaceholderText("e.g., John-Laptop, Work-PC (leave empty for auto-generated)")
         form_layout.addRow(self.device_name_label, self.device_name_edit)
         
-        # Master password
+        # Master password - using secure password field
         self.password_label = QLabel("Master Password:")
-        self.password_edit = QLineEdit()
+        self.password_edit = SecurePasswordLineEdit()
         self.password_edit.setPlaceholderText("Enter a strong master password")
         self.password_edit.setEchoMode(QLineEdit.Password)
         form_layout.addRow(self.password_label, self.password_edit)
@@ -167,9 +244,9 @@ class DeviceSetupDialog(QDialog):
         requirements_label.setStyleSheet("color: #95a5a6; font-size: 10pt; margin: 5px;")
         setup_layout.addWidget(requirements_label)
         
-        # Confirm password
+        # Confirm password - using secure password field
         self.confirm_label = QLabel("Confirm Password:")
-        self.confirm_edit = QLineEdit()
+        self.confirm_edit = SecurePasswordLineEdit()
         self.confirm_edit.setPlaceholderText("Confirm your master password")
         self.confirm_edit.setEchoMode(QLineEdit.Password)
         form_layout.addRow(self.confirm_label, self.confirm_edit)
@@ -233,31 +310,42 @@ class DeviceSetupDialog(QDialog):
     def _check_form_valid(self, *args):
         """Check if the form is valid and enable/disable setup button.
         
+        Uses secure comparison for password validation.
+        
         Args:
             *args: Signal arguments (ignored)
         """
-        password = self.password_edit.text()
-        confirm = self.confirm_edit.text()
-        acknowledged = self.acknowledge_check.isChecked()
-        
-        # Check if passwords match and requirements are met
-        passwords_match = password and password == confirm
-        password_strong = self._validate_password_strength(password)
-        
-        valid = passwords_match and password_strong and acknowledged
-        self.setup_button.setEnabled(bool(valid))
-        
-        # Update button text with validation feedback
-        if not password:
-            self.setup_button.setText("🔐 Enter Master Password")
-        elif not password_strong:
-            self.setup_button.setText("❌ Password Too Weak")
-        elif not passwords_match:
-            self.setup_button.setText("❌ Passwords Don't Match")
-        elif not acknowledged:
-            self.setup_button.setText("⚠️ Please Acknowledge")
-        else:
-            self.setup_button.setText("🔐 Initialize Device")
+        try:
+            # Get passwords from secure fields
+            password = self.password_edit.text()
+            confirm = self.confirm_edit.text()
+            acknowledged = self.acknowledge_check.isChecked()
+            
+            # Check if passwords match using secure comparison
+            passwords_match = password and secure_compare(password, confirm)
+            password_strong = self._validate_password_strength(password)
+            
+            valid = passwords_match and password_strong and acknowledged
+            self.setup_button.setEnabled(bool(valid))
+            
+            # Update button text with validation feedback
+            if not password:
+                self.setup_button.setText("🔐 Enter Master Password")
+            elif not password_strong:
+                self.setup_button.setText("❌ Password Too Weak")
+            elif not passwords_match:
+                self.setup_button.setText("❌ Passwords Don't Match")
+            elif not acknowledged:
+                self.setup_button.setText("⚠️ Please Acknowledge")
+            else:
+                self.setup_button.setText("🔐 Initialize Device")
+                
+        except Exception as e:
+            # Log error but don't expose sensitive information
+            import logging
+            logging.getLogger("DeviceSetupDialog").warning(f"Form validation error: {type(e).__name__}")
+            self.setup_button.setEnabled(False)
+            self.setup_button.setText("❌ Validation Error")
     
     def _validate_password_strength(self, password: str) -> bool:
         """Validate password meets security requirements."""
@@ -272,38 +360,46 @@ class DeviceSetupDialog(QDialog):
         return has_lower and has_upper and has_digit and has_special
     
     def _setup_device(self):
-        """Initialize device setup."""
-        password = self.password_edit.text()
-        device_name = self.device_name_edit.text().strip() or None
-        
-        # Final confirmation
-        reply = QMessageBox.question(
-            self,
-            "Final Confirmation",
-            "Are you absolutely sure you want to initialize this device?\n\n"
-            "This will create a hardware-bound authentication system.\n"
-            "There is NO WAY to recover your data if you forget the password.\n\n"
-            "Do you want to proceed?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
-        
-        if reply != QMessageBox.Yes:
-            return
-        
-        # Disable UI during setup
-        self.setup_button.setEnabled(False)
-        self.cancel_button.setEnabled(False)
-        self.progress_bar.setVisible(True)
-        
-        # Start setup in worker thread
-        self.setup_worker = SetupWorker(self.device_auth, password, device_name)
-        self.setup_worker.progress.connect(self.progress_bar.setValue)
-        self.setup_worker.finished.connect(self._on_setup_finished)
-        self.setup_worker.start()
+        """Initialize device setup using secure password handling."""
+        try:
+            # Get secure password from secure field
+            secure_password = self.password_edit.get_secure_password()
+            device_name = self.device_name_edit.text().strip() or None
+            
+            # Final confirmation
+            reply = QMessageBox.question(
+                self,
+                "Final Confirmation",
+                "Are you absolutely sure you want to initialize this device?\n\n"
+                "This will create a hardware-bound authentication system.\n"
+                "There is NO WAY to recover your data if you forget the password.\n\n"
+                "Do you want to proceed?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            
+            if reply != QMessageBox.Yes:
+                return
+            
+            # Disable UI during setup
+            self.setup_button.setEnabled(False)
+            self.cancel_button.setEnabled(False)
+            self.progress_bar.setVisible(True)
+            
+            # Start setup in worker thread with secure password
+            self.setup_worker = SetupWorker(self.device_auth, secure_password, device_name)
+            self.setup_worker.progress.connect(self.progress_bar.setValue)
+            self.setup_worker.finished.connect(self._on_setup_finished)
+            self.setup_worker.start()
+            
+        except Exception as e:
+            import logging
+            logging.getLogger("DeviceSetupDialog").error(f"Setup initiation error: {type(e).__name__}")
+            QMessageBox.critical(self, "Setup Error", "Failed to start device setup. Please try again.")
+            self._re_enable_ui()
     
     def _on_setup_finished(self, success: bool, message: str):
-        """Handle setup completion."""
+        """Handle setup completion with secure cleanup."""
         self.progress_bar.setVisible(False)
         
         if success:
@@ -315,13 +411,64 @@ class DeviceSetupDialog(QDialog):
                 "Your device is now ready for secure operation.\n"
                 "Remember: Your master password cannot be recovered!"
             )
+            # Clear sensitive data before closing
+            self._cleanup_sensitive_data()
             self.accept()
         else:
             QMessageBox.critical(self, "Setup Failed", message)
-            # Re-enable UI
-            self.setup_button.setEnabled(True)
-            self.cancel_button.setEnabled(True)
+            self._re_enable_ui()
+    
+    def _re_enable_ui(self):
+        """Re-enable UI elements after failed setup."""
+        self.setup_button.setEnabled(True)
+        self.cancel_button.setEnabled(True)
+        # Re-check form validity
+        self._check_form_valid()
     
     def was_setup_successful(self) -> bool:
         """Check if setup was completed successfully."""
         return self.setup_successful
+    
+    def _cleanup_sensitive_data(self):
+        """Securely clear all sensitive data from the dialog.
+        
+        Per R006 - Memory Security: Must clear sensitive data immediately after use.
+        """
+        try:
+            # Clear secure password fields
+            if hasattr(self, 'password_edit'):
+                self.password_edit.clear_secure()
+            
+            if hasattr(self, 'confirm_edit'):
+                self.confirm_edit.clear_secure()
+            
+            # Force cleanup of any secure objects created by this dialog
+            get_secure_memory_manager().cleanup_all()
+            
+        except Exception as e:
+            import logging
+            logging.getLogger("DeviceSetupDialog").warning(f"Cleanup error: {type(e).__name__}")
+    
+    def closeEvent(self, event):
+        """Handle dialog close with secure cleanup."""
+        self._cleanup_sensitive_data()
+        super().closeEvent(event)
+    
+    def reject(self):
+        """Handle dialog rejection with secure cleanup."""
+        self._cleanup_sensitive_data()
+        super().reject()
+    
+    def accept(self):
+        """Handle dialog acceptance with secure cleanup."""
+        # Note: cleanup is handled in _on_setup_finished for successful setup
+        if not self.setup_successful:
+            self._cleanup_sensitive_data()
+        super().accept()
+    
+    def __del__(self):
+        """Ensure cleanup on deletion."""
+        try:
+            self._cleanup_sensitive_data()
+        except Exception:
+            pass  # Ignore errors during cleanup

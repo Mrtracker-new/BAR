@@ -539,18 +539,38 @@ metrics_data/
 # FUTURE-PROOFING PATTERNS
 # ================================================
 
-# Common sensitive file naming patterns
-*secret*
-*private*
-*confidential*
-*sensitive*
-*password*
-*credential*
-*token*
-*key*
-*auth*
-*secure*
-# But be careful not to exclude legitimate files
+# Common sensitive file naming patterns (specific patterns only)
+# Note: Excluding overly broad patterns that catch legitimate source files
+secret.txt
+secret.*
+secrets.txt
+secrets.*
+private.txt
+private.*
+confidential.txt
+confidential.*
+sensitive.txt
+sensitive.*
+password.txt
+password.*
+passwords.txt
+passwords.*
+credential.txt
+credential.*
+credentials.txt
+credentials.*
+token.txt
+token.*
+tokens.txt
+tokens.*
+# Exclude broadly named key files but allow source code
+key.txt
+key.*
+keys.txt
+keys.*
+auth.txt
+auth.*
+# But DO NOT exclude legitimate source files like *_auth.py, *_secure.py, etc.
 
 # Cloud storage sync artifacts
 .dropbox
