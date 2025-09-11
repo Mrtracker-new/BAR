@@ -1,7 +1,60 @@
 import os
 import logging
+import secrets
+import string
+import sys
 from pathlib import Path
 from typing import Optional
+
+
+def _random_safe_name(length: int = 16) -> str:
+    """Generate a filesystem-safe random name.
+
+    Uses URL-safe characters to avoid encoding issues.
+    """
+    alphabet = string.ascii_letters + string.digits + "-_"
+    return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
+def _best_effort_remove_ads_windows(path: Path, logger: logging.Logger) -> None:
+    """Best-effort removal of common NTFS Alternate Data Streams (ADS) on Windows.
+
+    Notes:
+    - Enumerating arbitrary ADS requires platform APIs. To avoid external deps
+      and keep offline-first, we remove well-known streams that often exist
+      and could leak metadata (e.g., Zone.Identifier).
+    - This function is a no-op on non-Windows platforms.
+    """
+    if sys.platform != "win32":
+        return
+
+    # Known/common ADS names to clear
+    common_streams = ["Zone.Identifier", ":$DATA", "AlternateStream", "Meta"]
+
+    for stream in common_streams:
+        try:
+            ads_path = f"{str(path)}:{stream}"
+            # Open for write to truncate/overwrite small content, then unlink by recreate empty
+            try:
+                with open(ads_path, "wb") as f:
+                    f.write(b"\x00" * 64)
+                    f.flush()
+                    os.fsync(f.fileno())
+            except FileNotFoundError:
+                continue
+            # Overwrite again with random to reduce residuals
+            try:
+                with open(ads_path, "wb") as f:
+                    f.write(os.urandom(64))
+                    f.flush()
+                    os.fsync(f.fileno())
+            except Exception:
+                pass
+        except Exception as e:
+            try:
+                logger.debug(f"ADS cleanup failed for {path}:{stream}: {e}")
+            except Exception:
+                pass
 
 
 class SecureDelete:
@@ -25,9 +78,14 @@ class SecureDelete:
     def secure_delete_file(self, file_path: str, passes: int = DEFAULT_PASSES) -> bool:
         """Securely delete a file by overwriting its contents multiple times before deletion.
         
+        Enhancements:
+        - Randomize filename before overwrite to reduce MFT-based filename recovery
+        - Best-effort cleanup of common NTFS ADS on Windows
+        - Verification after unlink
+        
         Args:
             file_path: Path to the file to delete
-            passes: Number of overwrite passes (default: 3)
+            passes: Number of overwrite passes (default: 7)
             
         Returns:
             True if deletion was successful, False otherwise
@@ -39,17 +97,30 @@ class SecureDelete:
             return False
         
         try:
+            # Attempt best-effort ADS cleanup on Windows before we begin
+            _best_effort_remove_ads_windows(path, self.logger)
+            
+            # Randomize filename first (same directory, preserve suffix) to break filename linkage
+            try:
+                random_name = _random_safe_name() + path.suffix
+                randomized_path = path.with_name(random_name)
+                path.rename(randomized_path)
+                path = randomized_path
+            except Exception:
+                # If rename fails, continue with original path
+                pass
+            
             # Get file size
             file_size = path.stat().st_size
             
             # Open file for binary writing
-            with open(file_path, "r+b") as f:
+            with open(str(path), "r+b") as f:
                 # Multiple overwrite passes
                 for pass_num in range(passes):
                     # Seek to beginning of file
                     f.seek(0)
                     
-                    # Use DoD 5220.22-M compliant overwrite patterns
+                    # Use DoD 5220.22-M inspired overwrite patterns
                     if pass_num == 0:
                         # Pass 1: All zeros (0x00)
                         pattern = bytes([0x00] * self.CHUNK_SIZE)
@@ -90,8 +161,17 @@ class SecureDelete:
                 os.fsync(f.fileno())
             
             # Delete the file
-            os.remove(file_path)
-            self.logger.info(f"Securely deleted file: {file_path} with {passes} passes")
+            try:
+                os.remove(str(path))
+            except FileNotFoundError:
+                pass
+            
+            # Verification: ensure path no longer exists
+            if Path(path).exists():
+                self.logger.error(f"File still exists after deletion attempt: {path}")
+                return False
+            
+            self.logger.info(f"Securely deleted file with {passes} passes: {file_path}")
             return True
             
         except Exception as e:

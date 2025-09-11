@@ -1,10 +1,13 @@
 import ctypes
 import threading
+import time
+import subprocess
 from ctypes import wintypes
 import win32con
 import win32gui
 import win32api
-from PyQt5.QtCore import QObject, pyqtSignal, QTimer
+import win32process
+from PyQt5.QtCore import QObject, pyqtSignal, QTimer, QThread
 
 # Windows API constants
 WH_KEYBOARD_LL = 13
@@ -18,6 +21,14 @@ VK_LWIN = 0x5B      # Left Windows key
 VK_RWIN = 0x5C      # Right Windows key
 VK_SHIFT = 0x10     # Shift key
 VK_S = 0x53         # S key
+VK_ESCAPE = 0x1B    # Escape key
+VK_F1 = 0x70        # F1 key
+VK_F12 = 0x7B       # F12 key
+
+# Windows API constants for DWM
+DWMWA_EXCLUDED_FROM_PEEK = 12
+DWM_EC_DISABLECOMPOSITION = 0
+DWM_EC_ENABLECOMPOSITION = 1
 
 class KeyboardHook(QObject):
     """Windows keyboard hook to detect screenshot hotkeys."""
@@ -389,7 +400,335 @@ class ScreenCaptureBlocker:
             HWND_TOPMOST = getattr(win32con, 'HWND_TOPMOST', -1)
             SWP_NOMOVE = getattr(win32con, 'SWP_NOMOVE', 0x0002)
             SWP_NOSIZE = getattr(win32con, 'SWP_NOSIZE', 0x0001)
-            SWP_NOACTIVATE = getattr(win32con, 'SWP_NOACTIVATE', 0x0010)
+            
+            # Keep overlays on top
+            for hwnd in self.overlay_hwnds[:]:
+                try:
+                    # Check if window still exists
+                    if not self.user32.IsWindow(hwnd):
+                        self.overlay_hwnds.remove(hwnd)
+                        continue
+                    
+                    # Bring to top
+                    self.user32.SetWindowPos(
+                        hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                        SWP_NOMOVE | SWP_NOSIZE
+                    )
+                except Exception as e:
+                    print(f"Error refreshing overlay window: {e}")
+                    # Remove from list if window is invalid
+                    try:
+                        self.overlay_hwnds.remove(hwnd)
+                    except ValueError:
+                        pass
+        except Exception as e:
+            print(f"Error in overlay refresh: {e}")
+    
+    def _create_overlay(self, x, y, width, height):
+        """Create a transparent overlay window.
+        
+        Args:
+            x, y: Position of the window
+            width, height: Size of the window
+            
+        Returns:
+            Window handle if successful, None otherwise
+        """
+        if not self.user32:
+            return None
+            
+        try:
+            # Register window class if not already done
+            class_name = "BAR_ScreenProtectionOverlay"
+            
+            # Create window class structure
+            class WNDCLASSEX(ctypes.Structure):
+                _fields_ = [
+                    ('cbSize', wintypes.UINT),
+                    ('style', wintypes.UINT),
+                    ('lpfnWndProc', ctypes.c_void_p),
+                    ('cbClsExtra', ctypes.c_int),
+                    ('cbWndExtra', ctypes.c_int),
+                    ('hInstance', wintypes.HINSTANCE),
+                    ('hIcon', wintypes.HICON),
+                    ('hCursor', wintypes.HCURSOR),
+                    ('hbrBackground', wintypes.HBRUSH),
+                    ('lpszMenuName', wintypes.LPCWSTR),
+                    ('lpszClassName', wintypes.LPCWSTR),
+                    ('hIconSm', wintypes.HICON)
+                ]
+            
+            # Default window procedure
+            def_window_proc = self.user32.DefWindowProcW
+            def_window_proc.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+            def_window_proc.restype = wintypes.LRESULT
+            
+            # Window class
+            wndclass = WNDCLASSEX()
+            wndclass.cbSize = ctypes.sizeof(WNDCLASSEX)
+            wndclass.style = 0
+            wndclass.lpfnWndProc = ctypes.cast(def_window_proc, ctypes.c_void_p)
+            wndclass.cbClsExtra = 0
+            wndclass.cbWndExtra = 0
+            wndclass.hInstance = ctypes.windll.kernel32.GetModuleHandleW(None)
+            wndclass.hIcon = None
+            wndclass.hCursor = None
+            wndclass.hbrBackground = None
+            wndclass.lpszMenuName = None
+            wndclass.lpszClassName = class_name
+            wndclass.hIconSm = None
+            
+            # Register class (ignore if already registered)
+            try:
+                self.user32.RegisterClassExW(ctypes.byref(wndclass))
+            except Exception:
+                pass  # Class might already be registered
+            
+            # Window styles for transparent, always-on-top overlay
+            WS_EX_TRANSPARENT = 0x00000020
+            WS_EX_LAYERED = 0x00080000
+            WS_EX_TOPMOST = 0x00000008
+            WS_EX_TOOLWINDOW = 0x00000080  # Hide from taskbar
+            WS_POPUP = 0x80000000
+            
+            # Create the overlay window
+            hwnd = self.user32.CreateWindowExW(
+                WS_EX_TRANSPARENT | WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
+                class_name,
+                "BAR Screen Protection",
+                WS_POPUP,
+                x, y, width, height,
+                None,  # parent
+                None,  # menu
+                wndclass.hInstance,
+                None   # param
+            )
+            
+            if not hwnd:
+                error_code = ctypes.get_last_error()
+                print(f"Failed to create overlay window: {error_code}")
+                return None
+            
+            # Set the window to be 99% transparent but still intercept capture
+            try:
+                self.user32.SetLayeredWindowAttributes(
+                    hwnd, 0, 3, 2  # LWA_ALPHA = 2, almost transparent
+                )
+            except Exception as e:
+                print(f"Failed to set window transparency: {e}")
+                # Continue anyway, window will still block captures
+            
+            # Show the window
+            try:
+                SW_SHOWNOACTIVATE = 4
+                self.user32.ShowWindow(hwnd, SW_SHOWNOACTIVATE)
+            except Exception as e:
+                print(f"Failed to show overlay window: {e}")
+                # Clean up
+                try:
+                    self.user32.DestroyWindow(hwnd)
+                except Exception:
+                    pass
+                return None
+            
+            return hwnd
+            
+        except Exception as e:
+            print(f"Error creating overlay window: {e}")
+            return None
+    
+    def stop(self):
+        """Stop the screen capture blocker and clean up resources.
+        
+        Returns:
+            True if cleanup was successful, False otherwise
+        """
+        success = True
+        
+        # Stop the refresh timer
+        if self.timer:
+            try:
+                self.timer.stop()
+                self.timer = None
+            except Exception as e:
+                print(f"Error stopping timer: {e}")
+                success = False
+        
+        # Destroy all overlay windows
+        if self.user32:
+            for hwnd in self.overlay_hwnds[:]:
+                try:
+                    if self.user32.IsWindow(hwnd):
+                        self.user32.DestroyWindow(hwnd)
+                except Exception as e:
+                    print(f"Error destroying overlay window: {e}")
+                    success = False
+        
+        # Clear the list
+        self.overlay_hwnds.clear()
+        
+        return success
+
+
+class EnhancedScreenProtection(QThread):
+    """Enhanced screen protection with multiple blocking mechanisms."""
+    
+    security_threat_detected = pyqtSignal(str, str)  # threat_type, description
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.monitoring = False
+        self.keyboard_hook = None
+        self.capture_blocker = None
+        
+        # Initialize components
+        try:
+            self.keyboard_hook = KeyboardHook(self)
+            self.capture_blocker = ScreenCaptureBlocker()
+        except Exception as e:
+            print(f"Failed to initialize enhanced protection: {e}")
+        
+        # Connect signals
+        if self.keyboard_hook:
+            self.keyboard_hook.screenshot_hotkey_detected.connect(
+                lambda: self.security_threat_detected.emit("screenshot_hotkey", "Screenshot hotkey blocked")
+            )
+    
+    def start_protection(self, window_handle=None):
+        """Start enhanced screen protection."""
+        if self.monitoring:
+            return True
+        
+        success = True
+        
+        # Start keyboard hook
+        if self.keyboard_hook:
+            try:
+                self.keyboard_hook.start()
+            except Exception as e:
+                print(f"Failed to start keyboard hook: {e}")
+                success = False
+        
+        # Start screen capture blocker
+        if self.capture_blocker:
+            try:
+                if not self.capture_blocker.start(window_handle):
+                    print("Screen capture blocker failed to start")
+                    success = False
+            except Exception as e:
+                print(f"Failed to start screen capture blocker: {e}")
+                success = False
+        
+        # Start process monitoring thread
+        if success:
+            self.monitoring = True
+            self.start()
+        
+        return success
+    
+    def stop_protection(self):
+        """Stop enhanced screen protection."""
+        self.monitoring = False
+        
+        # Stop keyboard hook
+        if self.keyboard_hook:
+            try:
+                self.keyboard_hook.stop()
+            except Exception as e:
+                print(f"Error stopping keyboard hook: {e}")
+        
+        # Stop screen capture blocker
+        if self.capture_blocker:
+            try:
+                self.capture_blocker.stop()
+            except Exception as e:
+                print(f"Error stopping screen capture blocker: {e}")
+        
+        # Wait for thread to finish
+        self.wait(3000)
+    
+    def run(self):
+        """Monitor for security threats."""
+        while self.monitoring:
+            try:
+                self._check_security_threats()
+                time.sleep(1)
+            except Exception as e:
+                print(f"Error in security monitoring: {e}")
+                time.sleep(1)
+    
+    def _check_security_threats(self):
+        """Check for various security threats."""
+        try:
+            # Check for screen recording software
+            self._check_screen_recording_software()
+            
+            # Check for debugging tools
+            self._check_debugging_tools()
+            
+            # Check for remote desktop connections
+            self._check_remote_desktop()
+            
+        except Exception as e:
+            print(f"Error checking security threats: {e}")
+    
+    def _check_screen_recording_software(self):
+        """Check for running screen recording software."""
+        recording_processes = [
+            'obs64.exe', 'obs32.exe', 'bandicam.exe', 'camtasia.exe',
+            'fraps.exe', 'xsplit.core.exe', 'nvidia-share.exe'
+        ]
+        
+        try:
+            import psutil
+            for proc in psutil.process_iter(['pid', 'name']):
+                if proc.info['name'].lower() in [p.lower() for p in recording_processes]:
+                    self.security_threat_detected.emit(
+                        "screen_recording", 
+                        f"Screen recording software detected: {proc.info['name']}"
+                    )
+        except Exception as e:
+            print(f"Error checking screen recording software: {e}")
+    
+    def _check_debugging_tools(self):
+        """Check for debugging and analysis tools."""
+        debug_processes = [
+            'windbg.exe', 'x64dbg.exe', 'ollydbg.exe', 'ida.exe', 'ida64.exe',
+            'cheatengine-x86_64.exe', 'processhacker.exe', 'procexp.exe'
+        ]
+        
+        try:
+            import psutil
+            for proc in psutil.process_iter(['pid', 'name']):
+                if proc.info['name'].lower() in [p.lower() for p in debug_processes]:
+                    self.security_threat_detected.emit(
+                        "debugging_tool", 
+                        f"Debugging tool detected: {proc.info['name']}"
+                    )
+        except Exception as e:
+            print(f"Error checking debugging tools: {e}")
+    
+    def _check_remote_desktop(self):
+        """Check for remote desktop connections."""
+        try:
+            # Check if Terminal Services (Remote Desktop) is active
+            result = subprocess.run(
+                ['query', 'session'], 
+                capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            
+            if result.returncode == 0:
+                # Look for active RDP sessions
+                lines = result.stdout.split('\n')
+                for line in lines:
+                    if 'rdp-tcp' in line.lower() and 'active' in line.lower():
+                        self.security_threat_detected.emit(
+                            "remote_desktop", 
+                            "Remote Desktop connection detected"
+                        )
+                        break
+        except Exception as e:
+            print(f"Error checking remote desktop: {e}")
             
             # Refresh each overlay
             invalid_hwnds = []

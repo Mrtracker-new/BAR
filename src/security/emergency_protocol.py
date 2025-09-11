@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional, Callable
 
 from .secure_delete import SecureDelete
-from .device_auth import DeviceAuthManager
+from .hardware_wipe import HardwareWipe
 
 
 class EmergencyProtocol:
@@ -19,18 +19,20 @@ class EmergencyProtocol:
     - Dead man's switch implementation
     - File blacklisting and quarantine
     - Anti-forensics measures
+    - Graded destruction levels
     """
     
-    def __init__(self, base_directory: str, device_auth: DeviceAuthManager):
+    def __init__(self, base_directory: str, device_auth=None):
         """Initialize the emergency protocol manager.
         
         Args:
             base_directory: Base directory for the application
-            device_auth: Device authentication manager
+            device_auth: Device authentication manager (optional)
         """
         self.base_directory = Path(base_directory)
         self.device_auth = device_auth
         self.secure_delete = SecureDelete()
+        self.hardware_wipe = HardwareWipe()
         
         # Emergency state
         self._emergency_active = False
@@ -128,11 +130,19 @@ class EmergencyProtocol:
         # Trigger emergency destruction
         self.trigger_emergency_destruction("Dead man's switch activated")
     
-    def trigger_emergency_destruction(self, reason: str = "Manual trigger"):
-        """Trigger complete emergency data destruction.
+    def trigger_emergency_destruction(self, reason: str = "Manual trigger", level: str = "aggressive", scrub_free_space: Optional[bool] = None):
+        """Trigger emergency data destruction with graded intensity.
+        
+        Levels:
+        - "selective": Only BAR app directories and configs
+        - "aggressive": Selective + user-level BAR caches and temp traces
+        - "scorched": Aggressive + best-effort wipe of additional BAR artifacts (still scoped)
         
         Args:
             reason: Reason for triggering emergency protocol
+            level: Destruction level (selective|aggressive|scorched)
+            scrub_free_space: If True, perform best-effort free-space scrub on the same volume.
+                Defaults: False for selective, True for aggressive/scorched.
         """
         if self._emergency_active:
             return  # Already in progress
@@ -147,43 +157,94 @@ class EmergencyProtocol:
                 except Exception:
                     pass  # Ignore errors during emergency
             
-            # Log the emergency (if possible)
+            # Minimal logging per security rules
             try:
                 log_file = self.base_directory / "emergency.log"
                 with open(log_file, "a") as f:
-                    f.write(f"{datetime.now().isoformat()} - Emergency protocol triggered: {reason}\n")
+                    f.write(f"{datetime.now().isoformat()} - Emergency protocol triggered: {reason} level={level}\n")
             except Exception:
                 pass
             
-            # Wipe all sensitive directories
+            # Define sensitive paths per level
             sensitive_dirs = [
                 self.base_directory / "data",
-                self.base_directory / "logs", 
+                self.base_directory / "logs",
                 self.base_directory / "temp",
-                self.base_directory / "cache"
+                self.base_directory / "cache",
             ]
+
+            user_scope_extra = []
+            if level in ("aggressive", "scorched"):
+                # Wipe known user-scope BAR dirs
+                user_scope_extra.extend([
+                    Path.home() / ".bar",
+                    Path.home() / "Documents" / "BAR",
+                    Path.home() / "AppData" / "Local" / "BAR" if os.name == 'nt' else Path.home() / ".local" / "share" / "bar",
+                ])
             
-            for dir_path in sensitive_dirs:
-                if dir_path.exists():
-                    self.secure_delete.secure_delete_directory(str(dir_path))
+            extended_traces = []
+            if level == "scorched":
+                # Include quarantine and blacklist artifacts
+                extended_traces.extend([
+                    self.base_directory / "quarantine",
+                    self.base_directory / "blacklist.json",
+                ])
             
-            # Wipe authentication data
-            self.device_auth.emergency_wipe()
+            # Perform directory wipes
+            for dir_path in sensitive_dirs + user_scope_extra:
+                try:
+                    if dir_path.exists():
+                        self.secure_delete.secure_delete_directory(str(dir_path))
+                except Exception:
+                    pass
             
-            # Wipe configuration files
-            config_files = list(self.base_directory.glob("*.json"))
-            config_files.extend(list(self.base_directory.glob("*.key")))
+            # Wipe authentication and device data via device auth manager (already graded internally)
+            try:
+                if self.device_auth:
+                    self.device_auth.emergency_wipe(
+                        wipe_user_data=(level in ("aggressive", "scorched")),
+                        wipe_temp_files=(level in ("aggressive", "scorched")),
+                    )
+            except Exception:
+                pass
             
-            for file_path in config_files:
-                if file_path.exists():
-                    self.secure_delete.secure_delete_file(str(file_path))
+            # Wipe configuration files in base dir
+            try:
+                config_files = list(self.base_directory.glob("*.json"))
+                config_files.extend(list(self.base_directory.glob("*.key")))
+                config_files.extend(list(self.base_directory.glob("*.enc")))
+                for file_path in config_files:
+                    if file_path.exists():
+                        self.secure_delete.secure_delete_file(str(file_path))
+            except Exception:
+                pass
+
+            # Scorched level extras
+            if level == "scorched":
+                for item in extended_traces:
+                    try:
+                        if item.is_file() and item.exists():
+                            self.secure_delete.secure_delete_file(str(item))
+                        elif item.is_dir() and item.exists():
+                            self.secure_delete.secure_delete_directory(str(item))
+                    except Exception:
+                        pass
+
+            # Optional hardware-level best-effort free-space scrub (scoped to volume)
+            try:
+                do_scrub = scrub_free_space if scrub_free_space is not None else (level in ("aggressive", "scorched"))
+                if do_scrub:
+                    self.hardware_wipe.wipe_volume_free_space(self.base_directory, max_bytes=None, pattern="random")
+            except Exception:
+                pass
             
-            # Create destruction confirmation file
+            # Create destruction confirmation file (non-sensitive)
             try:
                 destruction_file = self.base_directory / "DESTROYED.txt"
                 with open(destruction_file, "w") as f:
                     f.write(f"BAR data destroyed on {datetime.now().isoformat()}\n")
                     f.write(f"Reason: {reason}\n")
+                    f.write(f"Level: {level}\n")
                     f.write("All sensitive data has been securely wiped.\n")
             except Exception:
                 pass
