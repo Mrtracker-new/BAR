@@ -13,8 +13,8 @@ from cryptography.hazmat.primitives.constant_time import bytes_eq
 from cryptography.fernet import Fernet
 import secrets
 
-from ..security.hardware_id import HardwareIdentifier
-from ..security.secure_memory import SecureBytes, secure_compare, secure_zero_memory
+from security.hardware_id import HardwareIdentifier
+from security.secure_memory import SecureBytes, secure_compare, secure_zero_memory
 
 
 class EncryptionManager:

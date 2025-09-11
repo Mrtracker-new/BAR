@@ -27,6 +27,7 @@ class DeviceAuthManager:
     MASTER_KEY_SIZE = 64  # 512 bits for master key
     VERIFICATION_ROUNDS = 5  # Multiple verification rounds
     MAX_AUTH_ATTEMPTS = 5  # Maximum authentication attempts before device lock
+    HARDWARE_TAG_SIZE = 16  # Hardware verification tag size
     
     def __init__(self, base_directory: str):
         """Initialize the device authentication manager.
@@ -154,7 +155,26 @@ class DeviceAuthManager:
             return True, "Already authenticated"
         
         try:
-            # Load device configuration
+            # Check if device config uses new format with hardware tag
+            config_format_info = self._load_config_header()
+            if not config_format_info:
+                return False, "Failed to read device configuration"
+            
+            current_hardware = self.hardware_id.get_hardware_id()
+            
+            # If new format with hardware tag, verify hardware before password
+            if config_format_info.get("has_hardware_tag", False):
+                salt = bytes.fromhex(config_format_info["salt"])
+                stored_hardware_tag = bytes.fromhex(config_format_info["hardware_tag"])
+                
+                # Compute expected hardware tag
+                expected_hardware_tag = self._compute_hardware_tag(salt, current_hardware)
+                
+                # Verify hardware tag in constant time
+                if not secure_compare(expected_hardware_tag, stored_hardware_tag):
+                    return False, "Hardware verification failed. This device is not authorized."
+            
+            # Load device configuration (legacy format compatibility)
             with open(self.device_config_path, 'r') as f:
                 device_config = json.load(f)
             
@@ -165,13 +185,13 @@ class DeviceAuthManager:
                     remaining_minutes = int((locked_until - datetime.now()).total_seconds() / 60)
                     return False, f"Device locked. Try again in {remaining_minutes} minutes."
             
-            # Verify hardware binding
-            current_hardware = self.hardware_id.get_hardware_id()
-            expected_fingerprint = device_config["hardware_fingerprint"]
-            current_fingerprint = hashlib.sha256(current_hardware.encode()).hexdigest()
-            
-            if not secure_compare(current_fingerprint.encode(), expected_fingerprint.encode()):
-                return False, "Hardware binding verification failed. This device is not authorized."
+            # For legacy format, verify hardware binding the old way
+            if not config_format_info.get("has_hardware_tag", False):
+                expected_fingerprint = device_config["hardware_fingerprint"]
+                current_fingerprint = hashlib.sha256(current_hardware.encode()).hexdigest()
+                
+                if not secure_compare(current_fingerprint.encode(), expected_fingerprint.encode()):
+                    return False, "Hardware verification failed. This device is not authorized."
             
             # Verify master password
             verification_salt = bytes.fromhex(device_config["verification_salt"])
@@ -213,7 +233,7 @@ class DeviceAuthManager:
                     key_data["encrypted_key"], password + current_hardware
                 )
             except Exception:
-                return False, "Failed to decrypt master key"
+                return False, "Incorrect password."
             
             # Authentication successful
             self._authenticated = True
@@ -500,6 +520,55 @@ class DeviceAuthManager:
                 )
         
         return current_hash
+    
+    def _compute_hardware_tag(self, salt: bytes, hardware_id: str) -> bytes:
+        """Compute hardware verification tag.
+        
+        Args:
+            salt: Random salt used for key derivation
+            hardware_id: Hardware identifier
+            
+        Returns:
+            Hardware verification tag
+        """
+        import hmac
+        
+        # Create HMAC tag using salt and hardware ID
+        tag = hmac.new(
+            key=salt,
+            msg=hardware_id.encode('utf-8'),
+            digestmod=hashlib.sha256
+        ).digest()[:self.HARDWARE_TAG_SIZE]
+        
+        return tag
+    
+    def _load_config_header(self) -> Optional[Dict[str, Any]]:
+        """Load configuration file header to determine format and extract metadata.
+        
+        Returns:
+            Dictionary with config header info or None if failed
+        """
+        try:
+            if not self.device_config_path.exists():
+                return None
+            
+            # For this simple implementation, device_auth.py uses JSON format
+            # So we just need to check if it exists and return basic info
+            with open(self.device_config_path, 'r') as f:
+                device_config = json.load(f)
+            
+            # Extract salt if available
+            salt_hex = device_config.get("master_salt", "")
+            
+            return {
+                "has_hardware_tag": False,  # This implementation uses JSON format
+                "salt": salt_hex,
+                "config_exists": True,
+                "format": "json_legacy"
+            }
+            
+        except Exception as e:
+            return None
     
     def __del__(self):
         """Ensure cleanup on object destruction."""

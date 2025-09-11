@@ -5,10 +5,11 @@ import secrets
 import hashlib
 import time
 from pathlib import Path
-from typing import Optional, Tuple, Dict, Any
+from typing import Optional, Tuple, Dict, Any, Union
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives import hmac
 from cryptography.hazmat.backends import default_backend
 
 from .secure_memory import (
@@ -42,11 +43,14 @@ class DeviceAuthManager:
     SALT_SIZE = 32  # 256-bit salt
     KEY_SIZE = 32   # 256-bit key
     IV_SIZE = 16    # 128-bit IV for AES
+    HARDWARE_TAG_SIZE = 32  # 256-bit HMAC tag for hardware verification
     
     def __init__(self):
         """Initialize the device authentication manager with secure memory."""
         self.logger = logging.getLogger("DeviceAuthManager")
-        self._config_manager = ConfigManager()
+        # Initialize config directory for secure storage
+        self._config_dir = Path.home() / ".bar"
+        self._config_manager = ConfigManager(base_directory=str(self._config_dir))
         self._hardware_id = HardwareIdentifier()
         self._secure_file_ops = SecureFileOperations()
         
@@ -65,7 +69,7 @@ class DeviceAuthManager:
         self._device_name = ""
         
         # Configuration paths
-        self._device_config_path = Path.home() / ".bar" / "device_config.enc"
+        self._device_config_path = self._config_dir / "device_config.enc"
         self._ensure_config_directory()
         
         self.logger.debug("DeviceAuthManager initialized with secure memory protection")
@@ -114,19 +118,21 @@ class DeviceAuthManager:
             self._hardware_fingerprint = create_secure_string(hw_fingerprint)
             
             # Generate cryptographic salt using secure random
+            salt_bytes = secrets.token_bytes(self.SALT_SIZE)
             salt = create_secure_bytes(
-                secrets.token_bytes(self.SALT_SIZE), 
+                salt_bytes, 
                 protection_level=MemoryProtectionLevel.MAXIMUM
             )
             
             # Derive encryption key from password + hardware ID
-            self._derived_key = self._derive_key(password, hw_fingerprint, salt.get_bytes())
+            self._derived_key = self._derive_key(password, hw_fingerprint, salt_bytes)
             
             # Create device configuration
             device_config = {
                 "device_id": secure_random_string(32),
                 "device_name": device_name or f"BAR-Device-{secure_random_string(8)}",
                 "hardware_id": hw_fingerprint,
+                "salt": salt_bytes.hex(),  # Store salt for key derivation
                 "created_at": int(secrets.randbits(64)),  # Timestamp in secure random bits
                 "version": "1.0",
                 "auth_method": "device_bound_single_user"
@@ -142,8 +148,9 @@ class DeviceAuthManager:
             
             if success:
                 self._is_initialized = True
+                self._is_authenticated = True  # Automatically authenticate after initialization
                 self._device_name = device_config["device_name"]
-                self.logger.info(f"Device successfully initialized: {self._device_name}")
+                self.logger.info(f"Device successfully initialized and authenticated: {self._device_name}")
                 return True, f"Device '{self._device_name}' initialized successfully"
             else:
                 # Clean up on failure
@@ -182,15 +189,60 @@ class DeviceAuthManager:
             current_hw_id = self._hardware_id.get_hardware_id()
             secure_hw_id = create_secure_string(current_hw_id)
             
-            # Load and decrypt device configuration
-            config_data = self._load_encrypted_config()
-            if not config_data:
-                return False, "Failed to load device configuration"
+            # First, check file format and verify hardware tag if present
+            try:
+                with open(self._device_config_path, 'rb') as f:
+                    file_size = f.seek(0, 2)  # Seek to end to get file size
+                    f.seek(0)  # Reset to beginning
+                    
+                    # Read salt (always present)
+                    stored_salt = f.read(self.SALT_SIZE)
+                    if len(stored_salt) != self.SALT_SIZE:
+                        return False, "Failed to load device configuration: invalid format"
+                    
+                    # Check if this uses new format with hardware tag
+                    has_hardware_tag = file_size >= (self.SALT_SIZE + self.HARDWARE_TAG_SIZE + self.IV_SIZE + 16)
+                    
+                    if has_hardware_tag:
+                        # Read and verify hardware tag before attempting decryption
+                        stored_hardware_tag = f.read(self.HARDWARE_TAG_SIZE)
+                        if len(stored_hardware_tag) != self.HARDWARE_TAG_SIZE:
+                            return False, "Failed to load device configuration: invalid format"
+                        
+                        # Compute expected hardware tag
+                        expected_hardware_tag = self._compute_hardware_tag(current_hw_id, stored_salt)
+                        
+                        # Verify hardware tag in constant time
+                        if not secure_compare(expected_hardware_tag, stored_hardware_tag):
+                            self.logger.warning("Hardware verification failed during authentication")
+                            return False, "Hardware verification failed. This device is not authorized."
+                        
+                        self.logger.debug("Hardware tag verification passed")
+                    else:
+                        self.logger.debug("Using legacy format without hardware tag")
+                        
+            except Exception as e:
+                return False, f"Failed to load device configuration: {e}"
             
-            # Verify hardware binding
+            # Now try to decrypt the configuration with the current hardware ID
+            temp_derived_key = self._derive_key(password, current_hw_id, stored_salt)
+            config_data = self._load_encrypted_config(temp_derived_key.get_bytes())
+            
+            if not config_data:
+                # If we got here and hardware tag was verified, it's likely a password issue
+                if has_hardware_tag:
+                    self.logger.warning("Authentication failed - unable to decrypt configuration after hardware verification passed")
+                    return False, "Authentication failed. Incorrect password."
+                else:
+                    # Legacy format - could be hardware or password issue
+                    self.logger.warning("Authentication failed - unable to decrypt configuration (legacy format)")
+                    return False, "Authentication failed. Incorrect password."
+            
+            # Successfully decrypted - now verify hardware binding as additional check
             stored_hw_id = config_data.get("hardware_id", "")
             if not secure_compare(current_hw_id, stored_hw_id):
-                self.logger.warning("Hardware ID mismatch - potential device transfer detected")
+                # This should not happen if decryption succeeded, but check anyway
+                self.logger.warning("Hardware ID mismatch after successful decryption - unusual")
                 return False, "Hardware verification failed. This password is bound to a different device."
             
             # Verify password by reconstructing and comparing verification hash
@@ -316,7 +368,7 @@ class DeviceAuthManager:
                 success, message = self.reset_device(emergency=True)
                 wipe_results["device_reset"] = success
                 if not success:
-                    wipe_results["errors"].append(f"Device reset failed: {message}")
+                    wipe_results["errors"].append(message)
             except Exception as e:
                 wipe_results["errors"].append(f"Device reset error: {str(e)}")
             
@@ -615,23 +667,73 @@ class DeviceAuthManager:
             return {"status": "not_initialized"}
         
         try:
-            config_data = self._load_encrypted_config()
-            if not config_data:
-                return {"status": "config_error"}
+            # If authenticated, we have the derived key and can decrypt the config
+            if self._is_authenticated and self._derived_key:
+                config_data = self._load_encrypted_config(self._derived_key.get_bytes())
+                if config_data:
+                    return {
+                        "status": "initialized",
+                        "device_name": config_data.get("device_name", "Unknown"),
+                        "device_id": config_data.get("device_id", "Unknown")[:8] + "...",  # Truncated for security
+                        "auth_method": config_data.get("auth_method", "unknown"),
+                        "version": config_data.get("version", "unknown"),
+                        "is_authenticated": self._is_authenticated,
+                        "hardware_verified": self._hardware_id.verify_hardware_id(config_data.get("hardware_id", ""))
+                    }
             
+            # If not authenticated, return minimal info
             return {
                 "status": "initialized",
-                "device_name": config_data.get("device_name", "Unknown"),
-                "device_id": config_data.get("device_id", "Unknown")[:8] + "...",  # Truncated for security
-                "auth_method": config_data.get("auth_method", "unknown"),
-                "version": config_data.get("version", "unknown"),
+                "device_name": self._device_name or "Unknown",
+                "device_id": "[Encrypted]",
+                "auth_method": "device_bound_single_user",
+                "version": "1.0",
                 "is_authenticated": self._is_authenticated,
-                "hardware_verified": self._hardware_id.verify_hardware_id(config_data.get("hardware_id", ""))
+                "hardware_verified": False  # Cannot verify without decryption
             }
             
         except Exception as e:
             self.logger.error(f"Error getting device info: {e}")
             return {"status": "error", "message": str(e)}
+    
+    def _compute_hardware_tag(self, hardware_id: str, salt: bytes) -> bytes:
+        """Compute hardware tag for early hardware mismatch detection.
+        
+        Creates an HMAC tag that can be verified without decrypting the full config.
+        This allows us to distinguish between hardware mismatch and wrong password.
+        
+        Args:
+            hardware_id: Hardware identifier string
+            salt: Salt bytes used for key derivation
+            
+        Returns:
+            HMAC tag bytes for hardware verification
+        """
+        try:
+            # Derive a key for HMAC from hardware ID and salt using PBKDF2
+            combined_data = f"hardware_tag|{hardware_id}".encode('utf-8')
+            
+            kdf = PBKDF2HMAC(
+                algorithm=hashes.SHA256(),
+                length=32,  # 256-bit key for HMAC
+                salt=salt,
+                iterations=self.PBKDF2_ITERATIONS // 4,  # Faster for tag computation
+                backend=default_backend()
+            )
+            
+            tag_key = kdf.derive(combined_data)
+            
+            # Create HMAC of hardware ID with the derived key
+            h = hmac.HMAC(tag_key, hashes.SHA256(), backend=default_backend())
+            h.update(hardware_id.encode('utf-8'))
+            
+            return h.finalize()
+            
+        except Exception as e:
+            self.logger.error(f"Hardware tag computation failed: {e}")
+            # Return a deterministic but unpredictable fallback
+            fallback_data = f"fallback|{hardware_id}".encode('utf-8')
+            return hashlib.sha256(fallback_data).digest()
     
     def _derive_key(self, password: str, hardware_id: str, salt: bytes) -> SecureBytes:
         """Derive encryption key from password and hardware ID using PBKDF2.
@@ -700,10 +802,20 @@ class DeviceAuthManager:
             
             encrypted_data = encryptor.update(padded_data) + encryptor.finalize()
             
-            # Save IV + encrypted data
+            # Extract salt from config and store it unencrypted (needed for key derivation)
+            salt_hex = config_data.get('salt', '')
+            salt_bytes = bytes.fromhex(salt_hex) if salt_hex else b'\x00' * self.SALT_SIZE
+            
+            # Compute hardware tag for early hardware mismatch detection
+            hardware_id = config_data.get('hardware_id', '')
+            hardware_tag = self._compute_hardware_tag(hardware_id, salt_bytes)
+            
+            # Save salt + hardware_tag + IV + encrypted data
             with open(self._device_config_path, 'wb') as f:
-                f.write(iv)
-                f.write(encrypted_data)
+                f.write(salt_bytes)     # First 32 bytes: salt
+                f.write(hardware_tag)   # Next 32 bytes: hardware tag
+                f.write(iv)             # Next 16 bytes: IV
+                f.write(encrypted_data) # Rest: encrypted config
             
             # Set restrictive permissions (owner only)
             if hasattr(os, 'chmod'):
@@ -715,8 +827,11 @@ class DeviceAuthManager:
             self.logger.error(f"Failed to save encrypted config: {e}")
             return False
     
-    def _load_encrypted_config(self) -> Optional[Dict[str, Any]]:
+    def _load_encrypted_config(self, key: Optional[bytes] = None) -> Optional[Dict[str, Any]]:
         """Load and decrypt configuration data.
+        
+        Args:
+            key: Optional decryption key. If not provided, returns metadata only.
         
         Returns:
             Configuration dictionary or None if failed
@@ -726,21 +841,72 @@ class DeviceAuthManager:
                 return None
             
             with open(self._device_config_path, 'rb') as f:
-                # Read IV and encrypted data
-                iv = f.read(self.IV_SIZE)
-                encrypted_data = f.read()
+                # Read the file header to determine format
+                file_size = f.seek(0, 2)  # Seek to end to get file size
+                f.seek(0)  # Reset to beginning
+                
+                # Minimum expected sizes:
+                # Old format: SALT(32) + IV(16) + ENCRYPTED_DATA(>=16) = 64+ bytes
+                # New format: SALT(32) + HARDWARE_TAG(32) + IV(16) + ENCRYPTED_DATA(>=16) = 96+ bytes
+                
+                salt_bytes = f.read(self.SALT_SIZE)
+                if len(salt_bytes) != self.SALT_SIZE:
+                    self.logger.error("Invalid config file: cannot read salt")
+                    return None
+                
+                # Check if this is the new format with hardware tag
+                has_hardware_tag = file_size >= (self.SALT_SIZE + self.HARDWARE_TAG_SIZE + self.IV_SIZE + 16)
+                
+                if has_hardware_tag:
+                    # New format: read hardware tag, then IV, then encrypted data
+                    hardware_tag = f.read(self.HARDWARE_TAG_SIZE)
+                    iv = f.read(self.IV_SIZE)
+                    encrypted_data = f.read()
+                    
+                    if len(hardware_tag) != self.HARDWARE_TAG_SIZE or len(iv) != self.IV_SIZE or not encrypted_data:
+                        self.logger.error("Invalid encrypted config file format (new format)")
+                        return None
+                else:
+                    # Old format: read IV directly after salt, then encrypted data
+                    hardware_tag = None
+                    iv = f.read(self.IV_SIZE)
+                    encrypted_data = f.read()
+                    
+                    if len(iv) != self.IV_SIZE or not encrypted_data:
+                        self.logger.error("Invalid encrypted config file format (old format)")
+                        return None
             
-            if len(iv) != self.IV_SIZE or not encrypted_data:
-                self.logger.error("Invalid encrypted config file format")
-                return None
+            # If no key provided, return minimal info including salt and hardware tag
+            if key is None:
+                result = {
+                    "status": "encrypted", 
+                    "config_exists": True, 
+                    "salt": salt_bytes.hex(),
+                    "has_hardware_tag": has_hardware_tag
+                }
+                if hardware_tag is not None:
+                    result["hardware_tag"] = hardware_tag.hex()
+                return result
             
-            # We need the derived key for decryption
-            # For loading config during authentication, we'll need to derive key again
-            # This is handled in the authenticate method
+            # Decrypt the configuration
+            cipher = Cipher(
+                algorithms.AES(key),
+                modes.CBC(iv),
+                backend=default_backend()
+            )
+            decryptor = cipher.decryptor()
             
-            # For now, return a minimal config for device info
-            # The full decryption will be done in authenticate()
-            return {"status": "encrypted"}
+            decrypted_padded = decryptor.update(encrypted_data) + decryptor.finalize()
+            
+            # Remove PKCS7 padding
+            padding_length = decrypted_padded[-1]
+            decrypted_data = decrypted_padded[:-padding_length]
+            
+            # Parse JSON
+            config_json = decrypted_data.decode('utf-8')
+            config_data = json.loads(config_json)
+            
+            return config_data
             
         except Exception as e:
             self.logger.error(f"Failed to load encrypted config: {e}")

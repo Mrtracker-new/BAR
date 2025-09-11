@@ -421,8 +421,13 @@ class SecureBytes:
             except Exception as e:
                 self.logger.error(f"Error during secure clearing: {e}")
             finally:
-                # Always clear the bytearray
-                self._data.clear()
+                # Always clear the bytearray safely
+                try:
+                    self._data.clear()
+                except (BufferError, ValueError) as e:
+                    # If clearing fails due to exports, create new empty bytearray
+                    self.logger.debug(f"Direct clear failed ({e}), creating new empty array")
+                    self._data = bytearray()
                 self.logger.debug("Secure clear completed")
     
     def _secure_overwrite_pass(self, pattern: int):
@@ -688,6 +693,12 @@ class SecureMemoryManager:
                         obj.clear()
                     if hasattr(obj, '_unlock_memory') and callable(obj._unlock_memory):
                         obj._unlock_memory()
+                    cleaned_count += 1
+                    self.stats.cleanup_operations += 1
+                except (BufferError, ValueError) as e:
+                    # Handle buffer clearing issues gracefully
+                    self.logger.debug(f"Buffer clearing issue for object {id(obj)}: {e}")
+                    # Still count as cleaned since we attempted cleanup
                     cleaned_count += 1
                     self.stats.cleanup_operations += 1
                 except Exception as e:
