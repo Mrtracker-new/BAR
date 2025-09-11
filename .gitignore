@@ -63,6 +63,11 @@ my_keys/
 test_data/
 temp/
 logs/
+ultimate_test_logs/
+ultra_fast_test_logs/
+simple_test_logs/
+comprehensive_test_logs/
+test_logs/
 audit_logs/
 secure_storage/
 encrypted_files/

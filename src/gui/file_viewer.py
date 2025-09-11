@@ -15,7 +15,9 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QSize, pyqtSignal, QThread, pyqtSlot, QTimer
 from PyQt5.QtGui import QPixmap, QImage, QFont, QPalette, QColor, QSyntaxHighlighter, QTextCharFormat
 
-from ..security.screen_protection import Watermarker
+# Note: Watermarker functionality now integrated into AdvancedScreenProtectionManager
+# For standalone use, import from the legacy module
+from ..security.screen_protection_legacy import Watermarker
 from ..file_manager.format_detector import FileFormatDetector
 from .styles import StyleManager
 

@@ -53,7 +53,6 @@ if platform.system().lower() == 'windows':
         import win32process
         import psutil
         from .win_screenshot_prevention import KeyboardHook, ScreenCaptureBlocker
-        from .ultra_fast_screenshot_prevention import ComprehensiveScreenshotPrevention
     except ImportError:
         print("Windows-specific modules not available - some features may be limited")
 
@@ -94,6 +93,8 @@ class ProcessMonitor(QThread):
             'gyazo.exe': 'Screenshot sharing tool',
             'flameshot.exe': 'Screenshot tool (Flameshot)',
             'shutter.exe': 'Screenshot tool (Shutter)',
+            'snippingtool.exe': 'Windows Snipping Tool',
+            'screensketch.exe': 'Windows Snip & Sketch',
             
             # Screen recording tools
             'obs64.exe': 'Screen recording (OBS Studio)',
@@ -322,7 +323,7 @@ class ClipboardMonitor(QObject):
         """Start clipboard monitoring."""
         self.monitoring = True
         self._store_current_clipboard()
-        self.timer.start(200)  # Check every 200ms
+        self.timer.start(50)  # Check every 50ms for faster detection
     
     def stop_monitoring(self):
         """Stop clipboard monitoring."""
@@ -334,18 +335,28 @@ class ClipboardMonitor(QObject):
         self.protected_content_active = active
     
     def _check_clipboard(self):
-        """Check for clipboard changes."""
+        """Check for clipboard changes including image data (screenshots)."""
         if not self.protected_content_active:
             return
         
         clipboard = QApplication.clipboard()
         current_content = clipboard.text()
         
+        # Also check for image data (screenshots)
+        mime_data = clipboard.mimeData()
+        has_image = mime_data.hasImage()
+        
+        # If clipboard has new text content, clear it
         if current_content != self.last_clipboard_content:
             if self.last_clipboard_content is not None:
-                # Clear clipboard if content was copied
                 clipboard.clear()
                 self.clipboard_access_detected.emit()
+        
+        # If clipboard has image data (potential screenshot), clear it immediately
+        if has_image:
+            clipboard.clear()
+            self.clipboard_access_detected.emit()
+            print("🚨 Screenshot detected in clipboard and cleared!")
         
         self.last_clipboard_content = current_content
     
@@ -432,24 +443,20 @@ class AdvancedScreenProtectionManager:
         self.dynamic_watermark = DynamicWatermark(username)
         self.security_logger = SecurityEventLogger(log_directory)
         
-        # Import existing screen protection
-        try:
-            from .screen_protection import ScreenProtectionManager
-            self.basic_protection = ScreenProtectionManager(username, protected_widget)
-        except ImportError:
-            print("Basic screen protection not available")
-            self.basic_protection = None
+        # Note: Legacy screen protection has been deprecated and integrated
+        # All functionality is now provided directly by this AdvancedScreenProtectionManager
+        self.basic_protection = None
             
-        # Initialize ultra-fast screenshot prevention (Windows only)
-        self.ultra_fast_protection = None
+        # Initialize Windows keyboard hook for screenshot blocking
+        self.keyboard_hook = None
         if platform.system().lower() == 'windows':
             try:
-                self.ultra_fast_protection = ComprehensiveScreenshotPrevention()
-                self.ultra_fast_protection.screenshot_attempt_detected.connect(
-                    self._on_ultra_fast_screenshot_attempt
+                self.keyboard_hook = KeyboardHook()
+                self.keyboard_hook.screenshot_hotkey_detected.connect(
+                    self._on_screenshot_hotkey_detected
                 )
             except Exception as e:
-                print(f"Ultra-fast screenshot prevention not available: {e}")
+                print(f"Windows keyboard hook not available: {e}")
         
         # Connect signals
         self._connect_signals()
@@ -520,20 +527,10 @@ class AdvancedScreenProtectionManager:
         # Clipboard monitoring
         self.clipboard_monitor.clipboard_access_detected.connect(self._on_clipboard_access)
         
-    def _on_ultra_fast_screenshot_attempt(self, detection_type: str, details: str):
-        """Handle ultra-fast screenshot attempt detection."""
-        self.suspicious_activity_score += 15  # High penalty for screenshot attempts
+        # Windows keyboard hook (if available)
+        if self.keyboard_hook:
+            self.keyboard_hook.screenshot_hotkey_detected.connect(self._on_screenshot_hotkey_detected)
         
-        self._log_security_event("ultra_fast_screenshot_attempt", "high", {
-            "detection_type": detection_type,
-            "details": details,
-            "suspicious_score": self.suspicious_activity_score
-        })
-        
-        print(f"Ultra-fast screenshot attempt detected: {detection_type} - {details}")
-        
-        if self.suspicious_activity_score >= self.max_suspicious_score:
-            self._handle_security_breach(f"Multiple ultra-fast screenshot attempts: {detection_type}")
     
     def start_protection(self):
         """Start comprehensive screen protection."""
@@ -567,13 +564,12 @@ class AdvancedScreenProtectionManager:
                 self.clipboard_monitor.start_monitoring()
                 self.clipboard_monitor.set_protection_active(True)
             
-            # Screenshot blocking
-            if self.security_config['screenshot_blocking_enabled'] and self.basic_protection:
-                self.basic_protection.start_monitoring()
+            # Screenshot blocking via Windows keyboard hook
+            if self.security_config['screenshot_blocking_enabled'] and self.keyboard_hook:
+                self.keyboard_hook.start()
+                print("Windows keyboard hook started for screenshot blocking")
             
-            # Ultra-fast screenshot prevention
-            if self.security_config['screenshot_blocking_enabled'] and self.ultra_fast_protection:
-                self.ultra_fast_protection.start_all_monitoring()
+            # Ultra-fast screenshot prevention is now integrated into basic protection
             
             # Security overlay
             if self.security_config['overlay_protection_enabled']:
@@ -607,13 +603,11 @@ class AdvancedScreenProtectionManager:
             self.focus_monitor.stop_monitoring()
             self.clipboard_monitor.stop_monitoring()
             
-            # Stop basic protection
-            if self.basic_protection:
-                self.basic_protection.stop_monitoring()
+            # Stop Windows keyboard hook
+            if self.keyboard_hook:
+                self.keyboard_hook.stop()
                 
-            # Stop ultra-fast protection
-            if self.ultra_fast_protection:
-                self.ultra_fast_protection.stop_all_monitoring()
+            # Ultra-fast protection is now integrated into basic protection
             
             # Remove security overlay
             self._remove_security_overlay()
@@ -731,6 +725,20 @@ class AdvancedScreenProtectionManager:
         
         if self.suspicious_activity_score >= self.max_suspicious_score:
             self._handle_critical_security_breach("Clipboard access detected")
+    
+    def _on_screenshot_hotkey_detected(self):
+        """Handle screenshot hotkey detection (Print Screen, Win+Shift+S, etc.)."""
+        self.suspicious_activity_score += 10  # High penalty for direct screenshot attempts
+        
+        self._log_security_event("screenshot_hotkey_blocked", "critical", {
+            "suspicious_score": self.suspicious_activity_score,
+            "action": "screenshot_hotkey_blocked"
+        })
+        
+        print("🚨 Screenshot hotkey blocked - direct screenshot attempt detected")
+        
+        if self.suspicious_activity_score >= self.max_suspicious_score:
+            self._handle_critical_security_breach("Screenshot hotkey detected")
     
     def _handle_critical_security_breach(self, reason: str):
         """Handle critical security breach."""

@@ -32,6 +32,14 @@ DWMWA_EXCLUDED_FROM_PEEK = 12
 DWM_EC_DISABLECOMPOSITION = 0
 DWM_EC_ENABLECOMPOSITION = 1
 
+# Structure for low-level keyboard hook
+class KBDLLHOOKSTRUCT(ctypes.Structure):
+    _fields_ = [("vkCode", wintypes.DWORD),
+                ("scanCode", wintypes.DWORD),
+                ("flags", wintypes.DWORD),
+                ("time", wintypes.DWORD),
+                ("dwExtraInfo", ctypes.POINTER(wintypes.ULONG))]
+
 class KeyboardHook(QObject):
     """Windows keyboard hook to detect screenshot hotkeys."""
     

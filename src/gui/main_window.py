@@ -516,8 +516,6 @@ class MainWindow(QMainWindow):
     
     def _show_file_content(self, content: bytes, metadata: Dict[str, Any]):
         """Show the content of a file."""
-        # Import screen protection module
-        from ..security.screen_protection import ScreenProtectionManager
         from .file_viewer import FileViewer
         
         # Create a dialog to display the file content
@@ -629,15 +627,10 @@ class MainWindow(QMainWindow):
                 self.status_bar.showMessage(
                     f"Enhanced security active for {metadata['filename']} (View-only mode)"
                 )
-            except ImportError:
-                # Fall back to basic protection
-                from ..security.screen_protection import ScreenProtectionManager
-                screen_protection = ScreenProtectionManager(self.current_user, dialog)
-                screen_protection.set_screenshot_callback(lambda: self._on_screenshot_detected(metadata["filename"]))
-                screen_protection.start_monitoring()
-                
+            except Exception as e:
+                print(f"Failed to initialize advanced screen protection: {e}")
                 self.status_bar.showMessage(
-                    f"Basic security active for {metadata['filename']} (View-only mode)"
+                    f"Warning: Could not enable security protection for {metadata['filename']}"
                 )
         
         # Content group
@@ -672,12 +665,7 @@ class MainWindow(QMainWindow):
         # Stop protection monitoring if active
         if screen_protection:
             try:
-                # Try advanced protection first
-                if hasattr(screen_protection, 'stop_protection'):
-                    screen_protection.stop_protection()
-                else:
-                    # Fall back to basic protection
-                    screen_protection.stop_monitoring()
+                screen_protection.stop_protection()
             except Exception as e:
                 print(f"Error stopping screen protection: {e}")
         
