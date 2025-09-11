@@ -102,7 +102,9 @@ api_keys.*
 auth_tokens.*
 session_keys.*
 encryption_config.*
-security_config.*
+# Allow legitimate security source code files
+!src/config/security_config.py
+!src/security/*.py
 
 # ================================================
 # BUILD ARTIFACTS AND COMPILED FILES
