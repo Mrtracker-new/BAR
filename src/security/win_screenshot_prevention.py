@@ -8,6 +8,8 @@ import win32gui
 import win32api
 import win32process
 from PyQt5.QtCore import QObject, pyqtSignal, QTimer, QThread
+import psutil
+import os
 
 # Windows API constants
 WH_KEYBOARD_LL = 13
@@ -58,6 +60,22 @@ class KeyboardHook(QObject):
         self.win_pressed = False
         self.shift_pressed = False
         self.s_pressed = False
+
+        # Short-term suppression window to defeat ultra-fast combos
+        self.suppression_active = False
+        self.suppression_until = 0  # epoch seconds
+        self.suppression_window_ms = 600  # block S/PrintScreen for 600ms after Win/Shift press
+        
+        # Additional proactive protections
+        self.last_blocked_time = 0
+        self.consecutive_blocks = 0
+        self.max_blocks_per_second = 10  # Limit blocks to prevent resource exhaustion
+        
+        # Process termination list for aggressive screenshot apps
+        self.aggressive_screenshot_processes = [
+            'SnippingTool.exe', 'ScreenSketch.exe', 'Snagit32.exe', 'Lightshot.exe',
+            'Greenshot.exe', 'ShareX.exe', 'Gyazo.exe', 'Flameshot.exe'
+        ]
         
         # Define callback function type
         self.LowLevelKeyboardProc = ctypes.CFUNCTYPE(
@@ -76,20 +94,42 @@ class KeyboardHook(QObject):
         """Start the keyboard hook in a separate thread."""
         if not self.hooked:
             self.hooked = True
-            self.hook_thread = threading.Thread(target=self._hook_thread_func)
+            self.hook_thread = threading.Thread(target=self._hook_thread_func, name="BAR_KeyboardHook")
             self.hook_thread.daemon = True
             self.hook_thread.start()
+
+            # Try to boost thread priority to reduce race windows
+            try:
+                # Obtain handle to current thread and raise priority
+                handle = win32api.OpenThread(win32con.THREAD_SET_INFORMATION | win32con.THREAD_QUERY_INFORMATION, False, int(ctypes.windll.kernel32.GetCurrentThreadId()))
+                if handle:
+                    try:
+                        win32process.SetThreadPriority(handle, win32process.THREAD_PRIORITY_TIME_CRITICAL)
+                    except Exception:
+                        # Fall back to highest priority if time critical not allowed
+                        win32process.SetThreadPriority(handle, win32process.THREAD_PRIORITY_HIGHEST)
+            except Exception as e:
+                print(f"Failed to boost keyboard hook thread priority: {e}")
             
             # Start a timer to periodically check for screenshot apps
             self.timer = QTimer()
             self.timer.timeout.connect(self._check_screenshot_apps)
             self.timer.start(1000)  # Check every second
+            
+            # Start additional timer for process monitoring
+            self.process_timer = QTimer()
+            self.process_timer.timeout.connect(self._monitor_screenshot_processes)
+            self.process_timer.start(2000)  # Check every 2 seconds
     
     def stop(self):
         """Stop the keyboard hook."""
         if self.timer:
             self.timer.stop()
             self.timer = None
+            
+        if hasattr(self, 'process_timer') and self.process_timer:
+            self.process_timer.stop()
+            self.process_timer = None
             
         if self.hooked:
             self.hooked = False
@@ -168,7 +208,27 @@ class KeyboardHook(QObject):
                     # Key down events
                     if w_param in (WM_KEYDOWN, WM_SYSKEYDOWN):
                         # Track PrintScreen key directly
+                        # Suppression window check (defense against ultra-fast key chords)
+                        now = time.time()
+                        if self.suppression_active and now < self.suppression_until:
+                            if key_code in (VK_SNAPSHOT, VK_S):
+                                return 1
+                        else:
+                            # Expire suppression when window passes
+                            if self.suppression_active and now >= self.suppression_until:
+                                self.suppression_active = False
+
                         if key_code == VK_SNAPSHOT:
+                            # Rate limiting check
+                            now = time.time()
+                            if now - self.last_blocked_time < 1.0:
+                                self.consecutive_blocks += 1
+                                if self.consecutive_blocks > self.max_blocks_per_second:
+                                    return 1  # Block but don't process to avoid resource exhaustion
+                            else:
+                                self.consecutive_blocks = 0
+                            self.last_blocked_time = now
+                            
                             print("PrintScreen detected and blocked")
                             try:
                                 self.screenshot_hotkey_detected.emit()
@@ -179,13 +239,28 @@ class KeyboardHook(QObject):
                         # Track Win+Shift+S combination
                         if key_code == VK_LWIN or key_code == VK_RWIN:
                             self.win_pressed = True
+                            # Activate suppression window
+                            self.suppression_active = True
+                            self.suppression_until = time.time() + (self.suppression_window_ms / 1000.0)
                         elif key_code == VK_SHIFT:
                             self.shift_pressed = True
+                            # Activate suppression window
+                            self.suppression_active = True
+                            self.suppression_until = time.time() + (self.suppression_window_ms / 1000.0)
                         elif key_code == VK_S:
                             self.s_pressed = True
                         
-                        # Check for Win+Shift+S combination
-                        if self.win_pressed and self.shift_pressed and self.s_pressed:
+                        # Check for Win+Shift+S combination (robust using async state)
+                        try:
+                            win_down = (win32api.GetAsyncKeyState(VK_LWIN) & 0x8000) or (win32api.GetAsyncKeyState(VK_RWIN) & 0x8000)
+                            shift_down = (win32api.GetAsyncKeyState(VK_SHIFT) & 0x8000)
+                            s_down = (win32api.GetAsyncKeyState(VK_S) & 0x8000)
+                        except Exception:
+                            win_down = self.win_pressed
+                            shift_down = self.shift_pressed
+                            s_down = self.s_pressed
+
+                        if (self.win_pressed and self.shift_pressed and self.s_pressed) or (win_down and shift_down and s_down):
                             print("Win+Shift+S detected and blocked")
                             try:
                                 self.screenshot_hotkey_detected.emit()
@@ -214,6 +289,10 @@ class KeyboardHook(QObject):
                             self.shift_pressed = False
                         elif key_code == VK_S:
                             self.s_pressed = False
+
+                        # If all keys are up, end suppression quickly
+                        if not (self.win_pressed or self.shift_pressed):
+                            self.suppression_active = False
                 except Exception as e:
                     print(f"Error processing keyboard event: {e}")
             
@@ -265,6 +344,33 @@ class KeyboardHook(QObject):
             win32gui.EnumWindows(enum_window_callback, None)
         except Exception as e:
             print(f"Error checking screenshot apps: {e}")
+    
+    def _monitor_screenshot_processes(self):
+        """Monitor and terminate known screenshot processes proactively."""
+        try:
+            for proc in psutil.process_iter(['pid', 'name']):
+                try:
+                    proc_name = proc.info['name']
+                    if proc_name in self.aggressive_screenshot_processes:
+                        print(f"Terminating aggressive screenshot process: {proc_name}")
+                        try:
+                            proc.terminate()
+                            # Give it a moment to terminate gracefully
+                            try:
+                                proc.wait(timeout=2)
+                            except psutil.TimeoutExpired:
+                                # Force kill if it doesn't terminate
+                                proc.kill()
+                            
+                            # Emit signal for detected screenshot attempt
+                            self.screenshot_hotkey_detected.emit()
+                        except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
+                            # Process might have already terminated or we lack permissions
+                            pass
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+        except Exception as e:
+            print(f"Error monitoring screenshot processes: {e}")
 
 # KBDLLHOOKSTRUCT structure for keyboard hook
 class KBDLLHOOKSTRUCT(ctypes.Structure):

@@ -53,6 +53,7 @@ if platform.system().lower() == 'windows':
         import win32process
         import psutil
         from .win_screenshot_prevention import KeyboardHook, ScreenCaptureBlocker
+        from .ultra_fast_screenshot_prevention import ComprehensiveScreenshotPrevention
     except ImportError:
         print("Windows-specific modules not available - some features may be limited")
 
@@ -438,6 +439,17 @@ class AdvancedScreenProtectionManager:
         except ImportError:
             print("Basic screen protection not available")
             self.basic_protection = None
+            
+        # Initialize ultra-fast screenshot prevention (Windows only)
+        self.ultra_fast_protection = None
+        if platform.system().lower() == 'windows':
+            try:
+                self.ultra_fast_protection = ComprehensiveScreenshotPrevention()
+                self.ultra_fast_protection.screenshot_attempt_detected.connect(
+                    self._on_ultra_fast_screenshot_attempt
+                )
+            except Exception as e:
+                print(f"Ultra-fast screenshot prevention not available: {e}")
         
         # Connect signals
         self._connect_signals()
@@ -507,6 +519,21 @@ class AdvancedScreenProtectionManager:
         
         # Clipboard monitoring
         self.clipboard_monitor.clipboard_access_detected.connect(self._on_clipboard_access)
+        
+    def _on_ultra_fast_screenshot_attempt(self, detection_type: str, details: str):
+        """Handle ultra-fast screenshot attempt detection."""
+        self.suspicious_activity_score += 15  # High penalty for screenshot attempts
+        
+        self._log_security_event("ultra_fast_screenshot_attempt", "high", {
+            "detection_type": detection_type,
+            "details": details,
+            "suspicious_score": self.suspicious_activity_score
+        })
+        
+        print(f"Ultra-fast screenshot attempt detected: {detection_type} - {details}")
+        
+        if self.suspicious_activity_score >= self.max_suspicious_score:
+            self._handle_security_breach(f"Multiple ultra-fast screenshot attempts: {detection_type}")
     
     def start_protection(self):
         """Start comprehensive screen protection."""
@@ -544,6 +571,10 @@ class AdvancedScreenProtectionManager:
             if self.security_config['screenshot_blocking_enabled'] and self.basic_protection:
                 self.basic_protection.start_monitoring()
             
+            # Ultra-fast screenshot prevention
+            if self.security_config['screenshot_blocking_enabled'] and self.ultra_fast_protection:
+                self.ultra_fast_protection.start_all_monitoring()
+            
             # Security overlay
             if self.security_config['overlay_protection_enabled']:
                 self._create_security_overlay()
@@ -579,6 +610,10 @@ class AdvancedScreenProtectionManager:
             # Stop basic protection
             if self.basic_protection:
                 self.basic_protection.stop_monitoring()
+                
+            # Stop ultra-fast protection
+            if self.ultra_fast_protection:
+                self.ultra_fast_protection.stop_all_monitoring()
             
             # Remove security overlay
             self._remove_security_overlay()
