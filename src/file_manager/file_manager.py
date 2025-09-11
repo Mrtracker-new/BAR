@@ -15,12 +15,13 @@ from cryptography.hazmat.primitives import hashes
 
 from ..crypto.encryption import EncryptionManager
 from .file_scanner import FileScanner
+from .format_detector import FileFormatDetector
 
 
 class FileManager:
     """Manages secure file operations for the BAR application."""
     
-    def __init__(self, base_directory: str):
+    def __init__(self, base_directory: str, monitor=None):
         """Initialize the file manager.
         
         Args:
@@ -30,6 +31,7 @@ class FileManager:
         self.files_directory = self.base_directory / "files"
         self.metadata_directory = self.base_directory / "metadata"
         self.blacklist_directory = self.base_directory / "blacklist"
+        self.monitor = monitor  # Optional intelligent monitor for access tracking
         
         # Create directories if they don't exist
         self.files_directory.mkdir(parents=True, exist_ok=True)
@@ -38,6 +40,9 @@ class FileManager:
         
         # Initialize the encryption manager
         self.encryption_manager = EncryptionManager()
+        
+        # Initialize the format detector
+        self.format_detector = FileFormatDetector()
         
         # Setup logging first
         self._setup_logging()
@@ -69,7 +74,7 @@ class FileManager:
         self.logger = logging.getLogger("FileManager")
     
     def _is_media_file(self, filename: str, content: bytes) -> bool:
-        """Determine if a file is a media file based on its extension and content.
+        """Determine if a file is a media file using enhanced format detection.
         
         Args:
             filename: The name of the file
@@ -78,47 +83,7 @@ class FileManager:
         Returns:
             True if the file is a media file, False otherwise
         """
-        # Check file extension first (case insensitive)
-        media_extensions = {
-            # Images
-            '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp', '.svg',
-            # Audio
-            '.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a',
-            # Video
-            '.mp4', '.avi', '.mov', '.wmv', '.mkv', '.webm', '.flv',
-            # Other media
-            '.pdf', '.psd', '.ai', '.eps'
-        }
-        
-        _, ext = os.path.splitext(filename.lower())
-        if ext in media_extensions:
-            return True
-            
-        # Check for magic bytes/signatures for common media formats
-        # This is a basic implementation - could be expanded for more formats
-        signatures = {
-            # JPEG
-            b'\xff\xd8\xff': True,
-            # PNG
-            b'\x89PNG\r\n\x1a\n': True,
-            # GIF
-            b'GIF87a': True,
-            b'GIF89a': True,
-            # PDF
-            b'%PDF': True,
-            # MP4/M4A/etc
-            b'ftyp': True,
-            # WEBP
-            b'RIFF': True
-        }
-        
-        # Check first 20 bytes for signatures
-        header = content[:20] if len(content) >= 20 else content
-        for sig, is_media in signatures.items():
-            if sig in header:
-                return is_media
-                
-        return False
+        return self.format_detector.is_media_file(filename, content)
     
     def create_secure_file(self, content: bytes, filename: str, password: str, 
                           security_settings: Dict[str, Any]) -> str:
@@ -140,12 +105,15 @@ class FileManager:
         # Generate a unique file ID
         file_id = self._generate_file_id()
         
+        # Detect file format using enhanced detection
+        format_info = self.format_detector.detect_format(filename, content)
+        is_media = format_info['type'] in ['image', 'audio', 'video']
+        
         # Check if this is a media file and automatically set disable_export if not explicitly set
-        is_media = self._is_media_file(filename, content)
         if is_media and "disable_export" not in security_settings:
             # Automatically make media files view-only unless explicitly overridden
             security_settings["disable_export"] = True
-            self.logger.info(f"Automatically set view-only mode for media file: {filename}")
+            self.logger.info(f"Automatically set view-only mode for {format_info['display_name']}: {filename}")
         
         # Encrypt the file content
         encrypted_content = self.encryption_manager.encrypt_file_content(content, password)
@@ -158,7 +126,13 @@ class FileManager:
             "creation_time": current_time.isoformat(),
             "last_accessed": current_time.isoformat(),
             "access_count": 0,
-            "file_type": "media" if is_media else "document",
+            "file_type": format_info['type'],
+            "file_format": format_info['format'],
+            "mime_type": format_info['mime'],
+            "display_name": format_info['display_name'],
+            "viewable_in_app": format_info['viewable'],
+            "external_viewer": format_info.get('external', False),
+            "detection_confidence": format_info['confidence'],
             "security": {
                 "expiration_time": security_settings.get("expiration_time"),
                 "max_access_count": security_settings.get("max_access_count"),
@@ -218,10 +192,17 @@ class FileManager:
                 metadata["encryption"], password)
             # Reset failed attempts on successful decryption
             metadata["failed_password_attempts"] = 0
+            # Record successful access if monitor is available
+            if self.monitor:
+                self.monitor.record_access_event(file_id, "decrypt", success=True)
         except ValueError:
             # Increment failed attempts
             metadata["failed_password_attempts"] += 1
             self.logger.warning(f"Failed decryption attempt for file: {file_id}. Attempt {metadata['failed_password_attempts']} of {max_failed_attempts}")
+            
+            # Record failed access if monitor is available
+            if self.monitor:
+                self.monitor.record_access_event(file_id, "decrypt", success=False)
             
             # Save updated metadata with failed attempts count
             with open(metadata_path, "w") as f:
@@ -250,6 +231,10 @@ class FileManager:
             # Schedule deletion after returning the content
             threading.Thread(target=self._secure_delete_file, args=(file_id,), daemon=True).start()
         
+        # Record successful access for monitoring
+        if self.monitor:
+            self.monitor.record_access_event(file_id, "access", success=True)
+        
         self.logger.info(f"Accessed file: {file_id} ({metadata['filename']})")
         return file_content, metadata
     
@@ -275,25 +260,27 @@ class FileManager:
                 # Add UI-friendly fields
                 metadata_copy["is_view_only"] = metadata_copy.get("security", {}).get("disable_export", False)
                 
-                # Set file type display name
-                file_type = metadata_copy.get("file_type", "document")
-                metadata_copy["file_type"] = file_type
-                
-                if file_type == "media":
-                    # Determine more specific media type based on filename
-                    filename = metadata_copy.get("filename", "").lower()
-                    if any(filename.endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".svg"]):
-                        metadata_copy["file_type_display"] = "Image"
-                    elif any(filename.endswith(ext) for ext in [".mp3", ".wav", ".ogg", ".flac", ".aac", ".m4a"]):
-                        metadata_copy["file_type_display"] = "Audio"
-                    elif any(filename.endswith(ext) for ext in [".mp4", ".avi", ".mov", ".wmv", ".mkv", ".webm", ".flv"]):
-                        metadata_copy["file_type_display"] = "Video"
-                    elif filename.endswith(".pdf"):
-                        metadata_copy["file_type_display"] = "PDF Document"
-                    else:
-                        metadata_copy["file_type_display"] = "Media File"
+                # Use enhanced format information if available, otherwise fall back to legacy
+                if "display_name" in metadata_copy:
+                    metadata_copy["file_type_display"] = metadata_copy["display_name"]
                 else:
-                    metadata_copy["file_type_display"] = "Document"
+                    # Legacy fallback for older files
+                    file_type = metadata_copy.get("file_type", "document")
+                    if file_type == "media":
+                        # Determine more specific media type based on filename
+                        filename = metadata_copy.get("filename", "").lower()
+                        if any(filename.endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".svg"]):
+                            metadata_copy["file_type_display"] = "Image"
+                        elif any(filename.endswith(ext) for ext in [".mp3", ".wav", ".ogg", ".flac", ".aac", ".m4a"]):
+                            metadata_copy["file_type_display"] = "Audio"
+                        elif any(filename.endswith(ext) for ext in [".mp4", ".avi", ".mov", ".wmv", ".mkv", ".webm", ".flv"]):
+                            metadata_copy["file_type_display"] = "Video"
+                        elif filename.endswith(".pdf"):
+                            metadata_copy["file_type_display"] = "PDF Document"
+                        else:
+                            metadata_copy["file_type_display"] = "Media File"
+                    else:
+                        metadata_copy["file_type_display"] = "Document"
                 
                 files.append(metadata_copy)
         

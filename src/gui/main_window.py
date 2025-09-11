@@ -24,7 +24,7 @@ class MainWindow(QMainWindow):
     """Main window for the BAR application."""
     
     def __init__(self, config_manager: ConfigManager, file_manager: FileManager, 
-                 device_auth, parent=None):
+                 device_auth, parent=None, emergency=None, monitor=None, steg=None):
         """Initialize the main window.
         
         Args:
@@ -39,6 +39,9 @@ class MainWindow(QMainWindow):
         self.config_manager = config_manager
         self.file_manager = file_manager
         self.device_auth = device_auth
+        self.emergency = emergency
+        self.monitor = monitor
+        self.steg = steg
         
         # Set up window properties
         self.setWindowTitle("BAR - Burn After Reading")
@@ -48,6 +51,12 @@ class MainWindow(QMainWindow):
         self.current_user = "Device User"  # Single user system
         self.auto_lock_timer = QTimer(self)
         self.auto_lock_timer.timeout.connect(self.lock_application)
+        
+        # Set up heartbeat timer for dead man's switch
+        if self.emergency:
+            self.heartbeat_timer = QTimer(self)
+            self.heartbeat_timer.timeout.connect(self._send_heartbeat)
+            self.heartbeat_timer.start(300000)  # Send heartbeat every 5 minutes
         
         # Set up the UI
         self._setup_ui()
@@ -162,6 +171,30 @@ class MainWindow(QMainWindow):
         self.save_settings_button.setStyleSheet(StyleManager.get_button_style("success"))
         self.settings_layout.addWidget(self.save_settings_button)
         
+        # Add self-destruct status section (if systems are available)
+        if self.emergency or self.monitor or self.steg:
+            self.destruct_group = QGroupBox("Enhanced Self-Destruct System Status")
+            self.destruct_layout = QFormLayout(self.destruct_group)
+            self.settings_layout.addWidget(self.destruct_group)
+            
+            # Create status displays
+            self.emergency_status_label = QLabel("Emergency Protocol: Loading...")
+            self.destruct_layout.addRow("Emergency:", self.emergency_status_label)
+            
+            self.monitor_status_label = QLabel("Monitoring: Loading...")
+            self.destruct_layout.addRow("Monitoring:", self.monitor_status_label)
+            
+            self.steg_status_label = QLabel("Triggers: Loading...")
+            self.destruct_layout.addRow("Steganographic:", self.steg_status_label)
+            
+            # Update button
+            self.update_status_button = QPushButton("Refresh Status")
+            self.update_status_button.clicked.connect(self._update_destruct_status)
+            self.destruct_layout.addRow("", self.update_status_button)
+            
+            # Update status initially
+            QTimer.singleShot(1000, self._update_destruct_status)  # Delay to allow systems to initialize
+        
         # Create status bar
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
@@ -198,6 +231,21 @@ class MainWindow(QMainWindow):
         self.exit_action = QAction("E&xit", self)
         self.exit_action.triggered.connect(self.close)
         self.file_menu.addAction(self.exit_action)
+        
+        # Security menu
+        self.security_menu = self.menu_bar.addMenu("&Security")
+
+        self.panic_action = QAction("&Panic Wipe (Scorched)", self)
+        self.panic_action.triggered.connect(self._panic_wipe)
+        self.security_menu.addAction(self.panic_action)
+
+        self.aggressive_wipe_action = QAction("Aggressive Wipe", self)
+        self.aggressive_wipe_action.triggered.connect(lambda: self._trigger_wipe("aggressive"))
+        self.security_menu.addAction(self.aggressive_wipe_action)
+
+        self.selective_wipe_action = QAction("Selective Wipe", self)
+        self.selective_wipe_action.triggered.connect(lambda: self._trigger_wipe("selective"))
+        self.security_menu.addAction(self.selective_wipe_action)
         
         # Device menu
         self.device_menu = self.menu_bar.addMenu("&Device")
@@ -563,12 +611,34 @@ class MainWindow(QMainWindow):
             export_label.setStyleSheet("color: #2ecc71;")
         security_layout.addRow("Export Status:", export_label)
         
-        # Initialize screen protection if view-only is enabled
+        # Initialize advanced screen protection if view-only is enabled
         screen_protection = None
         if disable_export:
-            screen_protection = ScreenProtectionManager(self.current_user, dialog)
-            screen_protection.set_screenshot_callback(lambda: self._on_screenshot_detected(metadata["filename"]))
-            screen_protection.start_monitoring()
+            try:
+                from ..security.advanced_screen_protection import AdvancedScreenProtectionManager
+                import os
+                
+                # Create log directory for security events
+                log_dir = os.path.join(os.path.expanduser("~"), ".bar", "security_logs")
+                screen_protection = AdvancedScreenProtectionManager(
+                    self.current_user, dialog, log_dir
+                )
+                screen_protection.start_protection()
+                
+                # Show security status
+                self.status_bar.showMessage(
+                    f"Enhanced security active for {metadata['filename']} (View-only mode)"
+                )
+            except ImportError:
+                # Fall back to basic protection
+                from ..security.screen_protection import ScreenProtectionManager
+                screen_protection = ScreenProtectionManager(self.current_user, dialog)
+                screen_protection.set_screenshot_callback(lambda: self._on_screenshot_detected(metadata["filename"]))
+                screen_protection.start_monitoring()
+                
+                self.status_bar.showMessage(
+                    f"Basic security active for {metadata['filename']} (View-only mode)"
+                )
         
         # Content group
         content_group = QGroupBox("File Content")
@@ -599,12 +669,23 @@ class MainWindow(QMainWindow):
             dialog: The dialog to close
             screen_protection: The screen protection manager, if any
         """
-        # Stop screenshot monitoring if active
+        # Stop protection monitoring if active
         if screen_protection:
-            screen_protection.stop_monitoring()
+            try:
+                # Try advanced protection first
+                if hasattr(screen_protection, 'stop_protection'):
+                    screen_protection.stop_protection()
+                else:
+                    # Fall back to basic protection
+                    screen_protection.stop_monitoring()
+            except Exception as e:
+                print(f"Error stopping screen protection: {e}")
         
         # Close the dialog
         dialog.accept()
+        
+        # Clear security status
+        self.status_bar.showMessage(f"Logged in as {self.current_user}")
         
     def _export_original_file_content(self, content: bytes, metadata: Dict[str, Any]):
         """Export the original file content directly from the viewer.
@@ -986,13 +1067,90 @@ class MainWindow(QMainWindow):
         else:
             QMessageBox.critical(self, "Password Change Failed", message)
 
+    def _trigger_wipe(self, level: str):
+        """Trigger graded emergency wipe via emergency protocol."""
+        if not self.emergency:
+            QMessageBox.warning(self, "Unavailable", "Emergency system not initialized.")
+            return
+        confirm = QMessageBox.question(
+            self,
+            "Confirm Emergency Wipe",
+            f"Are you sure you want to perform a '{level}' wipe? This cannot be undone.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if confirm == QMessageBox.Yes:
+            self.emergency.trigger_emergency_destruction(reason=f"User-initiated {level}", level=level)
+
+    def _panic_wipe(self):
+        """Immediate scorched-earth wipe."""
+        if not self.emergency:
+            QMessageBox.warning(self, "Unavailable", "Emergency system not initialized.")
+            return
+        confirm = QMessageBox.question(
+            self,
+            "Confirm Panic Wipe",
+            "This will immediately destroy all sensitive data (scorched earth). Continue?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if confirm == QMessageBox.Yes:
+            self.emergency.trigger_emergency_destruction(reason="User panic", level="scorched")
+
+    def _update_destruct_status(self):
+        """Update the self-destruct system status display."""
+        try:
+            # Update emergency protocol status
+            if self.emergency:
+                status = self.emergency.get_emergency_status()
+                dms_status = "Active" if status["dead_mans_switch_active"] else "Inactive"
+                self.emergency_status_label.setText(f"Dead man's switch: {dms_status}")
+            else:
+                self.emergency_status_label.setText("Not available")
+            
+            # Update monitor status
+            if self.monitor:
+                stats = self.monitor.get_monitoring_stats()
+                active = "Active" if stats["monitoring_active"] else "Inactive"
+                events = stats.get("events_last_24h", 0)
+                self.monitor_status_label.setText(f"{active} ({events} events/24h)")
+            else:
+                self.monitor_status_label.setText("Not available")
+            
+            # Update steganographic triggers status
+            if self.steg:
+                stats = self.steg.get_trigger_stats()
+                active_triggers = stats.get("active_triggers", 0)
+                total_triggers = stats.get("total_triggers", 0)
+                self.steg_status_label.setText(f"{active_triggers}/{total_triggers} triggers active")
+            else:
+                self.steg_status_label.setText("Not available")
+                
+        except Exception as e:
+            if hasattr(self, 'emergency_status_label'):
+                self.emergency_status_label.setText(f"Error: {str(e)}")
+    
+    def _send_heartbeat(self):
+        """Send heartbeat to emergency protocol to keep dead man's switch active."""
+        try:
+            if self.emergency:
+                self.emergency.heartbeat()
+        except Exception as e:
+            # Log but don't show user error for heartbeat
+            print(f"Heartbeat error: {e}")
+    
     def _show_about(self):
         """Show the about dialog."""
         QMessageBox.about(
             self,
             "About BAR - Burn After Reading",
             "BAR - Burn After Reading v2.0.0\n\n"
-            "A secure file management application with self-destructing files.\n\n"
+            "A secure file management application with enhanced self-destructing files.\n\n"
+            "Features:\n"
+            "• Graded destruction levels (selective/aggressive/scorched)\n"
+            "• Intelligent behavioral monitoring\n"
+            "• Steganographic trigger system\n"
+            "• Hardware-level free space wiping\n\n"
             "Created by Rolan\n\n"
             "© 2025 BAR BY RNR"
         )

@@ -191,6 +191,32 @@ class ConfigManager:
         self.logger.info("Configuration reset to defaults")
         return True
     
+    def clear_all_cached_config(self) -> bool:
+        """Clear all cached configuration data and reset to defaults.
+        
+        This method is used during device resets to ensure all configuration
+        data is cleared from memory and storage.
+        
+        Returns:
+            True if all configuration was cleared successfully, False otherwise
+        """
+        try:
+            # Clear in-memory configuration
+            self.config.clear()
+            
+            # Remove configuration file if it exists
+            if self.config_file.exists():
+                self.config_file.unlink()
+            
+            # Reset to defaults
+            self.config = self._create_default_config()
+            
+            self.logger.info("All cached configuration cleared and reset to defaults")
+            return True
+        except Exception as e:
+            self.logger.error(f"Error clearing cached configuration: {e}")
+            return False
+    
     def get_themes(self) -> Dict[str, Dict[str, Any]]:
         """Get available themes.
         

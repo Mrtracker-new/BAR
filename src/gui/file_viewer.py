@@ -1,36 +1,121 @@
 import os
 import sys
+import subprocess
+import tempfile
+import json
 from typing import Optional, Dict, Any, Callable
+from pathlib import Path
 
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, QScrollArea,
-    QPushButton, QFileDialog, QMessageBox, QSizePolicy, QFrame
+    QPushButton, QFileDialog, QMessageBox, QSizePolicy, QFrame, QProgressBar,
+    QGroupBox, QFormLayout, QSplitter, QTreeWidget, QTreeWidgetItem, QTabWidget,
+    QPlainTextEdit
 )
-from PyQt5.QtCore import Qt, QSize, pyqtSignal
-from PyQt5.QtGui import QPixmap, QImage, QFont, QPalette, QColor
+from PyQt5.QtCore import Qt, QSize, pyqtSignal, QThread, pyqtSlot, QTimer
+from PyQt5.QtGui import QPixmap, QImage, QFont, QPalette, QColor, QSyntaxHighlighter, QTextCharFormat
 
 from ..security.screen_protection import Watermarker
+from ..file_manager.format_detector import FileFormatDetector
 from .styles import StyleManager
 
 
+class PythonSyntaxHighlighter(QSyntaxHighlighter):
+    """Simple Python syntax highlighter."""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        # Define highlighting rules
+        self.highlighting_rules = []
+        
+        # Python keywords
+        keyword_format = QTextCharFormat()
+        keyword_format.setForeground(QColor("#569cd6"))
+        keyword_format.setFontWeight(QFont.Bold)
+        keywords = [
+            "and", "as", "assert", "break", "class", "continue", "def",
+            "del", "elif", "else", "except", "exec", "finally", "for",
+            "from", "global", "if", "import", "in", "is", "lambda",
+            "not", "or", "pass", "print", "raise", "return", "try",
+            "while", "with", "yield"
+        ]
+        for keyword in keywords:
+            self.highlighting_rules.append((f"\\b{keyword}\\b", keyword_format))
+        
+        # String literals
+        string_format = QTextCharFormat()
+        string_format.setForeground(QColor("#ce9178"))
+        self.highlighting_rules.append((r'".*"', string_format))
+        self.highlighting_rules.append((r"'.*'", string_format))
+        
+        # Comments
+        comment_format = QTextCharFormat()
+        comment_format.setForeground(QColor("#6a9955"))
+        self.highlighting_rules.append((r"#.*", comment_format))
+    
+    def highlightBlock(self, text):
+        """Apply syntax highlighting to a block of text."""
+        import re
+        for pattern, format in self.highlighting_rules:
+            for match in re.finditer(pattern, text):
+                start, end = match.span()
+                self.setFormat(start, end - start, format)
+
+
+class ExternalViewerThread(QThread):
+    """Thread for launching external viewers safely."""
+    
+    finished_signal = pyqtSignal(bool, str)  # success, message
+    
+    def __init__(self, file_path: str, file_format: Dict[str, Any]):
+        super().__init__()
+        self.file_path = file_path
+        self.file_format = file_format
+    
+    def run(self):
+        """Launch external viewer."""
+        try:
+            if os.name == 'nt':  # Windows
+                os.startfile(self.file_path)
+            elif os.name == 'posix':  # Linux/macOS
+                if sys.platform == 'darwin':  # macOS
+                    subprocess.run(['open', self.file_path], check=True)
+                else:  # Linux
+                    subprocess.run(['xdg-open', self.file_path], check=True)
+            
+            self.finished_signal.emit(True, f"Opened {self.file_format['display_name']} with external application.")
+        except Exception as e:
+            self.finished_signal.emit(False, f"Failed to open with external application: {str(e)}")
+
+
 class FileViewer(QWidget):
-    """Custom widget for displaying file content with enhanced UI."""
+    """Enhanced file viewer with comprehensive format support and intelligent feedback."""
     
     # Signal emitted when the user requests to close the viewer
     close_requested = pyqtSignal()
+    # Signal emitted when export is requested
+    export_requested = pyqtSignal()
     
     def __init__(self, parent=None):
-        """Initialize the file viewer.
+        """Initialize the enhanced file viewer.
         
         Args:
             parent: The parent widget
         """
         super().__init__(parent)
         
-        self.content_type = "unknown"  # text, image, binary
+        # Initialize components
+        self.format_detector = FileFormatDetector()
+        self.content_type = "unknown"
         self.is_view_only = False
         self.username = ""
         self.watermarker = None
+        self.current_content = None
+        self.current_metadata = None
+        self.current_format_info = None
+        self.export_handler = None
+        self.temp_files = []  # Track temporary files for cleanup
         
         # Set up exception handling
         sys.excepthook = self._handle_uncaught_exception
@@ -66,14 +151,23 @@ class FileViewer(QWidget):
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
         
+        # Content area with tabs (Viewer and Details)
+        self.tabs = QTabWidget()
+        self.layout.addWidget(self.tabs)
+        
+        # Viewer tab
+        self.viewer_tab = QWidget()
+        self.viewer_layout = QVBoxLayout(self.viewer_tab)
+        self.tabs.addTab(self.viewer_tab, "Viewer")
+        
         # Content area
         self.content_area = QScrollArea()
         self.content_area.setWidgetResizable(True)
         self.content_area.setFrameShape(QFrame.NoFrame)
-        self.layout.addWidget(self.content_area)
+        self.viewer_layout.addWidget(self.content_area)
         
         # Text content widget
-        self.text_widget = QTextEdit()
+        self.text_widget = QPlainTextEdit()
         self.text_widget.setReadOnly(True)
         self.text_widget.setVisible(False)
         
@@ -112,13 +206,30 @@ class FileViewer(QWidget):
         self.binary_info.setWordWrap(True)
         self.binary_layout.addWidget(self.binary_info)
         
+        # Details tab
+        self.details_tab = QWidget()
+        self.details_layout = QFormLayout(self.details_tab)
+        self.tabs.addTab(self.details_tab, "Details")
+        
         # Action buttons
         self.button_container = QWidget()
         self.button_layout = QHBoxLayout(self.button_container)
         self.button_layout.setContentsMargins(10, 10, 10, 10)
         
+        # Status message label (left side)
+        self.status_label = QLabel("")
+        self.status_label.setStyleSheet("color: #aaa;")
+        self.button_layout.addWidget(self.status_label)
+        
         # Add spacer to push buttons to the right
         self.button_layout.addStretch()
+        
+        # Open Externally button (shown for external-viewable types)
+        self.open_external_button = QPushButton("Open Externally")
+        self.open_external_button.setStyleSheet(StyleManager.get_button_style())
+        self.open_external_button.setMinimumWidth(140)
+        self.open_external_button.clicked.connect(self._open_externally)
+        self.button_layout.addWidget(self.open_external_button)
         
         # Export button (only shown for exportable files)
         self.export_button = QPushButton("Export")
@@ -137,7 +248,7 @@ class FileViewer(QWidget):
         self.layout.addWidget(self.button_container)
     
     def display_content(self, content: bytes, metadata: Dict[str, Any], username: str):
-        """Display file content based on its type.
+        """Display file content based on its type using enhanced format detection.
         
         Args:
             content: The file content as bytes
@@ -148,109 +259,393 @@ class FileViewer(QWidget):
             # Clean up any previous content to free memory
             self._cleanup_resources()
             
+            # Store for later use
+            self.current_content = content
+            self.current_metadata = metadata
             self.username = username
             self.watermarker = Watermarker(username)
             self.is_view_only = metadata.get("security", {}).get("disable_export", False)
             
-            # Show/hide export button based on export restrictions
-            self.export_button.setVisible(not self.is_view_only)
+            # Detect file format
+            filename = metadata.get("filename", "unknown")
+            self.current_format_info = self.format_detector.detect_format(filename, content)
             
-            # Try to display as text
-            try:
-                text_content = content.decode('utf-8')
-                self._display_text(text_content)
-                return
-            except UnicodeDecodeError:
-                # Not text, try as image
-                pass
+            # Update UI based on format detection
+            self._update_ui_for_format()
             
-            # Try to display as image
-            try:
-                # Check if content is too large (>10MB) to prevent memory issues
-                if len(content) > 10 * 1024 * 1024:  # 10MB limit
-                    print(f"Image too large ({len(content) / (1024*1024):.2f} MB), may cause memory issues")
-                    # Still try to load but with a warning
-                
-                pixmap = QPixmap()
-                load_success = False
-                
-                # Try to load the image data
-                try:
-                    load_success = pixmap.loadFromData(content)
-                except Exception as e:
-                    print(f"Primary image loading failed: {str(e)}")
-                    # Try alternative loading method
-                    try:
-                        image = QImage()
-                        if image.loadFromData(content):
-                            pixmap = QPixmap.fromImage(image)
-                            load_success = not pixmap.isNull()
-                    except Exception as alt_e:
-                        print(f"Alternative image loading also failed: {str(alt_e)}")
-                
-                if load_success:
-                    # Clear content from memory before displaying the image
-                    content = None
-                    
-                    # Force garbage collection before processing large images
-                    import gc
-                    gc.collect()
-                    
-                    self._display_image(pixmap)
-                    return
+            # Update details tab
+            self._update_details_tab()
+            
+            # Display content based on format
+            if self.current_format_info['viewable']:
+                if self.current_format_info['type'] == 'image':
+                    self._display_image_enhanced(content)
+                elif self.current_format_info['type'] in ['text', 'code', 'data']:
+                    self._display_text_enhanced(content)
+                elif self.current_format_info['type'] == 'document' and self.current_format_info['format'] == 'pdf':
+                    self._display_pdf_info()
                 else:
-                    print("Failed to load image data: Image format may be unsupported")
-            except Exception as e:
-                # Not an image or couldn't display it
-                print(f"Error loading image: {str(e)}")
-                # Ensure pixmap is released
-                try:
-                    pixmap = None
-                    import gc
-                    gc.collect()
-                except:
-                    pass
-            
-            # Check if this is a PDF file
-            filename = metadata.get("filename", "").lower()
-            if filename.endswith(".pdf"):
-                # Handle PDF as a special file type
-                metadata["file_type"] = "pdf"
+                    self._display_generic_viewable()
+            else:
+                self._display_non_viewable()
                 
-            # Default to binary/unsupported format
-            self._display_binary(metadata)
         except Exception as e:
             print(f"Unexpected error in display_content: {str(e)}")
             # Show a basic error message if everything fails
-            self._display_binary({"file_type": "unknown", "error": str(e)})
+            self._display_error(str(e))
     
-    def _display_text(self, text: str):
-        """Display text content.
+    def _update_ui_for_format(self):
+        """Update UI elements based on detected file format."""
+        format_info = self.current_format_info
         
-        Args:
-            text: The text content to display
-        """
-        self.content_type = "text"
+        # Update status label
+        confidence_text = "High" if format_info['confidence'] > 80 else "Medium" if format_info['confidence'] > 50 else "Low"
+        self.status_label.setText(f"{format_info['display_name']} (Confidence: {confidence_text})")
         
-        # Set up text display
-        self.text_widget.setPlainText(text)
-        self.content_area.setWidget(self.text_widget)
-        self.text_widget.setVisible(True)
+        # Show/hide buttons based on capabilities
+        self.export_button.setVisible(not self.is_view_only)
+        self.open_external_button.setVisible(format_info.get('external', False) and not self.is_view_only)
         
-        # Apply watermark if view-only
-        if self.is_view_only and self.watermarker:
-            self.watermarker.apply_text_watermark(self.text_widget)
+        # Update button text for external viewer
+        if format_info.get('external', False):
+            file_type = format_info['type']
+            if file_type == 'audio':
+                self.open_external_button.setText("Play Audio")
+            elif file_type == 'video':
+                self.open_external_button.setText("Play Video")
+            elif file_type == 'document':
+                self.open_external_button.setText("Open Document")
+            else:
+                self.open_external_button.setText("Open Externally")
+    
+    def _update_details_tab(self):
+        """Update the details tab with file information."""
+        # Clear existing details
+        for i in reversed(range(self.details_layout.count())):
+            self.details_layout.itemAt(i).widget().setParent(None)
+        
+        metadata = self.current_metadata
+        format_info = self.current_format_info
+        
+        # File information
+        self.details_layout.addRow("Filename:", QLabel(metadata.get("filename", "Unknown")))
+        self.details_layout.addRow("File Type:", QLabel(format_info['display_name']))
+        self.details_layout.addRow("MIME Type:", QLabel(format_info['mime']))
+        self.details_layout.addRow("Detection Method:", QLabel(format_info['detection_method'].title()))
+        self.details_layout.addRow("Confidence:", QLabel(f"{format_info['confidence']}%"))
+        
+        # File size
+        if self.current_content:
+            size_bytes = len(self.current_content)
+            if size_bytes < 1024:
+                size_text = f"{size_bytes} bytes"
+            elif size_bytes < 1024 * 1024:
+                size_text = f"{size_bytes / 1024:.1f} KB"
+            else:
+                size_text = f"{size_bytes / (1024 * 1024):.1f} MB"
+            self.details_layout.addRow("File Size:", QLabel(size_text))
+        
+        # Capabilities
+        capabilities = []
+        if format_info['viewable']:
+            capabilities.append("In-app viewing")
+        if format_info.get('external', False):
+            capabilities.append("External application")
+        if not self.is_view_only:
+            capabilities.append("Exportable")
+        else:
+            capabilities.append("View-only")
+        
+        self.details_layout.addRow("Capabilities:", QLabel(", ".join(capabilities)))
+        
+        # Security information
+        security = metadata.get("security", {})
+        if security.get("disable_export", False):
+            security_label = QLabel("View-only (export disabled)")
+            security_label.setStyleSheet("color: #e74c3c; font-weight: bold;")
+            self.details_layout.addRow("Security:", security_label)
+    
+    def _display_image_enhanced(self, content: bytes):
+        """Display image with enhanced UI."""
+        try:
+            # Check if content is too large (>10MB) to prevent memory issues
+            if len(content) > 10 * 1024 * 1024:
+                self.status_label.setText(f"Large image ({len(content) / (1024*1024):.1f} MB) - may load slowly")
+            
+            pixmap = QPixmap()
+            load_success = False
+            
+            # Try to load the image data
+            try:
+                load_success = pixmap.loadFromData(content)
+            except Exception as e:
+                print(f"Primary image loading failed: {str(e)}")
+                try:
+                    image = QImage()
+                    if image.loadFromData(content):
+                        pixmap = QPixmap.fromImage(image)
+                        load_success = not pixmap.isNull()
+                except Exception as alt_e:
+                    print(f"Alternative image loading also failed: {str(alt_e)}")
+            
+            if load_success:
+                self._display_image(pixmap)
+            else:
+                self._display_error("Failed to load image data")
+        except Exception as e:
+            self._display_error(f"Error displaying image: {str(e)}")
+    
+    def _display_text_enhanced(self, content: bytes):
+        """Display text with enhanced formatting and syntax highlighting."""
+        try:
+            # Try to decode as text
+            try:
+                text_content = content.decode('utf-8')
+            except UnicodeDecodeError:
+                try:
+                    text_content = content.decode('latin-1')
+                except UnicodeDecodeError:
+                    text_content = content.decode('utf-8', errors='replace')
+            
+            self.content_type = "text"
+            
+            # Set up text display
+            self.text_widget.setPlainText(text_content)
+            
+            # Apply syntax highlighting for code files
+            if self.current_format_info['type'] == 'code':
+                if self.current_format_info['format'] == 'python':
+                    highlighter = PythonSyntaxHighlighter(self.text_widget.document())
+                # Add more syntax highlighters as needed
+            
+            self.content_area.setWidget(self.text_widget)
+            self.text_widget.setVisible(True)
+            
+            # Apply watermark if view-only
+            if self.is_view_only and self.watermarker:
+                self.watermarker.apply_text_watermark(self.text_widget)
+            
+            # Update status
+            line_count = text_content.count('\n') + 1
+            char_count = len(text_content)
+            self.status_label.setText(f"{line_count} lines, {char_count} characters")
+            
+        except Exception as e:
+            self._display_error(f"Error displaying text: {str(e)}")
+    
+    def _display_pdf_info(self):
+        """Display PDF information and viewing options."""
+        self.content_type = "pdf"
+        
+        # Create PDF info widget
+        pdf_widget = QWidget()
+        pdf_layout = QVBoxLayout(pdf_widget)
+        pdf_layout.setAlignment(Qt.AlignCenter)
+        
+        # PDF icon
+        pdf_icon = QLabel("📄")
+        font = pdf_icon.font()
+        font.setPointSize(48)
+        pdf_icon.setFont(font)
+        pdf_icon.setAlignment(Qt.AlignCenter)
+        pdf_layout.addWidget(pdf_icon)
+        
+        # PDF message
+        pdf_message = QLabel("PDF Document")
+        pdf_message.setAlignment(Qt.AlignCenter)
+        font = pdf_message.font()
+        font.setBold(True)
+        font.setPointSize(14)
+        pdf_message.setFont(font)
+        pdf_layout.addWidget(pdf_message)
+        
+        # PDF info
+        if self.is_view_only:
+            info_text = "This PDF is view-only and cannot be exported. You cannot open it with external applications."
+        else:
+            info_text = "PDFs cannot be displayed directly in the application. Click 'Open Externally' to view it in your default PDF viewer, or 'Export' to save it."
+        
+        pdf_info = QLabel(info_text)
+        pdf_info.setAlignment(Qt.AlignCenter)
+        pdf_info.setWordWrap(True)
+        pdf_layout.addWidget(pdf_info)
+        
+        self.content_area.setWidget(pdf_widget)
+    
+    def _display_generic_viewable(self):
+        """Display generic viewable content."""
+        self._display_text_enhanced(self.current_content)
+    
+    def _display_non_viewable(self):
+        """Display message for non-viewable content with helpful instructions."""
+        self.content_type = "binary"
+        
+        format_info = self.current_format_info
+        
+        # Set appropriate icon based on type
+        icon_map = {
+            'audio': '🎵',
+            'video': '🎬',
+            'document': '📄',
+            'archive': '📦',
+            'executable': '⚙️',
+            'database': '🗄️',
+            'unknown': '🔒'
+        }
+        
+        self.binary_icon.setText(icon_map.get(format_info['type'], '🔒'))
+        self.binary_message.setText(f"{format_info['display_name']} - Cannot Display Directly")
+        self.binary_info.setText(format_info['viewer_message'])
+        
+        # Add view-only notice if applicable
+        if self.is_view_only:
+            notice = QLabel("This file is marked as view-only and cannot be exported")
+            notice.setAlignment(Qt.AlignCenter)
+            font = notice.font()
+            font.setBold(True)
+            notice.setFont(font)
+            notice.setStyleSheet("color: #e74c3c;")
+            self.binary_layout.addWidget(notice)
+        
+        self.content_area.setWidget(self.binary_widget)
+    
+    def _display_error(self, error_message: str):
+        """Display error message."""
+        error_widget = QWidget()
+        error_layout = QVBoxLayout(error_widget)
+        error_layout.setAlignment(Qt.AlignCenter)
+        
+        error_icon = QLabel("❌")
+        font = error_icon.font()
+        font.setPointSize(48)
+        error_icon.setFont(font)
+        error_icon.setAlignment(Qt.AlignCenter)
+        error_layout.addWidget(error_icon)
+        
+        error_label = QLabel("Error Displaying File")
+        error_label.setAlignment(Qt.AlignCenter)
+        font = error_label.font()
+        font.setBold(True)
+        font.setPointSize(14)
+        error_label.setFont(font)
+        error_layout.addWidget(error_label)
+        
+        error_details = QLabel(error_message)
+        error_details.setAlignment(Qt.AlignCenter)
+        error_details.setWordWrap(True)
+        error_details.setStyleSheet("color: #e74c3c;")
+        error_layout.addWidget(error_details)
+        
+        self.content_area.setWidget(error_widget)
+    
+    def _open_externally(self):
+        """Open file with external application."""
+        if not self.current_content or not self.current_format_info:
+            QMessageBox.warning(self, "Error", "No file loaded to open externally.")
+            return
+        
+        if self.is_view_only:
+            QMessageBox.warning(self, "Restricted", "This file is view-only and cannot be opened with external applications.")
+            return
+        
+        try:
+            # Create temporary file
+            import tempfile
+            import os
+            
+            # Get appropriate file extension
+            filename = self.current_metadata.get("filename", "temp_file")
+            _, ext = os.path.splitext(filename)
+            if not ext:
+                # Try to determine extension from format
+                format_to_ext = {
+                    'mp3': '.mp3', 'wav': '.wav', 'flac': '.flac', 'ogg': '.ogg',
+                    'mp4': '.mp4', 'avi': '.avi', 'mkv': '.mkv', 'mov': '.mov',
+                    'pdf': '.pdf', 'doc': '.doc', 'docx': '.docx',
+                    'jpeg': '.jpg', 'png': '.png', 'gif': '.gif'
+                }
+                ext = format_to_ext.get(self.current_format_info['format'], '')
+            
+            # Create temporary file
+            with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as temp_file:
+                temp_file.write(self.current_content)
+                temp_path = temp_file.name
+            
+            # Track for cleanup
+            self.temp_files.append(temp_path)
+            
+            # Launch external viewer in thread
+            self.external_thread = ExternalViewerThread(temp_path, self.current_format_info)
+            self.external_thread.finished_signal.connect(self._on_external_viewer_finished)
+            self.external_thread.start()
+            
+            # Show progress
+            self.status_label.setText("Opening with external application...")
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open file externally: {str(e)}")
+    
+    @pyqtSlot(bool, str)
+    def _on_external_viewer_finished(self, success: bool, message: str):
+        """Handle external viewer completion."""
+        if success:
+            self.status_label.setText(message)
+        else:
+            self.status_label.setText("Failed to open externally")
+            QMessageBox.warning(self, "External Viewer Error", message)
+    
+    def set_export_handler(self, handler: Callable):
+        """Set the export handler function."""
+        self.export_handler = handler
+    
+    def _export_requested(self):
+        """Handle export request."""
+        if self.export_handler:
+            self.export_handler()
+        else:
+            self.export_requested.emit()
+    
+    def _close_requested(self):
+        """Handle close request."""
+        self._cleanup_resources()
+        self.close_requested.emit()
+    
+    def _cleanup_resources(self):
+        """Clean up resources and temporary files."""
+        # Clean up temporary files
+        for temp_file in self.temp_files:
+            try:
+                if os.path.exists(temp_file):
+                    os.unlink(temp_file)
+            except Exception as e:
+                print(f"Failed to clean up temporary file {temp_file}: {e}")
+        self.temp_files.clear()
+        
+        # Clean up large objects
+        self.current_content = None
+        
+        # Force garbage collection
+        import gc
+        gc.collect()
+    
+    def closeEvent(self, event):
+        """Handle widget close event."""
+        self._cleanup_resources()
+        super().closeEvent(event)
+    
+    def __del__(self):
+        """Destructor to ensure cleanup."""
+        try:
+            self._cleanup_resources()
+        except:
+            pass
     
     def _display_image(self, pixmap: QPixmap):
-        """Display image content.
-        
-        Args:
-            pixmap: The image pixmap to display
-        """
+        """Display image content using the existing image display logic."""
         try:
             # Verify the pixmap is valid
             if pixmap.isNull():
-                self._display_binary({"file_type": "media"})
+                self._display_error("Invalid image data")
                 return
                 
             # Check if image dimensions are too large
@@ -325,24 +720,27 @@ class FileViewer(QWidget):
                     # Set the pixmap in a safe way
                     try:
                         self.image_label.setPixmap(final_pixmap)
+                        # Update status with image dimensions
+                        self.status_label.setText(f"Image: {final_pixmap.width()}x{final_pixmap.height()} pixels")
                     except Exception as set_error:
                         print(f"Error setting pixmap to label: {str(set_error)}")
                         # Last resort - create a new small pixmap
                         fallback_pixmap = QPixmap(400, 300)
                         fallback_pixmap.fill(QColor(240, 240, 240))
                         self.image_label.setPixmap(fallback_pixmap)
+                        self.status_label.setText("Error displaying image - using placeholder")
                 else:
                     print("Final pixmap is null or invalid")
-                    self._display_binary({"file_type": "media", "error": "Invalid image data"})
+                    self._display_error("Invalid image data")
                     return
             except Exception as e:
                 print(f"Unexpected error in pixmap handling: {str(e)}")
-                self._display_binary({"file_type": "media", "error": str(e)})
+                self._display_error(str(e))
                 return
             
             # Add view-only notice if applicable
             if self.is_view_only:
-                notice = QLabel("This media file is view-only and cannot be exported")
+                notice = QLabel("This image is view-only and cannot be exported")
                 notice.setAlignment(Qt.AlignCenter)
                 font = notice.font()
                 font.setBold(True)
@@ -353,130 +751,4 @@ class FileViewer(QWidget):
             self.content_area.setWidget(self.image_container)
         except Exception as e:
             print(f"Error displaying image: {str(e)}")
-            # Fall back to binary display if image display fails
-            self._display_binary({"file_type": "media", "error": str(e)})
-    
-    def _display_binary(self, metadata: Dict[str, Any]):
-        """Display placeholder for binary/unsupported content.
-        
-        Args:
-            metadata: The file metadata
-        """
-        self.content_type = "binary"
-        
-        # Reset icon and styles to default first
-        self.binary_icon.setText("🔒")
-        self.binary_icon.setStyleSheet("")
-        self.binary_message.setStyleSheet("")
-        
-        # Update messages based on file type
-        is_media = metadata.get("file_type") == "media"
-        is_pdf = metadata.get("file_type") == "pdf" or (metadata.get("filename", "").lower().endswith(".pdf"))
-        error_message = metadata.get("error", "")
-        
-        if (is_media or is_pdf) and self.is_view_only:
-            file_type_text = "media" if is_media else "PDF"
-            self.binary_message.setText(f"This {file_type_text} file is view-only and cannot be exported")
-            self.binary_info.setText(
-                f"{file_type_text.capitalize()} files are protected by default to prevent unauthorized distribution. "
-                "Currently, only image formats (JPG, PNG, GIF, etc.) can be viewed directly.")
-        elif is_media:
-            self.binary_message.setText("Unable to display this image")
-            if error_message:
-                self.binary_info.setText(
-                    f"There was an error processing this image: {error_message}\n"
-                    "Try exporting the file to view it in an external application.")
-            else:
-                self.binary_info.setText(
-                    "The image format may be unsupported or the file might be corrupted. "
-                    "Try exporting the file to view it in an external application.")
-        elif is_pdf and self.is_view_only:
-            # Special message for PDF files that are view-only
-            self.binary_message.setText("PDF file is view-only and cannot be exported")
-            self.binary_info.setText(
-                "PDF files are protected by default to prevent unauthorized distribution. "
-                "Currently, PDF files cannot be displayed directly in the app when export is denied. "
-                "You can request support for PDF viewing through your administrator.")
-            
-            # Change icon to indicate this is informational rather than an error
-            self.binary_icon.setText("ℹ️")
-            self.binary_icon.setStyleSheet("color: #3498db;") # Blue color for info
-            self.binary_message.setStyleSheet("color: #3498db; margin-bottom: 10px;") # Match the icon color with spacing
-            
-            # Apply special styling to the info text to highlight supported formats
-            self.binary_info.setStyleSheet("line-height: 150%; background-color: rgba(52, 152, 219, 0.1); padding: 15px; border-radius: 5px;")
-        elif self.is_view_only:
-            # Special message for other non-media files that are view-only
-            self.binary_message.setText("File type not supported for in-app viewing")
-            self.binary_info.setText(
-                "When export is denied for security reasons, only certain file types can be displayed directly in the app:\n\n"
-                "• Images (JPG, PNG, GIF, BMP, etc.) - Currently supported\n"
-                "• Text files (TXT, MD, etc.) - Currently supported\n\n"
-                "Other file types (DOC, XLS, etc.) cannot currently be displayed in the app when export is denied. "
-                "You can request support for additional file types through your administrator.")
-            
-            # Change icon to indicate this is informational rather than an error
-            self.binary_icon.setText("ℹ️")
-            self.binary_icon.setStyleSheet("color: #3498db;") # Blue color for info
-            self.binary_message.setStyleSheet("color: #3498db; margin-bottom: 10px;") # Match the icon color with spacing
-            
-            # Apply special styling to the info text to highlight supported formats
-            self.binary_info.setStyleSheet("line-height: 150%; background-color: rgba(52, 152, 219, 0.1); padding: 15px; border-radius: 5px;")
-        else:
-            self.binary_message.setText("This file cannot be displayed in-app")
-            if error_message:
-                self.binary_info.setText(
-                    f"Error: {error_message}\n\n"
-                    "The file format is not supported for direct viewing in the application. "
-                    "You can use the Export button below to save and open this file in an appropriate external application.")
-            else:
-                self.binary_info.setText(
-                    "Currently, only these file types can be viewed directly in the app:\n\n"
-                    "• Images (JPG, PNG, GIF, BMP, etc.)\n"
-                    "• Text files (TXT, MD, etc.)\n\n"
-                    "Please use the Export button below to save and open this file in an appropriate external application.")
-                
-            # Apply consistent styling
-            self.binary_message.setStyleSheet("color: #e74c3c; margin-bottom: 10px;") # Red color for warning
-            self.binary_info.setStyleSheet("line-height: 150%; background-color: rgba(231, 76, 60, 0.1); padding: 15px; border-radius: 5px;")
-        
-        self.content_area.setWidget(self.binary_widget)
-    
-    def _export_requested(self):
-        """Handle export button click."""
-        # This will be connected to an external handler
-        pass
-    
-    def _close_requested(self):
-        """Handle close button click."""
-        self._cleanup_resources()
-        self.close_requested.emit()
-        
-    def _cleanup_resources(self):
-        """Clean up resources to prevent memory leaks."""
-        # Clear image resources
-        if self.content_type == "image":
-            # Clear pixmap from label
-            self.image_label.setPixmap(QPixmap())
-            
-            # Clear any notices
-            for i in reversed(range(self.image_layout.count())):
-                item = self.image_layout.itemAt(i)
-                if item.widget() != self.image_label:
-                    widget = item.widget()
-                    if widget:
-                        widget.setParent(None)
-                        widget.deleteLater()
-        
-        # Force garbage collection
-        import gc
-        gc.collect()
-    
-    def set_export_handler(self, handler: Callable):
-        """Set the handler for export button clicks.
-        
-        Args:
-            handler: The callback function to handle export requests
-        """
-        self.export_button.clicked.disconnect(self._export_requested)
-        self.export_button.clicked.connect(handler)
+            self._display_error(f"Error displaying image: {str(e)}")
