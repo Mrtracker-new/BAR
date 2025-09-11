@@ -16,6 +16,10 @@ from src.gui.main_window import MainWindow
 from src.gui.device_setup_dialog import DeviceSetupDialog
 from src.gui.styles import StyleManager
 from src.security.secure_memory import get_secure_memory_manager, force_secure_memory_cleanup
+from src.security.emergency_protocol import EmergencyProtocol
+from src.security.intelligent_monitor import IntelligentFileMonitor, ThreatLevel
+from src.security.steganographic_triggers import SteganographicTriggerSystem, TriggerType, TriggerAction
+from src.file_manager.file_manager import FileManager
 
 # Import PyQt5 modules
 from PyQt5.QtWidgets import QApplication, QDialog, QMessageBox, QLineEdit, QInputDialog
@@ -65,9 +69,10 @@ def setup_application_directory():
 class SimpleAuthDialog(QDialog):
     """Simple authentication dialog for device password entry."""
     
-    def __init__(self, device_auth, parent=None):
+    def __init__(self, device_auth, parent=None, steg_system=None):
         super().__init__(parent)
         self.device_auth = device_auth
+        self.steg_system = steg_system  # Steganographic trigger system
         self.authenticated = False
         
         self.setWindowTitle("BAR - Device Authentication")
@@ -95,6 +100,13 @@ class SimpleAuthDialog(QDialog):
                 return QDialog.Rejected
             
             if password:
+                # Check steganographic triggers before authentication
+                if self.steg_system:
+                    trigger_activated = self.steg_system.check_password_trigger(password)
+                    if trigger_activated:
+                        # Steganographic trigger activated - emergency protocol should be running
+                        return QDialog.Rejected
+                
                 success, message = self.device_auth.authenticate(password)
                 if success:
                     self.authenticated = True
@@ -154,11 +166,18 @@ def main():
         # Initialize device authentication manager
         device_auth = DeviceAuthManager()
         
+        # Initialize enhanced self-destruct components early for security
+        logger.info("Initializing enhanced security systems...")
+        config_manager = ConfigManager(base_directory=str(app_dir))
+        emergency = EmergencyProtocol(str(app_dir), device_auth)
+        monitor = IntelligentFileMonitor(Path(app_dir))
+        steg = SteganographicTriggerSystem(Path(app_dir))
+        
         # Check if device is initialized
         if not device_auth.is_device_initialized():
             logger.info("Device not initialized - starting first-time setup")
             
-            # First-time setup
+            # First-time setup (steg system not needed for setup)
             setup_dialog = DeviceSetupDialog(device_auth)
             setup_result = setup_dialog.exec_()
             
@@ -169,9 +188,9 @@ def main():
             
             logger.info("Device setup completed successfully")
         
-        # Device is initialized, now authenticate
+        # Device is initialized, now authenticate with steg system available
         logger.info("Device initialized - requesting authentication")
-        auth_dialog = SimpleAuthDialog(device_auth)
+        auth_dialog = SimpleAuthDialog(device_auth, steg_system=steg)
         auth_result = auth_dialog.exec_()
         
         if auth_result != QDialog.Accepted or not auth_dialog.is_authenticated():
@@ -179,13 +198,44 @@ def main():
             force_secure_memory_cleanup()
             sys.exit(0)
         
-        logger.info("Authentication successful - initializing main application")
+        logger.info("Authentication successful - configuring security systems")
+
+        # Register monitor threat callbacks
+        def handle_high_threat(data):
+            reason = f"High threat detected: {data.get('type', 'unknown')}"
+            emergency.trigger_emergency_destruction(reason=reason, level="aggressive")
+        def handle_critical_threat(data):
+            reason = f"Critical threat detected: {data.get('type', 'unknown')}"
+            emergency.trigger_emergency_destruction(reason=reason, level="scorched")
+        monitor.register_threat_callback(ThreatLevel.HIGH, handle_high_threat)
+        monitor.register_threat_callback(ThreatLevel.CRITICAL, handle_critical_threat)
+
+        # Install a safe default steganographic trigger (example can be customized)
+        # Note: avoid using real sensitive patterns in code
+        steg.install_trigger(TriggerType.ACCESS_SEQUENCE, "count:access:20", TriggerAction.AGGRESSIVE_WIPE, sensitivity=0.9, description="Rapid access default")
+
+        # Set up steganographic trigger callbacks
+        def steg_callback(data):
+            action = data.get('action')
+            if action == TriggerAction.SELECTIVE_WIPE.value:
+                emergency.trigger_emergency_destruction(reason="Steganographic trigger", level="selective")
+            elif action == TriggerAction.AGGRESSIVE_WIPE.value:
+                emergency.trigger_emergency_destruction(reason="Steganographic trigger", level="aggressive")
+            elif action == TriggerAction.SCORCHED_EARTH.value:
+                emergency.trigger_emergency_destruction(reason="Steganographic trigger", level="scorched")
         
-        # Authentication successful, initialize other components
-        config_manager = ConfigManager()
+        for action in TriggerAction:
+            steg.register_trigger_callback(action, steg_callback)
+
+        # Create FileManager with monitor
+        file_manager = FileManager(str(app_dir), monitor=monitor)
+
+        # Start systems
+        monitor.start_monitoring()
+        emergency.start_dead_mans_switch()
         
-        # Create and show main window with device authentication
-        main_window = MainWindow(config_manager, None, device_auth)  # FileManager removed for simplicity
+        # Create and show main window with device authentication and self-destruct systems
+        main_window = MainWindow(config_manager, file_manager, device_auth, emergency=emergency, monitor=monitor, steg=steg)
         main_window.show()
         
         logger.info("BAR application started successfully")
@@ -197,6 +247,18 @@ def main():
         
         # Ensure secure cleanup on exit
         try:
+            try:
+                monitor.stop_monitoring()
+            except Exception:
+                pass
+            try:
+                emergency.stop_dead_mans_switch()
+            except Exception:
+                pass
+            try:
+                steg.cleanup()
+            except Exception:
+                pass
             device_auth.logout()
             force_secure_memory_cleanup()
         except Exception as e:
