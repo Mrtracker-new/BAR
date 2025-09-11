@@ -45,6 +45,7 @@ See the [full disclaimer](DISCLAIMER.md) for complete details on legal considera
 - **🔒 Completely Offline Operation**: Works without internet connection or server dependencies
 - **🛡️ Military-Grade Encryption**: AES-256 in GCM mode for authenticated encryption
 - **🔑 Secure Key Management**: PBKDF2 with high iteration counts and hardware binding options
+- **📸 Advanced Screenshot Protection**: Real-time blocking of screenshot attempts with multi-layer detection
 
 ### Self-Destruction Mechanisms
 - **⏱️ Time-based Expiration**: Files automatically delete after a specified time
@@ -57,6 +58,7 @@ See the [full disclaimer](DISCLAIMER.md) for complete details on legal considera
 - **🔍 Multi-threaded Scanning**: Fast scanning of all storage devices including removable media
 - **🔄 Secure File Sharing**: Export/import encrypted files with security constraints intact
 - **🗑️ Secure Deletion**: Multi-pass overwrite techniques to prevent data recovery
+- **👁️ View-Only Protection**: Enhanced security for view-only files with comprehensive anti-capture measures
 
 ### User Experience
 - **🔐 Device Authentication**: Single-user device-bound authentication with hardware binding
@@ -107,6 +109,18 @@ See the [full disclaimer](DISCLAIMER.md) for complete details on legal considera
 - Secure random number generation for cryptographic operations
 - Protection against timing attacks in cryptographic implementations
 - Memory protection to prevent sensitive data exposure
+</details>
+
+<details>
+<summary><b>Screenshot Protection System</b></summary>
+
+- **Real-time Keyboard Hook Blocking**: Intercepts Print Screen, Win+Shift+S, Alt+Print Screen
+- **Clipboard Monitoring**: Detects and clears screenshot images from clipboard immediately
+- **Process Detection**: Monitors and terminates screenshot applications (Snipping Tool, third-party tools)
+- **Focus Change Tracking**: Monitors window focus changes and suspicious behavior
+- **Statistical Analysis**: Tracks and scores suspicious activities for breach detection
+- **Multi-layer Defense**: Combines multiple protection methods for comprehensive coverage
+- **Real-time Event Logging**: Comprehensive logging of all security events and attempts
 </details>
 
 ---
@@ -223,16 +237,31 @@ Manage your secure files and access application features
 </details>
 
 <details>
-<summary><b>Media File Restrictions</b></summary>
+<summary><b>Enhanced View-Only File Protection</b></summary>
 
-BAR includes special handling for media files to prevent unauthorized access:
+BAR includes comprehensive protection for view-only files to prevent unauthorized capture:
 
-1. Screenshot prevention blocks attempts to capture screen content
-2. Media files are protected with additional security layers
-3. Warning messages inform users about restrictions
+**Advanced Screenshot Protection:**
+- Real-time blocking of screenshot hotkeys (Print Screen, Win+Shift+S, Alt+Print Screen)
+- Automatic detection and clearing of screenshot images from clipboard
+- Process monitoring to detect and terminate screenshot applications
+- Focus change monitoring to track suspicious window switching behavior
+- Statistical analysis of security events with automatic breach response
+
+**Multi-layer Security:**
+- Keyboard hook interception at the Windows system level
+- Clipboard monitoring with image detection capabilities
+- Process whitelist/blacklist system for development environments
+- Dynamic watermarking and security overlays
+- Comprehensive security event logging and scoring
+
+**Limitations:**
+- Mobile phone cameras cannot be blocked (hardware limitation)
+- External screen capture devices are not detectable
+- Administrative/elevated screenshot tools may bypass some protections
 
 <div align="center">
-<img src="resources/Media_File_Restriction_Warning.png" alt="Media File Restriction Warning" width="500">
+<img src="resources/Media_File_Restriction_Warning.png" alt="View-Only File Protection" width="500">
 </div>
 </details>
 
@@ -305,7 +334,7 @@ For the full license text, see the [LICENSE](LICENSE) file included with this ap
 
 ## 👨‍💻 About the Author
 
-BAR was created by **Rolan Lobo**, a passionate cybersecurity enthusiast and software developer dedicated to creating tools that enhance digital privacy and security.
+BAR was created by **Rolan (RNR)**, a passionate cybersecurity enthusiast and software developer dedicated to creating tools that enhance digital privacy and security. With extensive experience in security architecture and anti-forensics techniques, Rolan has designed BAR to provide military-grade protection for sensitive data while maintaining ease of use.
 
 ---
 
