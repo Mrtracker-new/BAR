@@ -12,14 +12,14 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import hmac
 from cryptography.hazmat.backends import default_backend
 
-from .secure_memory import (
+from security.secure_memory import (
     SecureBytes, SecureString, create_secure_bytes, create_secure_string,
     secure_compare, secure_random_string, MemoryProtectionLevel,
     get_secure_memory_manager, force_secure_memory_cleanup
 )
-from .hardware_id import HardwareIdentifier
-from .secure_file_ops import SecureFileOperations, SecureDeletionMethod, FileSecurityLevel
-from ..config.config_manager import ConfigManager
+from security.hardware_id import HardwareIdentifier
+from security.secure_file_ops import SecureFileOperations, SecureDeletionMethod, FileSecurityLevel
+from config.config_manager import ConfigManager
 
 
 class DeviceAuthManager:
