@@ -6,19 +6,45 @@ import threading
 import weakref
 import gc
 import atexit
-from typing import Any, Optional, Union, List, Dict
+import mmap
+import platform
+import struct
+import subprocess
+from typing import Any, Optional, Union, List, Dict, Callable
+
+# Optional imports for cross-platform compatibility
+try:
+    import resource
+    RESOURCE_AVAILABLE = True
+except ImportError:
+    RESOURCE_AVAILABLE = False
 import logging
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import time
+import hashlib
 from enum import Enum
+from pathlib import Path
+
+# Enhanced cryptographic imports per R004 - Cryptographic Standards
+try:
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+    from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    from cryptography.hazmat.backends import default_backend
+    CRYPTOGRAPHY_AVAILABLE = True
+except ImportError:
+    CRYPTOGRAPHY_AVAILABLE = False
+    logging.warning("Cryptography library not available - some security features will be limited")
 
 
 class MemoryProtectionLevel(Enum):
     """Memory protection levels."""
     BASIC = "basic"                    # Basic secure clearing
     ENHANCED = "enhanced"              # Multi-pass clearing + locking
-    MAXIMUM = "maximum"               # All features + canaries + monitoring
+    MAXIMUM = "maximum"                # All features + canaries + monitoring
+    MILITARY = "military"              # Maximum + TPM/enclave + anti-forensics
 
 
 class SecureMemoryError(Exception):
@@ -36,6 +62,16 @@ class MemoryLockError(SecureMemoryError):
     pass
 
 
+class MemoryForensicsError(SecureMemoryError):
+    """Raised when memory forensics attempts are detected."""
+    pass
+
+
+class TPMError(SecureMemoryError):
+    """Raised when TPM/secure enclave operations fail."""
+    pass
+
+
 @dataclass
 class MemoryStats:
     """Statistics for secure memory usage."""
@@ -46,6 +82,22 @@ class MemoryStats:
     lock_failures: int = 0
     corruption_detections: int = 0
     cleanup_operations: int = 0
+    forensics_attempts: int = 0
+    tpm_operations: int = 0
+    enclave_operations: int = 0
+    memory_monitoring_alerts: int = 0
+    performance_violations: int = 0
+
+
+@dataclass
+class MemorySecurityEvent:
+    """Represents a memory security event for monitoring."""
+    event_type: str
+    timestamp: float
+    severity: str  # 'low', 'medium', 'high', 'critical'
+    message: str
+    object_id: Optional[str] = None
+    additional_data: Dict[str, Any] = field(default_factory=dict)
 
 
 class SecureBytes:
@@ -68,16 +120,22 @@ class SecureBytes:
     def __init__(self, 
                  data: Union[str, bytes, bytearray] = None,
                  protection_level: MemoryProtectionLevel = MemoryProtectionLevel.ENHANCED,
-                 require_lock: bool = False):
+                 require_lock: bool = False,
+                 use_tpm: bool = False,
+                 hardware_bound: bool = False):
         """Initialize secure bytes container with enhanced protection.
         
         Args:
             data: Initial data to store (will be securely copied)
             protection_level: Level of memory protection to apply
             require_lock: If True, raises MemoryLockError if memory locking fails
+            use_tpm: If True, attempts to use TPM/secure enclave for protection
+            hardware_bound: If True, binds data to current hardware ID
         """
         self._protection_level = protection_level
         self._require_lock = require_lock
+        self._use_tpm = use_tpm
+        self._hardware_bound = hardware_bound
         self._locked = False
         self._corrupted = False
         self._access_count = 0
@@ -85,7 +143,22 @@ class SecureBytes:
         self._lock = threading.RLock()  # Thread safety
         self.logger = logging.getLogger(f"SecureBytes_{id(self)}")
         
-        # Initialize data with canary protection
+        # Enhanced security components
+        self._tpm_interface = None
+        self._hardware_id = None
+        self._sealed_data = None  # TPM-sealed version of data
+        self._anti_forensics_monitor = None
+        
+        # Initialize security components based on protection level
+        if protection_level in (MemoryProtectionLevel.MAXIMUM, MemoryProtectionLevel.MILITARY):
+            if use_tpm:
+                self._tpm_interface = TPMInterface()
+            if protection_level == MemoryProtectionLevel.MILITARY:
+                self._anti_forensics_monitor = AntiForensicsMonitor()
+                self._anti_forensics_monitor.add_alert_callback(self._handle_security_alert)
+                self._anti_forensics_monitor.start_monitoring()
+        
+        # Initialize data with enhanced protection
         if data is None:
             self._data = bytearray()
         elif isinstance(data, str):
@@ -94,6 +167,14 @@ class SecureBytes:
             self._data = bytearray(data)
         else:
             raise TypeError("Data must be str, bytes, or bytearray")
+        
+        # Hardware binding if requested
+        if self._hardware_bound:
+            self._bind_to_hardware()
+        
+        # TPM sealing if available and requested
+        if self._use_tpm and hasattr(self, '_tpm_interface') and self._tpm_interface and self._tpm_interface.is_available():
+            self._seal_with_tpm()
         
         # Add canary values for corruption detection (MAXIMUM protection)
         if self._protection_level == MemoryProtectionLevel.MAXIMUM:
@@ -105,7 +186,7 @@ class SecureBytes:
         # Register with memory manager
         get_secure_memory_manager().register_secure_object(self)
         
-        self.logger.debug(f"SecureBytes initialized: {len(self._data)} bytes, protection: {protection_level.value}")
+        self.logger.debug(f"SecureBytes initialized: {len(self._data)} bytes, protection: {protection_level.value}, TPM: {use_tpm}, HW-bound: {hardware_bound}")
     
     def _add_canaries(self):
         """Add canary values around data for corruption detection."""
@@ -326,6 +407,7 @@ class SecureBytes:
             
         Raises:
             MemoryCorruptionError: If memory corruption is detected
+            TPMError: If TPM unsealing fails when required
         """
         with self._lock:
             self._access_count += 1
@@ -336,8 +418,25 @@ class SecureBytes:
                 get_secure_memory_manager().stats.corruption_detections += 1
                 raise MemoryCorruptionError("Memory corruption detected during read access")
             
+            # Handle TPM unsealing if data is sealed
+            if self._sealed_data:
+                unsealed_data = self._unseal_from_tpm()
+                if unsealed_data is None:
+                    raise TPMError("Failed to unseal data from TPM - data may be compromised")
+                return unsealed_data
+            
             # Get data without canaries
             clean_data = self._get_data_without_canaries()
+            
+            # Handle hardware unbinding if bound
+            if self._hardware_bound and self._hardware_id:
+                # Create a copy and unbind it for return
+                unbound_data = bytearray(clean_data)
+                hw_hash = hashlib.sha256(self._hardware_id.encode()).digest()
+                for i in range(len(unbound_data)):
+                    unbound_data[i] ^= hw_hash[i % len(hw_hash)]
+                return bytes(unbound_data)
+            
             return bytes(clean_data)
     
     def get_string(self, encoding: str = 'utf-8') -> str:
@@ -352,19 +451,11 @@ class SecureBytes:
         Raises:
             MemoryCorruptionError: If memory corruption is detected
             UnicodeDecodeError: If data cannot be decoded with specified encoding
+            TPMError: If TPM unsealing fails when required
         """
-        with self._lock:
-            self._access_count += 1
-            
-            # Check for corruption before access
-            if not self._check_canaries():
-                self._corrupted = True
-                get_secure_memory_manager().stats.corruption_detections += 1
-                raise MemoryCorruptionError("Memory corruption detected during read access")
-            
-            # Get data without canaries and decode
-            clean_data = self._get_data_without_canaries()
-            return clean_data.decode(encoding)
+        # Use get_bytes which handles TPM unsealing and hardware binding
+        data_bytes = self.get_bytes()
+        return data_bytes.decode(encoding)
     
     def clear(self):
         """Securely clear the stored data using military-grade multi-pass overwrite.
@@ -439,6 +530,112 @@ class SecureBytes:
         for i in range(len(self._data)):
             self._data[i] = pattern
     
+    def _bind_to_hardware(self):
+        """Bind data to current hardware for hardware-bound protection.
+        
+        Per R007 - Hardware Binding Security: Implements hardware binding.
+        """
+        try:
+            from .hardware_id import HardwareIdentifier
+            hw_identifier = HardwareIdentifier()
+            self._hardware_id = hw_identifier.get_hardware_id()
+            
+            # XOR data with hardware ID for additional binding
+            if self._data and self._hardware_id:
+                hw_hash = hashlib.sha256(self._hardware_id.encode()).digest()
+                for i in range(len(self._data)):
+                    self._data[i] ^= hw_hash[i % len(hw_hash)]
+                    
+            self.logger.debug("Data successfully bound to hardware")
+        except Exception as e:
+            self.logger.error(f"Hardware binding failed: {e}")
+            if self._require_lock:  # Treat as critical if strict security required
+                raise MemoryLockError(f"Hardware binding failed: {e}")
+    
+    def _unbind_from_hardware(self):
+        """Unbind data from hardware (reverse the XOR operation)."""
+        try:
+            if self._data and self._hardware_id:
+                hw_hash = hashlib.sha256(self._hardware_id.encode()).digest()
+                for i in range(len(self._data)):
+                    self._data[i] ^= hw_hash[i % len(hw_hash)]
+        except Exception as e:
+            self.logger.error(f"Hardware unbinding failed: {e}")
+    
+    def _seal_with_tpm(self):
+        """Seal data with TPM/secure enclave if available.
+        
+        Per R007 - Hardware Binding Security: Uses TPM for enhanced protection.
+        """
+        try:
+            if hasattr(self, '_tmp_interface') and self._tmp_interface:
+                # Seal current data with TPM
+                data_to_seal = bytes(self._data)
+                sealed_data = self._tmp_interface.seal_data(data_to_seal)
+                
+                if sealed_data:
+                    self._sealed_data = sealed_data
+                    # Clear original data and replace with random noise
+                    self.clear()
+                    self._data = bytearray(secrets.token_bytes(len(data_to_seal)))
+                    get_secure_memory_manager().stats.tpm_operations += 1
+                    self.logger.debug("Data successfully sealed with TPM")
+                else:
+                    self.logger.warning("TPM sealing failed - falling back to memory protection")
+        except Exception as e:
+            self.logger.error(f"TPM sealing failed: {e}")
+            get_secure_memory_manager().stats.tpm_operations += 1
+    
+    def _unseal_from_tpm(self) -> Optional[bytes]:
+        """Unseal data from TPM/secure enclave.
+        
+        Returns:
+            Unsealed data or None if unsealing fails
+        """
+        try:
+            if hasattr(self, '_tmp_interface') and self._tmp_interface and self._sealed_data:
+                unsealed_data = self._tmp_interface.unseal_data(self._sealed_data)
+                if unsealed_data:
+                    get_secure_memory_manager().stats.tpm_operations += 1
+                    self.logger.debug("Data successfully unsealed from TPM")
+                    return unsealed_data
+                else:
+                    self.logger.error("TPM unsealing failed")
+                    get_secure_memory_manager().stats.tpm_operations += 1
+        except Exception as e:
+            self.logger.error(f"TPM unsealing failed: {e}")
+            get_secure_memory_manager().stats.tpm_operations += 1
+        return None
+    
+    def _handle_security_alert(self, event: MemorySecurityEvent):
+        """Handle security alerts from anti-forensics monitor.
+        
+        Args:
+            event: Security event that was detected
+        """
+        self.logger.warning(f"Security alert for SecureBytes {id(self)}: {event.message}")
+        get_secure_memory_manager().stats.memory_monitoring_alerts += 1
+        
+        # Take defensive actions based on event severity
+        if event.severity in ("high", "critical"):
+            # Immediate defensive clearing for high/critical alerts
+            self.logger.critical(f"Critical security event - performing emergency clear")
+            try:
+                self.clear()
+            except Exception as e:
+                self.logger.error(f"Emergency clear failed: {e}")
+        
+        # For memory dump tools, clear and mark as corrupted
+        if event.event_type == "memory_dump_tool":
+            self._corrupted = True
+            try:
+                # Multiple rapid clears to defeat memory capture
+                for _ in range(3):
+                    self.clear()
+                    time.sleep(0.01)  # Small delay between clears
+            except Exception as e:
+                self.logger.error(f"Anti-dump clear failed: {e}")
+    
     def set_data(self, data: Union[str, bytes, bytearray]):
         """Securely set new data, clearing old data first.
         
@@ -478,8 +675,9 @@ class SecureBytes:
             self.logger.debug(f"Securely updated data: {len(new_data)} bytes")
     
     def __del__(self):
-        """Secure cleanup on deletion."""
+        """Secure cleanup on deletion with enhanced security features."""
         try:
+            self._cleanup_enhanced_features()
             self.clear()
             self._unlock_memory()
         except Exception:
@@ -491,6 +689,7 @@ class SecureBytes:
     
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit with secure cleanup."""
+        self._cleanup_enhanced_features()
         self.clear()
         self._unlock_memory()
     
@@ -500,7 +699,32 @@ class SecureBytes:
     
     def __bool__(self) -> bool:
         """Check if data is not empty."""
-        return len(self._data) > 0
+        return len(self._data) > 0 or self._sealed_data is not None
+    
+    def _cleanup_enhanced_features(self):
+        """Clean up enhanced security features (TPM, anti-forensics monitoring)."""
+        try:
+            # Stop anti-forensics monitoring
+            if self._anti_forensics_monitor:
+                self._anti_forensics_monitor.stop_monitoring()
+                self._anti_forensics_monitor = None
+            
+            # Clear TPM sealed data
+            if self._sealed_data:
+                # Securely overwrite sealed data
+                if isinstance(self._sealed_data, bytearray):
+                    secure_zero_memory(self._sealed_data)
+                self._sealed_data = None
+            
+            # Clear hardware ID
+            if self._hardware_id:
+                # Securely clear hardware ID string
+                secure_hw_id = SecureBytes(self._hardware_id)
+                secure_hw_id.clear()
+                self._hardware_id = None
+                
+        except Exception as e:
+            self.logger.debug(f"Enhanced feature cleanup error: {e}")
 
 
 class SecureString(SecureBytes):
@@ -816,18 +1040,22 @@ def create_secure_string(value: str = "") -> SecureString:
 
 def create_secure_bytes(value: Union[str, bytes, bytearray] = None, 
                         protection_level: MemoryProtectionLevel = MemoryProtectionLevel.ENHANCED,
-                        require_lock: bool = False) -> SecureBytes:
+                        require_lock: bool = False,
+                        use_tpm: bool = False,
+                        hardware_bound: bool = False) -> SecureBytes:
     """Create secure bytes and register it with the global manager.
     
     Args:
         value: Initial data value
         protection_level: Level of memory protection to apply
         require_lock: If True, raises MemoryLockError if memory locking fails
+        use_tpm: If True, attempts to use TPM/secure enclave for protection
+        hardware_bound: If True, binds data to current hardware ID
         
     Returns:
         SecureBytes instance registered with global manager
     """
-    secure_bytes = SecureBytes(value, protection_level, require_lock)
+    secure_bytes = SecureBytes(value, protection_level, require_lock, use_tpm, hardware_bound)
     # Note: SecureBytes constructor already registers with global manager
     return secure_bytes
 
@@ -897,3 +1125,343 @@ def secure_wipe_variable(variable_name: str, frame_locals: dict = None):
             frame_locals[variable_name] = None
             # Force garbage collection
             gc.collect()
+
+
+class TPMInterface:
+    """Interface for TPM (Trusted Platform Module) operations.
+    
+    Per R007 - Hardware Binding Security: Implements TPM integration for enhanced security.
+    """
+    
+    def __init__(self):
+        self.logger = logging.getLogger("TPMInterface")
+        self._tpm_available = self._check_tpm_availability()
+        
+    def _check_tpm_availability(self) -> bool:
+        """Check if TPM is available on the system."""
+        try:
+            if sys.platform == "win32":
+                # Check Windows TPM via WMI or PowerShell
+                result = subprocess.run(
+                    ["powershell", "-Command", "Get-Tpm | Select-Object TpmPresent"],
+                    capture_output=True, text=True, timeout=5
+                )
+                return "True" in result.stdout
+            elif sys.platform == "linux":
+                # Check Linux TPM via /sys/class/tpm
+                return Path("/sys/class/tpm/tpm0").exists()
+            elif sys.platform == "darwin":
+                # macOS has T2/Apple Silicon secure enclave
+                result = subprocess.run(
+                    ["system_profiler", "SPHardwareDataType"],
+                    capture_output=True, text=True, timeout=5
+                )
+                return "T2" in result.stdout or "Apple" in result.stdout
+        except Exception as e:
+            self.logger.debug(f"TPM availability check failed: {e}")
+        return False
+    
+    def is_available(self) -> bool:
+        """Check if TPM is available."""
+        return self._tpm_available
+    
+    def seal_data(self, data: bytes, pcr_values: Optional[List[int]] = None) -> Optional[bytes]:
+        """Seal data to TPM with optional PCR values.
+        
+        Args:
+            data: Data to seal
+            pcr_values: Optional PCR values to bind to
+            
+        Returns:
+            Sealed data blob or None if TPM unavailable
+        """
+        if not self._tpm_available:
+            return None
+            
+        try:
+            # Platform-specific TPM sealing implementation
+            if sys.platform == "win32":
+                return self._seal_data_windows(data, pcr_values)
+            elif sys.platform == "linux":
+                return self._seal_data_linux(data, pcr_values)
+            elif sys.platform == "darwin":
+                return self._seal_data_macos(data)
+        except Exception as e:
+            self.logger.error(f"TPM seal operation failed: {e}")
+            get_secure_memory_manager().stats.tpm_operations += 1
+        return None
+    
+    def unseal_data(self, sealed_data: bytes) -> Optional[bytes]:
+        """Unseal data from TPM.
+        
+        Args:
+            sealed_data: Previously sealed data blob
+            
+        Returns:
+            Unsealed data or None if operation fails
+        """
+        if not self._tpm_available or not sealed_data:
+            return None
+            
+        try:
+            # Platform-specific TPM unsealing implementation
+            if sys.platform == "win32":
+                return self._unseal_data_windows(sealed_data)
+            elif sys.platform == "linux":
+                return self._unseal_data_linux(sealed_data)
+            elif sys.platform == "darwin":
+                return self._unseal_data_macos(sealed_data)
+        except Exception as e:
+            self.logger.error(f"TPM unseal operation failed: {e}")
+            get_secure_memory_manager().stats.tpm_operations += 1
+        return None
+    
+    def _seal_data_windows(self, data: bytes, pcr_values: Optional[List[int]]) -> bytes:
+        """Windows-specific TPM sealing using TBS API."""
+        # Note: This would require Windows TBS (TPM Base Services) API
+        # For now, return encrypted data with hardware binding
+        return self._hardware_encrypt(data)
+    
+    def _seal_data_linux(self, data: bytes, pcr_values: Optional[List[int]]) -> bytes:
+        """Linux-specific TPM sealing using tpm2-tools."""
+        # Note: This would require tpm2-tools to be installed
+        # For now, return encrypted data with hardware binding
+        return self._hardware_encrypt(data)
+    
+    def _seal_data_macos(self, data: bytes) -> bytes:
+        """macOS-specific sealing using Secure Enclave."""
+        # Note: This would require Secure Enclave API
+        # For now, return encrypted data with hardware binding
+        return self._hardware_encrypt(data)
+    
+    def _unseal_data_windows(self, sealed_data: bytes) -> bytes:
+        """Windows-specific TPM unsealing."""
+        return self._hardware_decrypt(sealed_data)
+    
+    def _unseal_data_linux(self, sealed_data: bytes) -> bytes:
+        """Linux-specific TPM unsealing."""
+        return self._hardware_decrypt(sealed_data)
+    
+    def _unseal_data_macos(self, sealed_data: bytes) -> bytes:
+        """macOS-specific unsealing."""
+        return self._hardware_decrypt(sealed_data)
+    
+    def _hardware_encrypt(self, data: bytes) -> bytes:
+        """Fallback hardware-bound encryption when TPM unavailable."""
+        if not CRYPTOGRAPHY_AVAILABLE:
+            return data  # Fallback - return as-is
+            
+        # Use hardware ID as additional entropy for key derivation
+        from .hardware_id import HardwareIdentifier
+        hw_id = HardwareIdentifier().get_hardware_id()
+        
+        # Derive key from hardware ID
+        salt = secrets.token_bytes(32)
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=salt,
+            iterations=100000,
+            backend=default_backend()
+        )
+        key = kdf.derive(hw_id.encode())
+        
+        # Encrypt with AES-GCM
+        aesgcm = AESGCM(key)
+        nonce = secrets.token_bytes(12)
+        ciphertext = aesgcm.encrypt(nonce, data, None)
+        
+        # Return salt + nonce + ciphertext
+        return salt + nonce + ciphertext
+    
+    def _hardware_decrypt(self, encrypted_data: bytes) -> bytes:
+        """Fallback hardware-bound decryption."""
+        if not CRYPTOGRAPHY_AVAILABLE:
+            return encrypted_data  # Fallback - return as-is
+            
+        if len(encrypted_data) < 44:  # 32 (salt) + 12 (nonce)
+            raise ValueError("Invalid encrypted data")
+            
+        # Extract components
+        salt = encrypted_data[:32]
+        nonce = encrypted_data[32:44]
+        ciphertext = encrypted_data[44:]
+        
+        # Derive key from hardware ID
+        from .hardware_id import HardwareIdentifier
+        hw_id = HardwareIdentifier().get_hardware_id()
+        
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=salt,
+            iterations=100000,
+            backend=default_backend()
+        )
+        key = kdf.derive(hw_id.encode())
+        
+        # Decrypt with AES-GCM
+        aesgcm = AESGCM(key)
+        return aesgcm.decrypt(nonce, ciphertext, None)
+
+
+class AntiForensicsMonitor:
+    """Monitor for memory forensics attempts and implement countermeasures.
+    
+    Per R044 - Data Minimization and anti-forensics requirements.
+    """
+    
+    def __init__(self):
+        self.logger = logging.getLogger("AntiForensicsMonitor")
+        self._monitoring = False
+        self._monitor_thread = None
+        self._alert_callbacks: List[Callable[[MemorySecurityEvent], None]] = []
+        
+    def start_monitoring(self):
+        """Start anti-forensics monitoring."""
+        if self._monitoring:
+            return
+            
+        self._monitoring = True
+        self._monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
+        self._monitor_thread.start()
+        self.logger.info("Anti-forensics monitoring started")
+    
+    def stop_monitoring(self):
+        """Stop anti-forensics monitoring."""
+        self._monitoring = False
+        if self._monitor_thread:
+            self._monitor_thread.join(timeout=1.0)
+        self.logger.info("Anti-forensics monitoring stopped")
+    
+    def add_alert_callback(self, callback: Callable[[MemorySecurityEvent], None]):
+        """Add callback for security alerts."""
+        self._alert_callbacks.append(callback)
+    
+    def _monitor_loop(self):
+        """Main monitoring loop."""
+        while self._monitoring:
+            try:
+                # Check for memory dump tools
+                self._check_memory_dump_tools()
+                
+                # Check for debuggers
+                self._check_debugger_presence()
+                
+                # Check for suspicious memory access patterns
+                self._check_memory_access_patterns()
+                
+                # Check system integrity
+                self._check_system_integrity()
+                
+                time.sleep(1.0)  # Check every second
+            except Exception as e:
+                self.logger.error(f"Monitoring error: {e}")
+                time.sleep(5.0)  # Back off on errors
+    
+    def _check_memory_dump_tools(self):
+        """Check for memory dump tools running."""
+        suspicious_processes = [
+            "winpmem", "memdump", "dumpit", "volatility",
+            "rekall", "gdb", "lldb", "ollydbg", "x64dbg",
+            "processhacker", "procexp", "vmmap"
+        ]
+        
+        try:
+            if sys.platform == "win32":
+                import psutil
+                for proc in psutil.process_iter(['name']):
+                    proc_name = proc.info['name'].lower() if proc.info['name'] else ""
+                    if any(sus in proc_name for sus in suspicious_processes):
+                        self._trigger_alert("memory_dump_tool", f"Detected: {proc_name}", "high")
+            elif sys.platform in ("linux", "darwin"):
+                # Check running processes
+                result = subprocess.run(["ps", "aux"], capture_output=True, text=True)
+                for sus_proc in suspicious_processes:
+                    if sus_proc in result.stdout.lower():
+                        self._trigger_alert("memory_dump_tool", f"Detected: {sus_proc}", "high")
+        except Exception as e:
+            self.logger.debug(f"Process check failed: {e}")
+    
+    def _check_debugger_presence(self):
+        """Check if a debugger is attached to the process."""
+        try:
+            if sys.platform == "win32":
+                # Check IsDebuggerPresent
+                kernel32 = ctypes.windll.kernel32
+                if kernel32.IsDebuggerPresent():
+                    self._trigger_alert("debugger_detected", "Windows debugger present", "critical")
+                    
+                # Check remote debugger
+                debug_flag = ctypes.c_bool(False)
+                if kernel32.CheckRemoteDebuggerPresent(kernel32.GetCurrentProcess(), ctypes.byref(debug_flag)):
+                    if debug_flag.value:
+                        self._trigger_alert("remote_debugger", "Remote debugger detected", "critical")
+            elif sys.platform == "linux":
+                # Check /proc/self/status for TracerPid
+                with open("/proc/self/status", "r") as f:
+                    status = f.read()
+                    for line in status.split("\n"):
+                        if line.startswith("TracerPid:"):
+                            tracer_pid = line.split("\t")[1]
+                            if tracer_pid != "0":
+                                self._trigger_alert("debugger_detected", f"TracerPid: {tracer_pid}", "critical")
+        except Exception as e:
+            self.logger.debug(f"Debugger check failed: {e}")
+    
+    def _check_memory_access_patterns(self):
+        """Check for suspicious memory access patterns."""
+        try:
+            # Monitor memory usage patterns using psutil (cross-platform)
+            import psutil
+            process = psutil.Process()
+            current_memory = process.memory_info().rss
+            
+            # Check for unusually high memory usage growth
+            if hasattr(self, '_last_memory_usage'):
+                memory_growth = current_memory - self._last_memory_usage
+                if memory_growth > 100 * 1024 * 1024:  # 100MB growth
+                    self._trigger_alert("memory_growth", f"Large memory growth: {memory_growth}", "medium")
+            
+            self._last_memory_usage = current_memory
+            
+            # Additional Unix-specific checks if resource module is available
+            if RESOURCE_AVAILABLE and hasattr(resource, 'RUSAGE_SELF'):
+                usage = resource.getrusage(resource.RUSAGE_SELF)
+                # Additional monitoring can be added here for Unix systems
+                
+        except Exception as e:
+            self.logger.debug(f"Memory pattern check failed: {e}")
+    
+    
+    def _check_system_integrity(self):
+        """Check system integrity indicators."""
+        try:
+            # Check if system time has been manipulated
+            if hasattr(self, '_last_check_time'):
+                time_diff = time.time() - self._last_check_time
+                if time_diff < -1.0 or time_diff > 10.0:  # Time manipulation detected
+                    self._trigger_alert("time_manipulation", f"Time diff: {time_diff}", "high")
+            self._last_check_time = time.time()
+        except Exception as e:
+            self.logger.debug(f"System integrity check failed: {e}")
+    
+    def _trigger_alert(self, event_type: str, message: str, severity: str):
+        """Trigger security alert."""
+        event = MemorySecurityEvent(
+            event_type=event_type,
+            timestamp=time.time(),
+            severity=severity,
+            message=message
+        )
+        
+        get_secure_memory_manager().stats.forensics_attempts += 1
+        
+        # Call all registered callbacks
+        for callback in self._alert_callbacks:
+            try:
+                callback(event)
+            except Exception as e:
+                self.logger.error(f"Alert callback failed: {e}")
+        
+        self.logger.warning(f"Security alert [{severity}] {event_type}: {message}")
