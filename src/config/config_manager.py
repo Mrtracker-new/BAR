@@ -4,6 +4,12 @@ import logging
 from typing import Dict, Any, Optional
 from pathlib import Path
 
+# Import comprehensive input validation system
+from ..security.input_validator import (
+    get_file_validator, get_global_validator, ConfigValidationError,
+    validate_string, validate_integer, ValidationLevel, ValidationConfig
+)
+
 
 class ConfigManager:
     """Manages application configuration for the BAR application."""
@@ -27,7 +33,12 @@ class ConfigManager:
         
         Args:
             base_directory: The base directory for storing configuration
+            
+        Raises:
+            ConfigValidationError: If input validation fails
         """
+        # Comprehensive input validation per BAR Rules R030
+        self._validate_base_directory(base_directory)
         self.base_directory = Path(base_directory)
         self.config_file = self.base_directory / "config.json"
         
@@ -36,6 +47,10 @@ class ConfigManager:
         
         # Load or create configuration
         self.config = self._load_config()
+        
+        # Initialize validators
+        self.file_validator = get_file_validator()
+        self.general_validator = get_global_validator(ValidationConfig(level=ValidationLevel.STRICT))
         
         # Setup logging
         self._setup_logging()
@@ -57,6 +72,288 @@ class ConfigManager:
         )
         
         self.logger = logging.getLogger("ConfigManager")
+    
+    def _validate_base_directory(self, base_directory: Any) -> None:
+        """Validate base directory parameter.
+        
+        Args:
+            base_directory: Directory path to validate
+            
+        Raises:
+            ConfigValidationError: If validation fails
+        """
+        # First, create a temporary file validator for this validation
+        temp_file_validator = get_file_validator()
+        
+        # Validate base directory path
+        path_result = temp_file_validator.validate_file_path(
+            base_directory,
+            field_name="base_directory",
+            allow_absolute=True,  # Allow absolute paths for configuration
+            allow_parent_traversal=False
+        )
+        if not path_result.is_valid:
+            raise ConfigValidationError(
+                path_result.error_message,
+                field_name="base_directory",
+                violation_type=path_result.violation_type
+            )
+    
+    def _validate_config_key(self, key: Any, field_name: str = "key") -> str:
+        """Validate configuration key.
+        
+        Args:
+            key: Configuration key to validate
+            field_name: Name of the field for logging
+            
+        Returns:
+            Validated key
+            
+        Raises:
+            ConfigValidationError: If validation fails
+        """
+        key_result = validate_string(
+            key,
+            field_name=field_name,
+            max_length=100,  # Reasonable key length limit
+            min_length=1,
+            allowed_chars="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-",
+            require_ascii=True
+        )
+        if not key_result.is_valid:
+            raise ConfigValidationError(
+                key_result.error_message,
+                field_name=field_name,
+                violation_type=key_result.violation_type
+            )
+        return key_result.sanitized_value
+    
+    def _validate_config_value(self, key: str, value: Any) -> Any:
+        """Validate configuration value based on key.
+        
+        Args:
+            key: Configuration key
+            value: Configuration value to validate
+            
+        Returns:
+            Validated value
+            
+        Raises:
+            ConfigValidationError: If validation fails
+        """
+        # Validate different types of configuration values
+        if key == "theme":
+            if not isinstance(value, str):
+                raise ConfigValidationError(
+                    "Theme must be a string",
+                    field_name="theme",
+                    violation_type="invalid_type"
+                )
+            
+            allowed_themes = ["dark", "light", "system"]
+            if value not in allowed_themes:
+                raise ConfigValidationError(
+                    f"Theme must be one of: {', '.join(allowed_themes)}",
+                    field_name="theme",
+                    violation_type="invalid_value"
+                )
+            return value
+            
+        elif key == "auto_lock_timeout":
+            timeout_result = validate_integer(
+                value,
+                field_name="auto_lock_timeout",
+                min_value=1,
+                max_value=1440,  # Max 24 hours in minutes
+                allow_zero=False,
+                allow_negative=False
+            )
+            if not timeout_result.is_valid:
+                raise ConfigValidationError(
+                    timeout_result.error_message,
+                    field_name="auto_lock_timeout",
+                    violation_type=timeout_result.violation_type
+                )
+            return timeout_result.sanitized_value
+            
+        elif key == "logging_level":
+            if not isinstance(value, str):
+                raise ConfigValidationError(
+                    "Logging level must be a string",
+                    field_name="logging_level",
+                    violation_type="invalid_type"
+                )
+            
+            allowed_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+            if value.upper() not in allowed_levels:
+                raise ConfigValidationError(
+                    f"Logging level must be one of: {', '.join(allowed_levels)}",
+                    field_name="logging_level",
+                    violation_type="invalid_value"
+                )
+            return value.upper()
+            
+        elif key == "file_storage_path":
+            if value is None:
+                return None  # Allow None for auto-determination
+            
+            path_result = self.file_validator.validate_file_path(
+                value,
+                field_name="file_storage_path",
+                allow_absolute=True,
+                allow_parent_traversal=False
+            )
+            if not path_result.is_valid:
+                raise ConfigValidationError(
+                    path_result.error_message,
+                    field_name="file_storage_path",
+                    violation_type=path_result.violation_type
+                )
+            return path_result.sanitized_value
+            
+        elif key == "check_updates":
+            if not isinstance(value, bool):
+                raise ConfigValidationError(
+                    "Check updates must be a boolean",
+                    field_name="check_updates",
+                    violation_type="invalid_type"
+                )
+            return value
+            
+        elif key == "default_security" and isinstance(value, dict):
+            validated_security = {}
+            for sec_key, sec_value in value.items():
+                if sec_key == "max_access_count" and sec_value is not None:
+                    count_result = validate_integer(
+                        sec_value,
+                        field_name=f"default_security.max_access_count",
+                        min_value=1,
+                        max_value=1000000,
+                        allow_zero=False,
+                        allow_negative=False
+                    )
+                    if not count_result.is_valid:
+                        raise ConfigValidationError(
+                            count_result.error_message,
+                            field_name=f"default_security.max_access_count",
+                            violation_type=count_result.violation_type
+                        )
+                    validated_security[sec_key] = count_result.sanitized_value
+                    
+                elif sec_key == "deadman_switch" and sec_value is not None:
+                    days_result = validate_integer(
+                        sec_value,
+                        field_name=f"default_security.deadman_switch",
+                        min_value=1,
+                        max_value=365,  # Max 1 year
+                        allow_zero=False,
+                        allow_negative=False
+                    )
+                    if not days_result.is_valid:
+                        raise ConfigValidationError(
+                            days_result.error_message,
+                            field_name=f"default_security.deadman_switch",
+                            violation_type=days_result.violation_type
+                        )
+                    validated_security[sec_key] = days_result.sanitized_value
+                    
+                elif sec_key == "expiration_time":
+                    # Validate expiration time as string or None
+                    if sec_value is not None:
+                        time_result = validate_string(
+                            sec_value,
+                            field_name=f"default_security.expiration_time",
+                            max_length=50
+                        )
+                        if not time_result.is_valid:
+                            raise ConfigValidationError(
+                                time_result.error_message,
+                                field_name=f"default_security.expiration_time",
+                                violation_type=time_result.violation_type
+                            )
+                        validated_security[sec_key] = time_result.sanitized_value
+                    else:
+                        validated_security[sec_key] = None
+                else:
+                    # Unknown security setting - validate as string
+                    if sec_value is not None:
+                        str_result = validate_string(
+                            str(sec_value),
+                            field_name=f"default_security.{sec_key}",
+                            max_length=1000
+                        )
+                        if not str_result.is_valid:
+                            raise ConfigValidationError(
+                                str_result.error_message,
+                                field_name=f"default_security.{sec_key}",
+                                violation_type=str_result.violation_type
+                            )
+                        validated_security[sec_key] = str_result.sanitized_value
+                    else:
+                        validated_security[sec_key] = None
+                        
+            return validated_security
+        else:
+            # Unknown configuration key - validate as string or preserve type for basic types
+            if value is None or isinstance(value, (bool, int, float)):
+                # Allow basic types as-is, but validate ranges for numbers
+                if isinstance(value, int):
+                    int_result = validate_integer(
+                        value,
+                        field_name=key,
+                        min_value=-1000000,
+                        max_value=1000000,
+                        allow_negative=True
+                    )
+                    if not int_result.is_valid:
+                        raise ConfigValidationError(
+                            int_result.error_message,
+                            field_name=key,
+                            violation_type=int_result.violation_type
+                        )
+                    return int_result.sanitized_value
+                return value
+            else:
+                # Validate as string
+                str_result = validate_string(
+                    str(value),
+                    field_name=key,
+                    max_length=10000  # Large limit for unknown config values
+                )
+                if not str_result.is_valid:
+                    raise ConfigValidationError(
+                        str_result.error_message,
+                        field_name=key,
+                        violation_type=str_result.violation_type
+                    )
+                return str_result.sanitized_value
+    
+    def _validate_config_dict(self, config: Any) -> Dict[str, Any]:
+        """Validate entire configuration dictionary.
+        
+        Args:
+            config: Configuration dictionary to validate
+            
+        Returns:
+            Validated configuration dictionary
+            
+        Raises:
+            ConfigValidationError: If validation fails
+        """
+        if not isinstance(config, dict):
+            raise ConfigValidationError(
+                "Configuration must be a dictionary",
+                field_name="config",
+                violation_type="invalid_type"
+            )
+        
+        validated_config = {}
+        for key, value in config.items():
+            validated_key = self._validate_config_key(key)
+            validated_value = self._validate_config_value(validated_key, value)
+            validated_config[validated_key] = validated_value
+        
+        return validated_config
     
     def _load_config(self) -> Dict[str, Any]:
         """Load configuration from file or create default.
@@ -137,8 +434,13 @@ class ConfigManager:
             
         Returns:
             The configuration value, or default if key doesn't exist
+            
+        Raises:
+            ConfigValidationError: If input validation fails
         """
-        return self.config.get(key, default)
+        # Validate the key
+        validated_key = self._validate_config_key(key)
+        return self.config.get(validated_key, default)
     
     def set_value(self, key: str, value: Any) -> bool:
         """Set a configuration value.
@@ -149,12 +451,18 @@ class ConfigManager:
             
         Returns:
             True if value was set and saved successfully, False otherwise
+            
+        Raises:
+            ConfigValidationError: If input validation fails
         """
-        self.config[key] = value
+        # Comprehensive input validation per BAR Rules R030
+        validated_key = self._validate_config_key(key)
+        validated_value = self._validate_config_value(validated_key, value)
+        self.config[validated_key] = validated_value
         result = self._save_config(self.config)
         
         if result:
-            self.logger.info(f"Configuration updated: {key}")
+            self.logger.info(f"Configuration updated: {validated_key}")
         
         return result
     
@@ -166,8 +474,13 @@ class ConfigManager:
             
         Returns:
             True if configuration was updated and saved successfully, False otherwise
+            
+        Raises:
+            ConfigValidationError: If input validation fails
         """
-        for key, value in config_updates.items():
+        # Comprehensive input validation per BAR Rules R030
+        validated_updates = self._validate_config_dict(config_updates)
+        for key, value in validated_updates.items():
             if isinstance(value, dict) and isinstance(self.config.get(key), dict):
                 # Merge nested dictionaries
                 self.config[key].update(value)
