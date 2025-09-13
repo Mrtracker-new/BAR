@@ -15,6 +15,10 @@ import secrets
 
 from security.hardware_id import HardwareIdentifier
 from security.secure_memory import SecureBytes, secure_compare, secure_zero_memory
+from security.input_validator import (
+    get_crypto_validator, get_global_validator, 
+    CryptographicValidationError, validate_bytes, validate_string
+)
 
 
 class EncryptionManager:
@@ -50,18 +54,51 @@ class EncryptionManager:
             
         Returns:
             Derived key bytes
+            
+        Raises:
+            CryptographicValidationError: If input validation fails
         
         Note:
             This method uses secure memory handling to prevent password exposure
         """
-        # Use secure memory for password handling
-        with SecureBytes(password) as secure_password:
+        # Comprehensive input validation per BAR Rules R030
+        crypto_validator = get_crypto_validator()
+        
+        # Validate password
+        password_result = crypto_validator.validate_password(
+            password,
+            field_name="password",
+            min_length=1,  # Allow short passwords for flexibility, but log warning
+            max_length=1024,
+            require_complexity=False  # Don't enforce complexity here, leave to caller
+        )
+        if not password_result.is_valid:
+            raise CryptographicValidationError(
+                password_result.error_message,
+                field_name="password",
+                violation_type=password_result.violation_type
+            )
+        
+        # Validate salt
+        salt_result = crypto_validator.validate_salt(
+            salt,
+            min_size=16,  # Minimum 16 bytes for security
+            field_name="salt"
+        )
+        if not salt_result.is_valid:
+            raise CryptographicValidationError(
+                salt_result.error_message,
+                field_name="salt",
+                violation_type=salt_result.violation_type
+            )
+        # Use secure memory for validated password handling
+        with SecureBytes(password_result.sanitized_value) as secure_password:
             password_bytes = secure_password.get_bytes()
             
             kdf = PBKDF2HMAC(
                 algorithm=hashes.SHA256(),
                 length=EncryptionManager.KEY_SIZE,
-                salt=salt,
+                salt=salt_result.sanitized_value,
                 iterations=EncryptionManager.PBKDF2_ITERATIONS,
             )
             
@@ -84,10 +121,57 @@ class EncryptionManager:
             
         Returns:
             A dictionary containing the encrypted data and nonce
+            
+        Raises:
+            CryptographicValidationError: If input validation fails
         """
+        # Comprehensive input validation per BAR Rules R030
+        crypto_validator = get_crypto_validator()
+        
+        # Validate data
+        data_result = validate_bytes(
+            data,
+            field_name="data",
+            min_length=0,  # Allow empty data
+            max_length=1024 * 1024 * 1024  # 1GB max
+        )
+        if not data_result.is_valid:
+            raise CryptographicValidationError(
+                data_result.error_message,
+                field_name="data",
+                violation_type=data_result.violation_type
+            )
+        
+        # Validate encryption key
+        key_result = crypto_validator.validate_encryption_key(
+            key,
+            algorithm="AES",
+            field_name="key"
+        )
+        if not key_result.is_valid:
+            raise CryptographicValidationError(
+                key_result.error_message,
+                field_name="key",
+                violation_type=key_result.violation_type
+            )
+        
+        # Validate AAD if provided
+        if aad is not None:
+            aad_result = validate_bytes(
+                aad,
+                field_name="aad",
+                max_length=1024 * 1024  # 1MB max for AAD
+            )
+            if not aad_result.is_valid:
+                raise CryptographicValidationError(
+                    aad_result.error_message,
+                    field_name="aad",
+                    violation_type=aad_result.violation_type
+                )
+            aad = aad_result.sanitized_value
         nonce = EncryptionManager.generate_nonce()
-        aesgcm = AESGCM(key)
-        ciphertext = aesgcm.encrypt(nonce, data, aad)
+        aesgcm = AESGCM(key_result.sanitized_value)
+        ciphertext = aesgcm.encrypt(nonce, data_result.sanitized_value, aad)
         
         return {
             'ciphertext': ciphertext,
@@ -107,12 +191,88 @@ class EncryptionManager:
             The decrypted data
             
         Raises:
+            CryptographicValidationError: If input validation fails
             ValueError: If decryption fails (authentication failure)
         """
-        ciphertext = encrypted_data['ciphertext']
-        nonce = encrypted_data['nonce']
+        # Comprehensive input validation per BAR Rules R030
+        crypto_validator = get_crypto_validator()
         
-        aesgcm = AESGCM(key)
+        # Validate encrypted_data structure
+        if not isinstance(encrypted_data, dict):
+            raise CryptographicValidationError(
+                "Encrypted data must be a dictionary",
+                field_name="encrypted_data",
+                violation_type="invalid_type"
+            )
+        
+        # Validate required fields
+        required_fields = ['ciphertext', 'nonce']
+        for field in required_fields:
+            if field not in encrypted_data:
+                raise CryptographicValidationError(
+                    f"Missing required field: {field}",
+                    field_name="encrypted_data",
+                    violation_type="missing_field"
+                )
+        
+        # Validate ciphertext
+        ciphertext_result = validate_bytes(
+            encrypted_data['ciphertext'],
+            field_name="ciphertext",
+            min_length=1,  # Must have some data
+            max_length=1024 * 1024 * 1024  # 1GB max
+        )
+        if not ciphertext_result.is_valid:
+            raise CryptographicValidationError(
+                ciphertext_result.error_message,
+                field_name="ciphertext",
+                violation_type=ciphertext_result.violation_type
+            )
+        
+        # Validate nonce
+        nonce_result = crypto_validator.validate_nonce(
+            encrypted_data['nonce'],
+            algorithm="GCM",
+            field_name="nonce"
+        )
+        if not nonce_result.is_valid:
+            raise CryptographicValidationError(
+                nonce_result.error_message,
+                field_name="nonce",
+                violation_type=nonce_result.violation_type
+            )
+        
+        # Validate decryption key
+        key_result = crypto_validator.validate_encryption_key(
+            key,
+            algorithm="AES",
+            field_name="key"
+        )
+        if not key_result.is_valid:
+            raise CryptographicValidationError(
+                key_result.error_message,
+                field_name="key",
+                violation_type=key_result.violation_type
+            )
+        
+        # Validate AAD if provided
+        if aad is not None:
+            aad_result = validate_bytes(
+                aad,
+                field_name="aad",
+                max_length=1024 * 1024  # 1MB max for AAD
+            )
+            if not aad_result.is_valid:
+                raise CryptographicValidationError(
+                    aad_result.error_message,
+                    field_name="aad",
+                    violation_type=aad_result.violation_type
+                )
+            aad = aad_result.sanitized_value
+        ciphertext = ciphertext_result.sanitized_value
+        nonce = nonce_result.sanitized_value
+        
+        aesgcm = AESGCM(key_result.sanitized_value)
         try:
             return aesgcm.decrypt(nonce, ciphertext, aad)
         except Exception:
@@ -134,22 +294,42 @@ class EncryptionManager:
             ValueError: If input parameters are invalid
             TypeError: If input types are incorrect
         """
-        # Input validation
-        if not isinstance(content, bytes):
-            raise TypeError("Content must be bytes")
-        if not isinstance(password, str):
-            raise TypeError("Password must be a string")
-        if len(password) == 0:
-            raise ValueError("Password cannot be empty")
-        if len(content) == 0:
-            raise ValueError("Content cannot be empty")
-        if len(content) > 1024 * 1024 * 1024:  # 1GB limit
-            raise ValueError("Content size exceeds maximum limit (1GB)")
+        # Comprehensive input validation per BAR Rules R030
+        crypto_validator = get_crypto_validator()
+        
+        # Validate content
+        content_result = validate_bytes(
+            content,
+            field_name="content",
+            min_length=1,  # Content cannot be empty
+            max_length=1024 * 1024 * 1024  # 1GB limit
+        )
+        if not content_result.is_valid:
+            raise CryptographicValidationError(
+                content_result.error_message,
+                field_name="content",
+                violation_type=content_result.violation_type
+            )
+        
+        # Validate password with comprehensive checks
+        password_result = crypto_validator.validate_password(
+            password,
+            field_name="password",
+            min_length=1,
+            max_length=1024,
+            require_complexity=False  # Let caller decide complexity requirements
+        )
+        if not password_result.is_valid:
+            raise CryptographicValidationError(
+                password_result.error_message,
+                field_name="password",
+                violation_type=password_result.violation_type
+            )
         salt = EncryptionManager.generate_salt()
-        key = EncryptionManager.derive_key(password, salt)
+        key = EncryptionManager.derive_key(password_result.sanitized_value, salt)
         # Bind ciphertext to context using AAD derived from salt and app/version marker
         aad = b"BAR|v2|" + salt
-        encrypted_data = EncryptionManager.encrypt_data(content, key, aad)
+        encrypted_data = EncryptionManager.encrypt_data(content_result.sanitized_value, key, aad)
         
         # Convert binary data to base64 for storage
         result = {
@@ -179,48 +359,122 @@ class EncryptionManager:
             ValueError: If decryption fails or input is invalid
             TypeError: If input types are incorrect
         """
-        # Input validation
+        # Comprehensive input validation per BAR Rules R030
+        crypto_validator = get_crypto_validator()
+        
+        # Validate encrypted_content structure
         if not isinstance(encrypted_content, dict):
-            raise TypeError("Encrypted content must be a dictionary")
-        if not isinstance(password, str):
-            raise TypeError("Password must be a string")
-        if len(password) == 0:
-            raise ValueError("Password cannot be empty")
+            raise CryptographicValidationError(
+                "Encrypted content must be a dictionary",
+                field_name="encrypted_content",
+                violation_type="invalid_type"
+            )
+        
+        # Validate password
+        password_result = crypto_validator.validate_password(
+            password,
+            field_name="password",
+            min_length=1,
+            max_length=1024,
+            require_complexity=False
+        )
+        if not password_result.is_valid:
+            raise CryptographicValidationError(
+                password_result.error_message,
+                field_name="password",
+                violation_type=password_result.violation_type
+            )
         
         # Validate required fields
         required_fields = ['ciphertext', 'nonce', 'salt']
         for field in required_fields:
             if field not in encrypted_content:
-                raise ValueError(f"Missing required field: {field}")
+                raise CryptographicValidationError(
+                    f"Missing required field: {field}",
+                    field_name="encrypted_content",
+                    violation_type="missing_field"
+                )
         
-        # Validate field types
+        # Validate field types and base64 encoding
         for field in required_fields:
             if not isinstance(encrypted_content[field], str):
-                raise ValueError(f"Field {field} must be a base64 encoded string")
-        # Convert base64 data back to binary with validation
+                raise CryptographicValidationError(
+                    f"Field {field} must be a base64 encoded string",
+                    field_name=field,
+                    violation_type="invalid_type"
+                )
+            
+            # Validate base64 string format
+            field_result = validate_string(
+                encrypted_content[field],
+                field_name=field,
+                max_length=10 * 1024 * 1024,  # Reasonable limit for base64 data
+                require_ascii=True
+            )
+            if not field_result.is_valid:
+                raise CryptographicValidationError(
+                    field_result.error_message,
+                    field_name=field,
+                    violation_type=field_result.violation_type
+                )
+        # Convert base64 data back to binary with comprehensive validation
         try:
             ciphertext = base64.b64decode(encrypted_content['ciphertext'])
             nonce = base64.b64decode(encrypted_content['nonce'])
             salt = base64.b64decode(encrypted_content['salt'])
         except Exception as e:
-            raise ValueError(f"Invalid base64 encoding in encrypted data: {str(e)}")
+            raise CryptographicValidationError(
+                f"Invalid base64 encoding in encrypted data: {str(e)}",
+                field_name="encrypted_content",
+                violation_type="base64_decode_error"
+            )
         
-        # Validate decoded sizes
-        if len(nonce) != EncryptionManager.NONCE_SIZE:
-            raise ValueError(f"Invalid nonce size: expected {EncryptionManager.NONCE_SIZE}, got {len(nonce)}")
-        if len(salt) != EncryptionManager.SALT_SIZE:
-            raise ValueError(f"Invalid salt size: expected {EncryptionManager.SALT_SIZE}, got {len(salt)}")
-        if len(ciphertext) == 0:
-            raise ValueError("Ciphertext cannot be empty")
+        # Validate decoded data using crypto validator
+        nonce_result = crypto_validator.validate_nonce(
+            nonce,
+            algorithm="GCM",
+            field_name="nonce"
+        )
+        if not nonce_result.is_valid:
+            raise CryptographicValidationError(
+                nonce_result.error_message,
+                field_name="nonce",
+                violation_type=nonce_result.violation_type
+            )
         
-        # Derive the key and decrypt
-        key = EncryptionManager.derive_key(password, salt)
+        salt_result = crypto_validator.validate_salt(
+            salt,
+            min_size=16,
+            field_name="salt"
+        )
+        if not salt_result.is_valid:
+            raise CryptographicValidationError(
+                salt_result.error_message,
+                field_name="salt",
+                violation_type=salt_result.violation_type
+            )
+        
+        ciphertext_result = validate_bytes(
+            ciphertext,
+            field_name="ciphertext",
+            min_length=1,
+            max_length=1024 * 1024 * 1024  # 1GB max
+        )
+        if not ciphertext_result.is_valid:
+            raise CryptographicValidationError(
+                ciphertext_result.error_message,
+                field_name="ciphertext",
+                violation_type=ciphertext_result.violation_type
+            )
+        
+        # Derive the key and decrypt using validated data
+        key = EncryptionManager.derive_key(password_result.sanitized_value, salt_result.sanitized_value)
         encrypted_data = {
-            'ciphertext': ciphertext,
-            'nonce': nonce
+            'ciphertext': ciphertext_result.sanitized_value,
+            'nonce': nonce_result.sanitized_value
         }
         # Reconstruct AAD exactly as used during encryption
-        aad = b"BAR|v2|" + salt
+        aad = b"BAR|v2|" + salt_result.sanitized_value
         
         return EncryptionManager.decrypt_data(encrypted_data, key, aad)
     
