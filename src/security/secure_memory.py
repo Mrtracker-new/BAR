@@ -26,6 +26,12 @@ import hashlib
 from enum import Enum
 from pathlib import Path
 
+# Import comprehensive input validation system
+from .input_validator import (
+    InputValidator, ValidationConfig, ValidationLevel, ValidationResult,
+    MemoryValidationError, validate_string, validate_bytes, validate_integer
+)
+
 # Enhanced cryptographic imports per R004 - Cryptographic Standards
 try:
     from cryptography.hazmat.primitives import hashes
@@ -121,7 +127,7 @@ class SecureBytes:
                  data: Union[str, bytes, bytearray] = None,
                  protection_level: MemoryProtectionLevel = MemoryProtectionLevel.ENHANCED,
                  require_lock: bool = False,
-                 use_tpm: bool = False,
+                 use_tmp: bool = False,
                  hardware_bound: bool = False):
         """Initialize secure bytes container with enhanced protection.
         
@@ -129,12 +135,18 @@ class SecureBytes:
             data: Initial data to store (will be securely copied)
             protection_level: Level of memory protection to apply
             require_lock: If True, raises MemoryLockError if memory locking fails
-            use_tpm: If True, attempts to use TPM/secure enclave for protection
+            use_tmp: If True, attempts to use TPM/secure enclave for protection
             hardware_bound: If True, binds data to current hardware ID
+            
+        Raises:
+            MemoryValidationError: If input validation fails
+            TypeError: If parameters have invalid types
+            ValueError: If parameters have invalid values
         """
+        # Initialize basic attributes first for validation methods
         self._protection_level = protection_level
         self._require_lock = require_lock
-        self._use_tpm = use_tpm
+        self._use_tpm = use_tmp
         self._hardware_bound = hardware_bound
         self._locked = False
         self._corrupted = False
@@ -143,30 +155,41 @@ class SecureBytes:
         self._lock = threading.RLock()  # Thread safety
         self.logger = logging.getLogger(f"SecureBytes_{id(self)}")
         
+        # Comprehensive input validation per BAR Rules R030
+        self._validate_initialization_parameters(
+            data, protection_level, require_lock, use_tmp, hardware_bound
+        )
+        
+        # Initialize input validator based on protection level
+        validation_level = self._get_validation_level_for_protection(protection_level)
+        self._validator = InputValidator(ValidationConfig(
+            level=validation_level,
+            max_length=100 * 1024 * 1024,  # 100MB max for memory operations
+            timing_attack_protection=True,
+            log_violations=True
+        ))
+        
         # Enhanced security components
-        self._tpm_interface = None
+        self._tmp_interface = None
         self._hardware_id = None
         self._sealed_data = None  # TPM-sealed version of data
         self._anti_forensics_monitor = None
         
         # Initialize security components based on protection level
         if protection_level in (MemoryProtectionLevel.MAXIMUM, MemoryProtectionLevel.MILITARY):
-            if use_tpm:
-                self._tpm_interface = TPMInterface()
+            if use_tmp:
+                self._tmp_interface = TPMInterface()
             if protection_level == MemoryProtectionLevel.MILITARY:
                 self._anti_forensics_monitor = AntiForensicsMonitor()
                 self._anti_forensics_monitor.add_alert_callback(self._handle_security_alert)
                 self._anti_forensics_monitor.start_monitoring()
         
-        # Initialize data with enhanced protection
+        # Initialize data with validated input and enhanced protection
         if data is None:
             self._data = bytearray()
-        elif isinstance(data, str):
-            self._data = bytearray(data.encode('utf-8'))
-        elif isinstance(data, (bytes, bytearray)):
-            self._data = bytearray(data)
         else:
-            raise TypeError("Data must be str, bytes, or bytearray")
+            # Validate and sanitize input data
+            self._data = self._validate_and_prepare_data(data)
         
         # Hardware binding if requested
         if self._hardware_bound:
@@ -186,7 +209,237 @@ class SecureBytes:
         # Register with memory manager
         get_secure_memory_manager().register_secure_object(self)
         
-        self.logger.debug(f"SecureBytes initialized: {len(self._data)} bytes, protection: {protection_level.value}, TPM: {use_tpm}, HW-bound: {hardware_bound}")
+        self.logger.debug(f"SecureBytes initialized: {len(self._data)} bytes, protection: {protection_level.value}, TPM: {use_tmp}, HW-bound: {hardware_bound}")
+    
+    def _validate_initialization_parameters(self, data: Any, protection_level: Any, 
+                                          require_lock: Any, use_tmp: Any, 
+                                          hardware_bound: Any) -> None:
+        """Validate initialization parameters with comprehensive security checks.
+        
+        Args:
+            data: Data parameter to validate
+            protection_level: Protection level parameter to validate
+            require_lock: Memory lock requirement parameter to validate
+            use_tpm: TPM usage parameter to validate
+            hardware_bound: Hardware binding parameter to validate
+            
+        Raises:
+            MemoryValidationError: If validation fails
+            TypeError: If types are invalid
+            ValueError: If values are invalid
+        """
+        # Validate protection level
+        if not isinstance(protection_level, MemoryProtectionLevel):
+            if isinstance(protection_level, str):
+                try:
+                    protection_level = MemoryProtectionLevel(protection_level.lower())
+                except ValueError:
+                    raise MemoryValidationError(
+                        f"Invalid protection level: {protection_level}",
+                        field_name="protection_level",
+                        violation_type="invalid_enum_value"
+                    )
+            else:
+                raise MemoryValidationError(
+                    "Protection level must be MemoryProtectionLevel enum or valid string",
+                    field_name="protection_level",
+                    violation_type="invalid_type"
+                )
+        
+        # Validate boolean parameters with strict type checking
+        bool_params = {
+            'require_lock': require_lock,
+            'use_tmp': use_tmp, 
+            'hardware_bound': hardware_bound
+        }
+        
+        for param_name, param_value in bool_params.items():
+            if not isinstance(param_value, bool):
+                # Allow string-to-bool conversion for common cases
+                if isinstance(param_value, str):
+                    lower_val = param_value.lower()
+                    if lower_val in ('true', '1', 'yes', 'on'):
+                        bool_params[param_name] = True
+                    elif lower_val in ('false', '0', 'no', 'off'):
+                        bool_params[param_name] = False
+                    else:
+                        raise MemoryValidationError(
+                            f"Invalid boolean value for {param_name}: {param_value}",
+                            field_name=param_name,
+                            violation_type="invalid_boolean_value"
+                        )
+                elif isinstance(param_value, int):
+                    if param_value in (0, 1):
+                        bool_params[param_name] = bool(param_value)
+                    else:
+                        raise MemoryValidationError(
+                            f"Invalid integer boolean value for {param_name}: {param_value}",
+                            field_name=param_name,
+                            violation_type="invalid_boolean_value"
+                        )
+                else:
+                    raise MemoryValidationError(
+                        f"Parameter {param_name} must be boolean, got {type(param_value).__name__}",
+                        field_name=param_name,
+                        violation_type="invalid_type"
+                    )
+        
+        # Validate data parameter if provided
+        if data is not None:
+            self._validate_data_input(data)
+        
+        self.logger.debug("Initialization parameters validated successfully")
+    
+    def _validate_data_input(self, data: Any) -> None:
+        """Validate data input for security and type correctness.
+        
+        Args:
+            data: Data to validate
+            
+        Raises:
+            MemoryValidationError: If validation fails
+        """
+        if data is None:
+            return  # None is allowed
+        
+        # Type validation
+        if not isinstance(data, (str, bytes, bytearray)):
+            raise MemoryValidationError(
+                f"Data must be str, bytes, or bytearray, got {type(data).__name__}",
+                field_name="data",
+                violation_type="invalid_type"
+            )
+        
+        # Size validation based on protection level
+        max_size = self._get_max_data_size()
+        data_size = len(data)
+        
+        if data_size > max_size:
+            raise MemoryValidationError(
+                f"Data size ({data_size}) exceeds maximum allowed ({max_size})",
+                field_name="data",
+                violation_type="size_exceeded"
+            )
+        
+        # String encoding validation
+        if isinstance(data, str):
+            try:
+                # Test UTF-8 encoding
+                encoded = data.encode('utf-8')
+                if len(encoded) != len(data.encode('utf-8', errors='ignore')):
+                    self.logger.warning("String data contains potentially dangerous Unicode characters")
+            except UnicodeEncodeError as e:
+                raise MemoryValidationError(
+                    f"String data encoding validation failed: {e}",
+                    field_name="data",
+                    violation_type="encoding_error"
+                )
+        
+        # Binary data validation
+        elif isinstance(data, (bytes, bytearray)):
+            # Check for null bytes in excessive quantities (potential buffer overflow indicators)
+            null_count = data.count(b'\x00')
+            if null_count > len(data) * 0.8:  # More than 80% null bytes
+                self.logger.warning(f"Data contains excessive null bytes ({null_count}/{len(data)})")
+        
+        self.logger.debug(f"Data input validated: {type(data).__name__}, {data_size} bytes")
+    
+    def _get_validation_level_for_protection(self, protection_level: MemoryProtectionLevel) -> ValidationLevel:
+        """Map memory protection level to validation level.
+        
+        Args:
+            protection_level: Memory protection level
+            
+        Returns:
+            Corresponding validation level
+        """
+        mapping = {
+            MemoryProtectionLevel.BASIC: ValidationLevel.BASIC,
+            MemoryProtectionLevel.ENHANCED: ValidationLevel.ENHANCED,
+            MemoryProtectionLevel.MAXIMUM: ValidationLevel.STRICT,
+            MemoryProtectionLevel.MILITARY: ValidationLevel.PARANOID
+        }
+        return mapping.get(protection_level, ValidationLevel.ENHANCED)
+    
+    def _get_max_data_size(self) -> int:
+        """Get maximum allowed data size based on protection level.
+        
+        Returns:
+            Maximum data size in bytes
+        """
+        # Size limits based on protection level (more restrictive = higher security)
+        size_limits = {
+            MemoryProtectionLevel.BASIC: 100 * 1024 * 1024,    # 100MB
+            MemoryProtectionLevel.ENHANCED: 50 * 1024 * 1024,  # 50MB
+            MemoryProtectionLevel.MAXIMUM: 10 * 1024 * 1024,   # 10MB
+            MemoryProtectionLevel.MILITARY: 1 * 1024 * 1024    # 1MB - most restrictive
+        }
+        return size_limits.get(self._protection_level, 50 * 1024 * 1024)
+    
+    def _validate_and_prepare_data(self, data: Any) -> bytearray:
+        """Validate input data and convert to secure bytearray.
+        
+        Args:
+            data: Input data to validate and convert
+            
+        Returns:
+            Validated data as bytearray
+            
+        Raises:
+            MemoryValidationError: If validation fails
+        """
+        # Re-validate data (defense in depth)
+        self._validate_data_input(data)
+        
+        # Convert to bytearray with validation
+        if isinstance(data, str):
+            # Validate string content for dangerous patterns
+            string_result = validate_string(
+                data, 
+                field_name="data",
+                max_length=self._get_max_data_size(),
+                require_ascii=False  # Allow Unicode but validate it
+            )
+            if not string_result.is_valid:
+                raise MemoryValidationError(
+                    string_result.error_message,
+                    field_name="data",
+                    violation_type=string_result.violation_type
+                )
+            
+            # Convert to bytes first, then bytearray
+            try:
+                return bytearray(string_result.sanitized_value.encode('utf-8'))
+            except UnicodeEncodeError as e:
+                raise MemoryValidationError(
+                    f"String encoding failed: {e}",
+                    field_name="data",
+                    violation_type="encoding_error"
+                )
+        
+        elif isinstance(data, (bytes, bytearray)):
+            # Validate bytes content
+            bytes_result = validate_bytes(
+                data,
+                field_name="data",
+                max_length=self._get_max_data_size()
+            )
+            if not bytes_result.is_valid:
+                raise MemoryValidationError(
+                    bytes_result.error_message,
+                    field_name="data",
+                    violation_type=bytes_result.violation_type
+                )
+            
+            return bytearray(bytes_result.sanitized_value)
+        
+        else:
+            # Should not reach here due to earlier validation, but defense in depth
+            raise MemoryValidationError(
+                f"Unsupported data type: {type(data).__name__}",
+                field_name="data", 
+                violation_type="invalid_type"
+            )
     
     def _add_canaries(self):
         """Add canary values around data for corruption detection."""
@@ -450,12 +703,33 @@ class SecureBytes:
             
         Raises:
             MemoryCorruptionError: If memory corruption is detected
+            MemoryValidationError: If encoding validation fails
             UnicodeDecodeError: If data cannot be decoded with specified encoding
             TPMError: If TPM unsealing fails when required
         """
+        # Validate encoding parameter
+        encoding_result = validate_string(
+            encoding,
+            field_name="encoding",
+            max_length=50,  # Reasonable limit for encoding names
+            allowed_chars="abcdefghijklmnopqrstuvwxyz0123456789-_",
+            require_ascii=True
+        )
+        if not encoding_result.is_valid:
+            raise MemoryValidationError(
+                encoding_result.error_message,
+                field_name="encoding",
+                violation_type=encoding_result.violation_type
+            )
+        
         # Use get_bytes which handles TPM unsealing and hardware binding
         data_bytes = self.get_bytes()
-        return data_bytes.decode(encoding)
+        
+        try:
+            return data_bytes.decode(encoding_result.sanitized_value)
+        except (UnicodeDecodeError, LookupError) as e:
+            self.logger.warning(f"Failed to decode data with encoding '{encoding}': {e}")
+            raise
     
     def clear(self):
         """Securely clear the stored data using military-grade multi-pass overwrite.
@@ -643,17 +917,16 @@ class SecureBytes:
             data: New data to store securely
             
         Raises:
+            MemoryValidationError: If input validation fails
             TypeError: If data type is not supported
             MemoryLockError: If memory locking is required but fails
         """
         with self._lock:
-            # Validate input
-            if isinstance(data, str):
-                new_data = bytearray(data.encode('utf-8'))
-            elif isinstance(data, (bytes, bytearray)):
-                new_data = bytearray(data)
-            else:
-                raise TypeError("Data must be str, bytes, or bytearray")
+            # Comprehensive input validation per BAR Rules R030
+            self._validate_data_input(data)
+            
+            # Convert and validate data using secure validation methods
+            new_data = self._validate_and_prepare_data(data)
             
             # Clear existing data securely
             self.clear()
@@ -751,14 +1024,25 @@ class SecureString(SecureBytes):
             value: New string value to store
             
         Raises:
+            MemoryValidationError: If input validation fails
             TypeError: If value is not a string
             MemoryLockError: If memory locking is required but fails
         """
-        if not isinstance(value, str):
-            raise TypeError("Value must be a string")
+        # Comprehensive string validation
+        string_result = validate_string(
+            value,
+            field_name="value",
+            max_length=self._get_max_data_size()
+        )
+        if not string_result.is_valid:
+            raise MemoryValidationError(
+                string_result.error_message,
+                field_name="value",
+                violation_type=string_result.violation_type
+            )
         
         # Use the secure set_data method from parent class
-        self.set_data(value)
+        self.set_data(string_result.sanitized_value)
 
 
 def secure_compare(a: Union[str, bytes], b: Union[str, bytes]) -> bool:
@@ -773,7 +1057,43 @@ def secure_compare(a: Union[str, bytes], b: Union[str, bytes]) -> bool:
         
     Returns:
         True if the values are equal, False otherwise
+        
+    Raises:
+        MemoryValidationError: If input validation fails
     """
+    # Validate first parameter
+    if not isinstance(a, (str, bytes)):
+        raise MemoryValidationError(
+            f"First parameter must be str or bytes, got {type(a).__name__}",
+            field_name="a",
+            violation_type="invalid_type"
+        )
+    
+    # Validate second parameter
+    if not isinstance(b, (str, bytes)):
+        raise MemoryValidationError(
+            f"Second parameter must be str or bytes, got {type(b).__name__}",
+            field_name="b",
+            violation_type="invalid_type"
+        )
+    
+    # Validate maximum length for security (prevent DoS through huge inputs)
+    max_compare_length = 10 * 1024 * 1024  # 10MB
+    
+    if len(a) > max_compare_length:
+        raise MemoryValidationError(
+            f"First parameter too large ({len(a)} bytes, max {max_compare_length})",
+            field_name="a",
+            violation_type="length_exceeded"
+        )
+    
+    if len(b) > max_compare_length:
+        raise MemoryValidationError(
+            f"Second parameter too large ({len(b)} bytes, max {max_compare_length})",
+            field_name="b",
+            violation_type="length_exceeded"
+        )
+    
     # Convert strings to bytes if necessary
     if isinstance(a, str):
         a = a.encode('utf-8')
@@ -793,11 +1113,46 @@ def secure_random_string(length: int, charset: str = None) -> str:
         
     Returns:
         Cryptographically secure random string
+        
+    Raises:
+        MemoryValidationError: If input validation fails
     """
-    if charset is None:
+    # Validate length parameter
+    length_result = validate_integer(
+        length,
+        field_name="length",
+        min_value=1,
+        max_value=10 * 1024 * 1024,  # 10MB max for security
+        allow_zero=False,
+        allow_negative=False
+    )
+    if not length_result.is_valid:
+        raise MemoryValidationError(
+            length_result.error_message,
+            field_name="length",
+            violation_type=length_result.violation_type
+        )
+    
+    # Validate charset if provided
+    if charset is not None:
+        charset_result = validate_string(
+            charset,
+            field_name="charset",
+            max_length=1024,  # Reasonable limit for character sets
+            min_length=1
+        )
+        if not charset_result.is_valid:
+            raise MemoryValidationError(
+                charset_result.error_message,
+                field_name="charset",
+                violation_type=charset_result.violation_type
+            )
+        charset = charset_result.sanitized_value
+    else:
         charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
     
-    return ''.join(secrets.choice(charset) for _ in range(length))
+    # Generate secure random string
+    return ''.join(secrets.choice(charset) for _ in range(length_result.sanitized_value))
 
 
 def secure_zero_memory(data: bytearray):
