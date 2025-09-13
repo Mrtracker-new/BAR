@@ -17,6 +17,12 @@ from ..crypto.encryption import EncryptionManager
 from .file_scanner import FileScanner
 from .format_detector import FileFormatDetector
 
+# Import comprehensive input validation system
+from ..security.input_validator import (
+    get_file_validator, get_global_validator, FileValidationError,
+    validate_string, validate_bytes, validate_integer
+)
+
 
 class FileManager:
     """Manages secure file operations for the BAR application."""
@@ -26,7 +32,13 @@ class FileManager:
         
         Args:
             base_directory: The base directory for storing all files and metadata
+            
+        Raises:
+            FileValidationError: If input validation fails
         """
+        # Comprehensive input validation per BAR Rules R030
+        self._validate_base_directory(base_directory)
+        # Store validated base directory
         self.base_directory = Path(base_directory)
         self.files_directory = self.base_directory / "files"
         self.metadata_directory = self.base_directory / "metadata"
@@ -72,6 +84,230 @@ class FileManager:
         )
         
         self.logger = logging.getLogger("FileManager")
+        
+        # Initialize file validator
+        self.file_validator = get_file_validator()
+    
+    def _validate_base_directory(self, base_directory: Any) -> None:
+        """Validate base directory parameter.
+        
+        Args:
+            base_directory: Directory path to validate
+            
+        Raises:
+            FileValidationError: If validation fails
+        """
+        # Validate base directory path
+        path_result = self.file_validator.validate_file_path(
+            base_directory,
+            field_name="base_directory",
+            allow_absolute=True,  # Allow absolute paths for base directory
+            allow_parent_traversal=False
+        )
+        if not path_result.is_valid:
+            raise FileValidationError(
+                path_result.error_message,
+                field_name="base_directory",
+                violation_type=path_result.violation_type
+            )
+    
+    def _validate_file_content(self, content: Any, field_name: str = "content") -> bytes:
+        """Validate file content parameter.
+        
+        Args:
+            content: File content to validate
+            field_name: Name of the field for logging
+            
+        Returns:
+            Validated file content
+            
+        Raises:
+            FileValidationError: If validation fails
+        """
+        content_result = validate_bytes(
+            content,
+            field_name=field_name,
+            min_length=1,  # File must have content
+            max_length=1024 * 1024 * 1024  # 1GB max file size
+        )
+        if not content_result.is_valid:
+            raise FileValidationError(
+                content_result.error_message,
+                field_name=field_name,
+                violation_type=content_result.violation_type
+            )
+        return content_result.sanitized_value
+    
+    def _validate_filename(self, filename: Any, field_name: str = "filename") -> str:
+        """Validate filename parameter.
+        
+        Args:
+            filename: Filename to validate
+            field_name: Name of the field for logging
+            
+        Returns:
+            Validated filename
+            
+        Raises:
+            FileValidationError: If validation fails
+        """
+        filename_result = self.file_validator.validate_filename(
+            filename,
+            field_name=field_name,
+            max_length=255,  # Standard filesystem limit
+            allow_unicode=True
+        )
+        if not filename_result.is_valid:
+            raise FileValidationError(
+                filename_result.error_message,
+                field_name=field_name,
+                violation_type=filename_result.violation_type
+            )
+        return filename_result.sanitized_value
+    
+    def _validate_password(self, password: Any, field_name: str = "password") -> str:
+        """Validate password parameter.
+        
+        Args:
+            password: Password to validate
+            field_name: Name of the field for logging
+            
+        Returns:
+            Validated password
+            
+        Raises:
+            FileValidationError: If validation fails
+        """
+        from ..security.input_validator import get_crypto_validator
+        crypto_validator = get_crypto_validator()
+        
+        password_result = crypto_validator.validate_password(
+            password,
+            field_name=field_name,
+            min_length=1,
+            max_length=1024,
+            require_complexity=False
+        )
+        if not password_result.is_valid:
+            raise FileValidationError(
+                password_result.error_message,
+                field_name=field_name,
+                violation_type=password_result.violation_type
+            )
+        return password_result.sanitized_value
+    
+    def _validate_security_settings(self, security_settings: Any, field_name: str = "security_settings") -> Dict[str, Any]:
+        """Validate security settings parameter.
+        
+        Args:
+            security_settings: Security settings to validate
+            field_name: Name of the field for logging
+            
+        Returns:
+            Validated security settings
+            
+        Raises:
+            FileValidationError: If validation fails
+        """
+        if not isinstance(security_settings, dict):
+            raise FileValidationError(
+                "Security settings must be a dictionary",
+                field_name=field_name,
+                violation_type="invalid_type"
+            )
+        
+        validated_settings = {}
+        for key, value in security_settings.items():
+            # Validate setting key
+            key_result = validate_string(
+                key,
+                field_name=f"{field_name}.{key}",
+                max_length=100,
+                allowed_chars="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_",
+                require_ascii=True
+            )
+            if not key_result.is_valid:
+                raise FileValidationError(
+                    key_result.error_message,
+                    field_name=f"{field_name}.{key}",
+                    violation_type=key_result.violation_type
+                )
+            
+            validated_key = key_result.sanitized_value
+            
+            if validated_key == "max_access_count" and value is not None:
+                count_result = validate_integer(
+                    value,
+                    field_name=f"{field_name}.max_access_count",
+                    min_value=1,
+                    max_value=1000000,
+                    allow_zero=False,
+                    allow_negative=False
+                )
+                if not count_result.is_valid:
+                    raise FileValidationError(
+                        count_result.error_message,
+                        field_name=f"{field_name}.max_access_count",
+                        violation_type=count_result.violation_type
+                    )
+                validated_settings[validated_key] = count_result.sanitized_value
+                
+            elif validated_key == "disable_export":
+                if not isinstance(value, bool):
+                    raise FileValidationError(
+                        "disable_export must be a boolean",
+                        field_name=f"{field_name}.disable_export",
+                        violation_type="invalid_type"
+                    )
+                validated_settings[validated_key] = value
+            else:
+                # Other settings - validate as strings or leave as None
+                if value is not None:
+                    str_result = validate_string(
+                        str(value),
+                        field_name=f"{field_name}.{validated_key}",
+                        max_length=1000
+                    )
+                    if not str_result.is_valid:
+                        raise FileValidationError(
+                            str_result.error_message,
+                            field_name=f"{field_name}.{validated_key}",
+                            violation_type=str_result.violation_type
+                        )
+                    validated_settings[validated_key] = str_result.sanitized_value
+                else:
+                    validated_settings[validated_key] = None
+        
+        return validated_settings
+    
+    def _validate_file_id(self, file_id: Any, field_name: str = "file_id") -> str:
+        """Validate file ID parameter.
+        
+        Args:
+            file_id: File ID to validate
+            field_name: Name of the field for logging
+            
+        Returns:
+            Validated file ID
+            
+        Raises:
+            FileValidationError: If validation fails
+        """
+        id_result = validate_string(
+            file_id,
+            field_name=field_name,
+            max_length=255,
+            min_length=1,
+            allowed_chars="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_",
+            require_ascii=True
+        )
+        if not id_result.is_valid:
+            raise FileValidationError(
+                id_result.error_message,
+                field_name=field_name,
+                violation_type=id_result.violation_type
+            )
+        return id_result.sanitized_value
     
     def _is_media_file(self, filename: str, content: bytes) -> bool:
         """Determine if a file is a media file using enhanced format detection.
@@ -101,12 +337,20 @@ class FileManager:
                 
         Returns:
             The ID of the created file
+            
+        Raises:
+            FileValidationError: If input validation fails
         """
+        # Comprehensive input validation per BAR Rules R030
+        validated_content = self._validate_file_content(content)
+        validated_filename = self._validate_filename(filename)
+        validated_password = self._validate_password(password)
+        validated_settings = self._validate_security_settings(security_settings)
         # Generate a unique file ID
         file_id = self._generate_file_id()
         
-        # Detect file format using enhanced detection
-        format_info = self.format_detector.detect_format(filename, content)
+        # Detect file format using validated data
+        format_info = self.format_detector.detect_format(validated_filename, validated_content)
         is_media = format_info['type'] in ['image', 'audio', 'video']
         
         # Check if this is a media file and automatically set disable_export if not explicitly set
@@ -115,14 +359,14 @@ class FileManager:
             security_settings["disable_export"] = True
             self.logger.info(f"Automatically set view-only mode for {format_info['display_name']}: {filename}")
         
-        # Encrypt the file content
-        encrypted_content = self.encryption_manager.encrypt_file_content(content, password)
+        # Encrypt the validated file content
+        encrypted_content = self.encryption_manager.encrypt_file_content(validated_content, validated_password)
         
         # Create metadata
         current_time = datetime.now()
         metadata = {
             "file_id": file_id,
-            "filename": filename,
+            "filename": validated_filename,
             "creation_time": current_time.isoformat(),
             "last_accessed": current_time.isoformat(),
             "access_count": 0,
@@ -134,10 +378,10 @@ class FileManager:
             "external_viewer": format_info.get('external', False),
             "detection_confidence": format_info['confidence'],
             "security": {
-                "expiration_time": security_settings.get("expiration_time"),
-                "max_access_count": security_settings.get("max_access_count"),
-                "deadman_switch": security_settings.get("deadman_switch"),  # in days
-                "disable_export": security_settings.get("disable_export", False),  # prevents exporting of view-only files
+                "expiration_time": validated_settings.get("expiration_time"),
+                "max_access_count": validated_settings.get("max_access_count"),
+                "deadman_switch": validated_settings.get("deadman_switch"),  # in days
+                "disable_export": validated_settings.get("disable_export", False),  # prevents exporting of view-only files
             },
             "encryption": encrypted_content
         }
@@ -161,13 +405,17 @@ class FileManager:
             Tuple containing (file_content, metadata)
             
         Raises:
+            FileValidationError: If input validation fails
             FileNotFoundError: If the file doesn't exist
             ValueError: If the password is incorrect or the file has expired
         """
-        # Check if the file exists
-        metadata_path = self.metadata_directory / f"{file_id}.json"
+        # Comprehensive input validation per BAR Rules R030
+        validated_file_id = self._validate_file_id(file_id)
+        validated_password = self._validate_password(password)
+        # Check if the validated file exists
+        metadata_path = self.metadata_directory / f"{validated_file_id}.json"
         if not metadata_path.exists():
-            raise FileNotFoundError(f"File with ID {file_id} not found")
+            raise FileNotFoundError(f"File with ID {validated_file_id} not found")
         
         # Load metadata
         with open(metadata_path, "r") as f:
