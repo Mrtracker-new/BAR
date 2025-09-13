@@ -11,6 +11,11 @@ from pathlib import Path
 import threading
 import ctypes
 
+# Import comprehensive input validation system
+from ..security.input_validator import (
+    get_file_validator, FileValidationError, validate_string
+)
+
 class FileScanner:
     """Scans devices for .bar files and validates them."""
     
@@ -28,11 +33,42 @@ class FileScanner:
         """
         self.file_manager = file_manager
         self.logger = logging.getLogger("FileScanner")
+        
+        # Initialize file validator
+        self.file_validator = get_file_validator()
         self.scan_in_progress = False
         self.scan_results = {}
         self.scan_progress = {"total_files": 0, "processed_files": 0, "found_bar_files": 0, "invalid_bar_files": 0}
         self.scan_thread = None
         self.last_device_scan = None
+    
+    def _validate_scan_path(self, path: Any, field_name: str = "root_path") -> str:
+        """Validate scan path parameter.
+        
+        Args:
+            path: Path to validate
+            field_name: Name of the field for logging
+            
+        Returns:
+            Validated path
+            
+        Raises:
+            FileValidationError: If validation fails
+        """
+        # Validate scan path
+        path_result = self.file_validator.validate_file_path(
+            path,
+            field_name=field_name,
+            allow_absolute=True,  # Allow absolute paths for scanning
+            allow_parent_traversal=False  # Prevent path traversal attacks
+        )
+        if not path_result.is_valid:
+            raise FileValidationError(
+                path_result.error_message,
+                field_name=field_name,
+                violation_type=path_result.violation_type
+            )
+        return path_result.sanitized_value
     
     def get_available_devices(self) -> List[Dict[str, Any]]:
         """Get a list of available devices that can be scanned.
@@ -137,13 +173,18 @@ class FileScanner:
             
         Returns:
             Dictionary containing scan results
+            
+        Raises:
+            FileValidationError: If input validation fails
         """
+        # Comprehensive input validation per BAR Rules R030
+        validated_path = self._validate_scan_path(root_path)
         if self.scan_in_progress:
             return {"status": "error", "message": "A scan is already in progress"}
         
-        # Validate the path exists
-        if not os.path.exists(root_path):
-            return {"status": "error", "message": f"Path does not exist: {root_path}"}
+        # Validate the validated path exists
+        if not os.path.exists(validated_path):
+            return {"status": "error", "message": f"Path does not exist: {validated_path}"}
         
         # Reset scan progress
         self.scan_progress = {"total_files": 0, "processed_files": 0, "found_bar_files": 0, "invalid_bar_files": 0}
@@ -151,7 +192,7 @@ class FileScanner:
             "status": "in_progress", 
             "files": [], 
             "start_time": datetime.now().isoformat(),
-            "root_path": root_path,
+            "root_path": validated_path,
             "recursive": recursive
         }
         self.scan_in_progress = True
@@ -159,12 +200,12 @@ class FileScanner:
         # Start scan in a separate thread
         self.scan_thread = threading.Thread(
             target=self._scan_thread, 
-            args=(root_path, recursive, callback),
+            args=(validated_path, recursive, callback),
             daemon=True
         )
         self.scan_thread.start()
         
-        return {"status": "started", "message": f"Scan started at {root_path}"}
+        return {"status": "started", "message": f"Scan started at {validated_path}"}
     
     def _scan_thread(self, root_path: str, recursive: bool, callback):
         """Thread function to perform the actual scan.
