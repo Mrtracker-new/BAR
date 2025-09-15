@@ -9,6 +9,9 @@ cryptography==41.0.3
 # Packaging
 pyinstaller==6.0.0
 
+# System monitoring
+psutil==5.9.6
+
 # Obfuscation
 Cython==3.0.6
 wmi==1.5.1  # Required for hardware ID collection on Windows
