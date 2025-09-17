@@ -10,7 +10,7 @@ from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QIcon, QPixmap, QFont, QPalette, QColor
 
 from .styles import StyleManager
-from ..security.secure_memory import (
+from src.security.secure_memory import (
     SecureString, create_secure_string, secure_compare,
     get_secure_memory_manager, MemoryProtectionLevel
 )
