@@ -5,7 +5,7 @@ from typing import Dict, Any, Optional
 from pathlib import Path
 
 # Import comprehensive input validation system
-from ..security.input_validator import (
+from src.security.input_validator import (
     get_file_validator, get_global_validator, ConfigValidationError,
     validate_string, validate_integer, ValidationLevel, ValidationConfig
 )
