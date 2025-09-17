@@ -13,12 +13,12 @@ from typing import Dict, List, Any, Optional, Tuple
 from pathlib import Path
 from cryptography.hazmat.primitives import hashes
 
-from ..crypto.encryption import EncryptionManager
-from .file_scanner import FileScanner
-from .format_detector import FileFormatDetector
+from src.crypto.encryption import EncryptionManager
+from src.file_manager.file_scanner import FileScanner
+from src.file_manager.format_detector import FileFormatDetector
 
 # Import comprehensive input validation system
-from ..security.input_validator import (
+from src.security.input_validator import (
     get_file_validator, get_global_validator, FileValidationError,
     validate_string, validate_bytes, validate_integer
 )
@@ -178,7 +178,7 @@ class FileManager:
         Raises:
             FileValidationError: If validation fails
         """
-        from ..security.input_validator import get_crypto_validator
+        from src.security.input_validator import get_crypto_validator
         crypto_validator = get_crypto_validator()
         
         password_result = crypto_validator.validate_password(
