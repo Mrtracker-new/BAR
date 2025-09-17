@@ -9,7 +9,7 @@ from typing import Dict, Any, Optional, Tuple
 from .secure_memory import SecureString, secure_compare
 from .hardware_id import HardwareIdentifier
 from .secure_delete import SecureDelete
-from ..crypto.encryption import EncryptionManager
+from src.crypto.encryption import EncryptionManager
 
 
 class DeviceAuthManager:
