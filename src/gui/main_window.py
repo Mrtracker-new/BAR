@@ -12,9 +12,9 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QTimer, QDateTime
 from PyQt5.QtGui import QFont, QColor
 
-from ..config.config_manager import ConfigManager
-from ..crypto.encryption import EncryptionManager
-from ..file_manager.file_manager import FileManager
+from src.config.config_manager import ConfigManager
+from src.crypto.encryption import EncryptionManager
+from src.file_manager.file_manager import FileManager
 # Removed: UserManager and login dialogs (single-user device authentication)
 from .file_dialog import FileDialog
 from .styles import StyleManager
