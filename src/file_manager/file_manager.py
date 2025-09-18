@@ -36,6 +36,9 @@ class FileManager:
         Raises:
             FileValidationError: If input validation fails
         """
+        # Initialize file validator first before any validation
+        self.file_validator = get_file_validator()
+        
         # Comprehensive input validation per BAR Rules R030
         self._validate_base_directory(base_directory)
         # Store validated base directory
@@ -84,9 +87,6 @@ class FileManager:
         )
         
         self.logger = logging.getLogger("FileManager")
-        
-        # Initialize file validator
-        self.file_validator = get_file_validator()
     
     def _validate_base_directory(self, base_directory: Any) -> None:
         """Validate base directory parameter.

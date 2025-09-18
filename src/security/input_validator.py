@@ -1279,16 +1279,51 @@ class FileValidator:
             r'[\\/]\.\.$',          # Directory traversal at end
             r'^\.\.[\\/]',          # Directory traversal at start
             r'[\\/](etc|proc|sys|root|boot)[\\/]',  # Unix system directories
-            r'[Cc]:\\\\[Ww]indows', # Windows system directory
-            r'[Cc]:\\\\[Ss]ystem32', # Windows system32
+            r'^[Cc]:\\\\[Ww]indows\\\\',   # Windows system directory (more specific)
+            r'^[Cc]:\\\\[Ss]ystem32\\\\', # Windows system32 (more specific)
+            r'^[Cc]:\\\\[Pp]rogram\s[Ff]iles\\\\', # Program Files (more specific)
             r'\\\\[^\\]+\\\\[^\\]+', # UNC paths
             r'^\\\\\?\\\\',         # Extended-length path
-            r'[<>:"|?*\x00-\x1f]',  # Control characters and dangerous chars
+            r'[<>:"|?*\x00-\x1f]',  # Control characters and dangerous chars (but allow : in drive letters)
         ]
         
-        for pattern in dangerous_patterns:
-            if re.search(pattern, path):
+        # Special case: Allow C:\ at the beginning for legitimate Windows paths
+        # but block access to specific dangerous system directories
+        if re.match(r'^[A-Za-z]:\\', path):  # Valid drive letter path
+            # Check for specific dangerous Windows directories only
+            specific_dangerous_patterns = [
+                r'^[Cc]:\\\\[Ww]indows\\\\',
+                r'^[Cc]:\\\\[Ss]ystem32\\\\',
+                r'^[Cc]:\\\\[Pp]rogram\s[Ff]iles\\\\',
+                r'^[Cc]:\\\\[Pp]rogram\s[Ff]iles\s\(x86\)\\\\',
+            ]
+            for pattern in specific_dangerous_patterns:
+                if re.search(pattern, path):
+                    return True
+            # Skip the general dangerous pattern check for valid drive paths
+            # and only check non-Windows-specific patterns
+            non_windows_patterns = [
+                r'\.\.[\\/]',           # Directory traversal
+                r'[\\/]\.\.[\\/]',      # Directory traversal  
+                r'[\\/]\.\.$',          # Directory traversal at end
+                r'^\.\.[\\/]',          # Directory traversal at start
+                r'[\\/](etc|proc|sys|root|boot)[\\/]',  # Unix system directories
+                r'\\\\[^\\]+\\\\[^\\]+', # UNC paths
+                r'^\\\\\?\\\\',         # Extended-length path
+            ]
+            for pattern in non_windows_patterns:
+                if re.search(pattern, path):
+                    return True
+            # Check for dangerous characters but allow colon after drive letter
+            path_after_drive = path[3:] if len(path) > 3 else ""
+            if re.search(r'[<>"|?*\x00-\x1f]', path_after_drive):
                 return True
+            return False
+        else:
+            # For non-Windows drive paths, use all patterns
+            for pattern in dangerous_patterns:
+                if re.search(pattern, path):
+                    return True
         
         return False
 
