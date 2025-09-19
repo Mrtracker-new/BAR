@@ -1060,30 +1060,283 @@ class MainWindow(QMainWindow):
         if not self.emergency:
             QMessageBox.warning(self, "Unavailable", "Emergency system not initialized.")
             return
-        confirm = QMessageBox.question(
-            self,
-            "Confirm Emergency Wipe",
-            f"Are you sure you want to perform a '{level}' wipe? This cannot be undone.",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
-        if confirm == QMessageBox.Yes:
-            self.emergency.trigger_emergency_destruction(reason=f"User-initiated {level}", level=level)
+            
+        # Create detailed confirmation messages for each level
+        if level == "selective":
+            title = "🟡 Confirm Selective Wipe (Minimal Impact)"
+            message = (
+                "<b style='color: #27ae60; font-size: 14px;'>SELECTIVE WIPE - What will happen:</b><br><br>"
+                
+                "<b style='color: #e67e22;'>🗑️ REMOVED (Session data only):</b><br>"
+                "• Active temp files and session logs<br>"
+                "• Current memory caches<br>"
+                "• Session authentication tokens<br><br>"
+                
+                "<b style='color: #27ae60;'>✅ PRESERVED (Your data is safe):</b><br>"
+                "• All your encrypted files and documents<br>"
+                "• Application settings and configuration<br>"
+                "• User data and file history<br>"
+                "• Device authentication<br><br>"
+                
+                "<b style='color: #3498db;'>📱 AFTER CLEANUP:</b><br>"
+                "• Application continues running normally<br>"
+                "• You stay logged in<br>"
+                "• All your files remain accessible<br><br>"
+                
+                "<b style='color: #9b59b6;'>💡 USE WHEN:</b> Quick cleanup for temporary security concerns<br><br>"
+                
+                "<b style='color: #27ae60;'>⚠️ SAFE OPERATION:</b> This action cannot be undone, but your important data will remain safe."
+            )
+        elif level == "aggressive":
+            title = "🟠 Confirm Aggressive Wipe (Complete BAR Removal)"
+            message = (
+                "<b style='color: #f39c12; font-size: 14px;'>AGGRESSIVE WIPE - What will happen:</b><br><br>"
+                
+                "<b style='color: #e74c3c;'>🗑️ COMPLETELY REMOVED:</b><br>"
+                "• ALL BAR application data and encrypted files<br>"
+                "• ALL user configurations and settings<br>"
+                "• ALL logs, caches, and temporary files<br>"
+                "• ALL user directories (Documents/BAR, ~/.bar, etc.)<br>"
+                "• Device authentication keys<br><br>"
+                
+                "<b style='color: #3498db;'>🔄 ADDITIONAL SECURITY:</b><br>"
+                "• Free space scrubbing (up to 5GB)<br>"
+                "• Multiple-pass secure deletion<br>"
+                "• Hardware key clearing<br><br>"
+                
+                "<b style='color: #f1c40f;'>🚪 AFTER CLEANUP:</b><br>"
+                "• Application will EXIT immediately<br>"
+                "• Device will need complete re-initialization<br>"
+                "• You'll need to set up BAR from scratch<br><br>"
+                
+                "<b style='color: #27ae60;'>✅ SYSTEM SAFETY:</b><br>"
+                "• Your non-BAR files remain untouched<br>"
+                "• System files and other apps are safe<br><br>"
+                
+                "<b style='color: #9b59b6;'>💡 USE WHEN:</b> Security incident or need to completely remove BAR<br><br>"
+                
+                "<b style='color: #e74c3c;'>⚠️ THIS CANNOT BE UNDONE - ALL BAR DATA WILL BE PERMANENTLY DESTROYED!</b>"
+            )
+        elif level == "scorched":
+            title = "🔴 Confirm Scorched Earth Wipe (MAXIMUM DESTRUCTION)"
+            message = (
+                "<b style='color: #e74c3c; font-size: 14px;'>SCORCHED EARTH - EXTREME SECURITY MODE:</b><br><br>"
+                
+                "<b style='color: #e74c3c;'>💥 MAXIMUM DESTRUCTION INCLUDES:</b><br>"
+                "• Everything from Aggressive Wipe PLUS:<br>"
+                "• Advanced forensic countermeasures<br>"
+                "• Hardware entropy injection<br>"
+                "• System trace cleanup (Registry on Windows)<br>"
+                "• Multi-pass overwriting with random patterns<br>"
+                "• UNLIMITED free space scrubbing<br>"
+                "• Application binary self-destruct<br><br>"
+                
+                "<b style='color: #f39c12;'>💻 SYSTEM IMPACT:</b><br>"
+                "• Forces SYSTEM RESTART after cleanup<br>"
+                "• May take 10-30 minutes to complete<br>"
+                "• Uses maximum CPU/disk resources<br><br>"
+                
+                "<b style='color: #9b59b6;'>🎯 ANTI-FORENSIC MEASURES:</b><br>"
+                "• Decoy file creation and destruction<br>"
+                "• Hardware-level cache poisoning<br>"
+                "• Multiple overwrite patterns (DoD standard)<br><br>"
+                
+                "<b style='color: #3498db;'>💡 USE WHEN:</b><br>"
+                "• Extreme security threats<br>"
+                "• Government/law enforcement concerns<br>"
+                "• Complete data sanitization required<br><br>"
+                
+                "<b style='color: #e74c3c;'>🚨 WARNING: THIS IS THE \"NUCLEAR OPTION\" - MAXIMUM POSSIBLE DESTRUCTION!</b><br>"
+                "<b style='color: #e74c3c;'>⚠️ CANNOT BE STOPPED ONCE STARTED - SYSTEM WILL RESTART!</b>"
+            )
+        else:
+            title = "Confirm Emergency Wipe"
+            message = f"Are you sure you want to perform a '{level}' wipe? This cannot be undone."
+        
+        # Create custom message box with better layout control
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle(title)
+        msg_box.setTextFormat(Qt.RichText)
+        msg_box.setText(message)
+        msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        msg_box.setDefaultButton(QMessageBox.No)
+        msg_box.setIcon(QMessageBox.Warning)
+        
+        # Force compact size
+        msg_box.setSizeGripEnabled(False)
+        msg_box.setFixedSize(550, 400)  # Fixed size for consistent layout
+        
+        # Style the message box with compact, centered layout
+        msg_box.setStyleSheet("""
+            QMessageBox {
+                background-color: #2c2c2c;
+                color: #ffffff;
+                font-family: 'Segoe UI', Arial, sans-serif;
+                font-size: 12px;
+                border-radius: 8px;
+            }
+            QMessageBox QLabel {
+                color: #ffffff;
+                padding: 20px;
+                line-height: 1.6;
+                font-size: 12px;
+                background-color: #2c2c2c;
+                text-align: left;
+                margin: 0px;
+                border: none;
+            }
+            QPushButton {
+                background-color: #3a3a3a;
+                color: #ffffff !important;
+                border: 1px solid #555;
+                border-radius: 6px;
+                padding: 12px 24px;
+                min-width: 90px;
+                font-size: 12px;
+                font-weight: bold;
+                margin: 8px 4px;
+            }
+            QPushButton:hover {
+                background-color: #4a4a4a;
+                border: 1px solid #666;
+            }
+            QPushButton:pressed {
+                background-color: #2a2a2a;
+            }
+            QPushButton[text="Yes"] {
+                background-color: #d35400;
+                border: 1px solid #e67e22;
+            }
+            QPushButton[text="Yes"]:hover {
+                background-color: #e67e22;
+                border: 1px solid #f39c12;
+            }
+            QPushButton[text="No"] {
+                background-color: #27ae60;
+                border: 1px solid #2ecc71;
+            }
+            QPushButton[text="No"]:hover {
+                background-color: #2ecc71;
+                border: 1px solid #3ad084;
+            }
+        """)
+        
+        result = msg_box.exec_()
+        if result == QMessageBox.Yes:
+            self.emergency.trigger_emergency_destruction(reason=f"User-initiated {level} wipe", level=level)
 
     def _panic_wipe(self):
         """Immediate scorched-earth wipe."""
         if not self.emergency:
             QMessageBox.warning(self, "Unavailable", "Emergency system not initialized.")
             return
-        confirm = QMessageBox.question(
-            self,
-            "Confirm Panic Wipe",
-            "This will immediately destroy all sensitive data (scorched earth). Continue?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
+            
+        # Create detailed panic wipe confirmation
+        title = "🚨 CONFIRM PANIC WIPE - IMMEDIATE SCORCHED EARTH"
+        message = (
+            "<b style='color: #e74c3c; font-size: 14px;'>🚨 PANIC WIPE ACTIVATED - NO GOING BACK!</b><br><br>"
+            
+            "<b style='color: #e74c3c;'>💥 IMMEDIATE MAXIMUM DESTRUCTION:</b><br>"
+            "• ALL BAR data will be instantly destroyed<br>"
+            "• Advanced forensic countermeasures deployed<br>"
+            "• Hardware-level entropy injection<br>"
+            "• System traces eliminated<br>"
+            "• Multiple-pass DoD-standard overwriting<br>"
+            "• UNLIMITED free space scrubbing<br>"
+            "• Application binary self-destruction<br><br>"
+            
+            "<b style='color: #f39c12;'>⚡ HAPPENS IMMEDIATELY:</b><br>"
+            "• Process starts the moment you click YES<br>"
+            "• Cannot be stopped or cancelled<br>"
+            "• System will restart automatically<br>"
+            "• Takes 10-30 minutes to complete<br><br>"
+            
+            "<b style='color: #e67e22;'>🎯 USE FOR EMERGENCIES ONLY:</b><br>"
+            "• Physical device seizure imminent<br>"
+            "• Law enforcement/government threats<br>"
+            "• Extreme security compromise detected<br>"
+            "• Life or freedom depends on data destruction<br><br>"
+            
+            "<b style='color: #e74c3c;'>🚨 THIS IS THE NUCLEAR OPTION - ABSOLUTE DESTRUCTION!</b><br>"
+            "<b style='color: #e74c3c;'>⚠️ ONCE STARTED, NOTHING CAN STOP THE WIPE PROCESS!</b><br><br>"
+            
+            "<b style='color: #ffffff;'>Are you absolutely certain you want to proceed?</b>"
         )
-        if confirm == QMessageBox.Yes:
-            self.emergency.trigger_emergency_destruction(reason="User panic", level="scorched")
+        
+        # Create custom message box with rich text and danger styling
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle(title)
+        msg_box.setTextFormat(Qt.RichText)
+        msg_box.setText(message)
+        msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        msg_box.setDefaultButton(QMessageBox.No)
+        msg_box.setIcon(QMessageBox.Critical)
+        
+        # Force compact size for panic dialog
+        msg_box.setSizeGripEnabled(False)
+        msg_box.setFixedSize(580, 450)  # Slightly larger for panic content
+        
+        # Apply improved danger styling with compact layout
+        msg_box.setStyleSheet("""
+            QMessageBox {
+                background-color: #2a1810;
+                color: #ffffff;
+                font-family: 'Segoe UI', Arial, sans-serif;
+                font-size: 12px;
+                border: 3px solid #dc3545;
+                border-radius: 10px;
+            }
+            QMessageBox QLabel {
+                color: #ffffff;
+                padding: 20px;
+                line-height: 1.6;
+                font-size: 12px;
+                background-color: #2a1810;
+                text-align: left;
+                margin: 0px;
+                border: none;
+            }
+            QPushButton {
+                background-color: #dc3545;
+                color: #ffffff !important;
+                border: 2px solid #e74c3c;
+                border-radius: 8px;
+                padding: 12px 24px;
+                min-width: 100px;
+                font-size: 13px;
+                font-weight: bold;
+                margin: 8px 4px;
+            }
+            QPushButton:hover {
+                background-color: #e74c3c;
+                border: 2px solid #f1c40f;
+            }
+            QPushButton:pressed {
+                background-color: #c0392b;
+            }
+            QPushButton[text="Yes"] {
+                background-color: #dc3545;
+                border: 2px solid #e74c3c;
+            }
+            QPushButton[text="Yes"]:hover {
+                background-color: #e74c3c;
+                border: 2px solid #f39c12;
+                box-shadow: 0 0 15px rgba(220, 53, 69, 0.3);
+            }
+            QPushButton[text="No"] {
+                background-color: #28a745;
+                border: 2px solid #34ce57;
+            }
+            QPushButton[text="No"]:hover {
+                background-color: #34ce57;
+                border: 2px solid #5dde7a;
+                box-shadow: 0 0 15px rgba(40, 167, 69, 0.3);
+            }
+        """)
+        
+        result = msg_box.exec_()
+        if result == QMessageBox.Yes:
+            self.emergency.trigger_emergency_destruction(reason="USER PANIC WIPE ACTIVATED", level="scorched")
 
     def _update_destruct_status(self):
         """Update the self-destruct system status display."""
