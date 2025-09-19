@@ -75,11 +75,11 @@ class AsyncFileScanner:
     per BAR project rules.
     """
     
-    # Constants for file validation
+    # Constants for file validation (SECURE FORMAT ONLY)
     BAR_FILE_EXTENSION = ".bar"
-    BAR_FILE_SIGNATURE = "bar_portable_file"
-    BAR_FILE_MIN_SIZE = 50  # Minimum size in bytes for a valid .bar file
-    BAR_FILE_VERSION_PATTERN = r'^\\d+\\.\\d+(\\.\\d+)?$'  # Pattern for valid version numbers
+    BAR_SECURE_MAGIC_HEADER = b'BARSEC2.0\x00\x00\x00\x00\x00\x00\x00'  # Only secure format magic header
+    BAR_FILE_MIN_SIZE = 100  # Minimum size for secure format files
+    BAR_SECURE_VERSION = 0x20000000  # Version 2.0.0.0 for secure format
     
     # Concurrent scanning limits
     MAX_CONCURRENT_DEVICES = 4

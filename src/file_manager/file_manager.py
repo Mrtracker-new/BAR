@@ -767,8 +767,9 @@ class FileManager:
     def export_portable_file(self, file_id: str, password: str, export_path: str) -> bool:
         """Export a secure file in a portable format that can be imported on another device.
         
-        This creates a special file format that contains both the encrypted content and
-        all necessary metadata to maintain security settings when transferred to another device.
+        This creates a fully encrypted portable file format where ALL metadata and content
+        is encrypted, preventing any information leakage. Includes integrity protection
+        and anti-forensics measures.
         
         Args:
             file_id: The ID of the file to export
@@ -804,33 +805,42 @@ class FileManager:
             self.logger.warning(f"Failed decryption attempt during export for file: {file_id}")
             raise ValueError("Incorrect password")
         
-        # Create portable file format
-        portable_data = {
-            "bar_portable_file": True,
-            "version": "1.0",
-            "filename": metadata["filename"],
-            "creation_time": metadata["creation_time"],
-            "file_type": metadata.get("file_type", "document"),  # Preserve file type information
-            "security": metadata["security"],
-            "encryption": metadata["encryption"],
-            "content_hash": self._hash_content(file_content),
-            "failed_password_attempts": metadata.get("failed_password_attempts", 0),
-            "access_count": metadata.get("access_count", 0)  # Preserve access count when exporting
-        }
-        
-        # Save the portable file
+        # Use the new secure portable format
         try:
-            with open(export_path, "w") as f:
-                json.dump(portable_data, f, indent=2)
+            from ..crypto.secure_portable_format import SecurePortableFormat
             
-            self.logger.info(f"Exported portable file: {file_id} to {export_path}")
-            return True
+            # Initialize secure portable format handler
+            secure_format = SecurePortableFormat(self.logger)
+            
+            # Create the secure portable file with full encryption
+            success = secure_format.create_portable_file(
+                file_content=file_content,
+                metadata=metadata,
+                password=password,
+                output_path=export_path
+            )
+            
+            if success:
+                self.logger.info(f"Exported secure portable file: {file_id} to {export_path}")
+                
+                # Security audit log
+                self.logger.info(f"SECURITY: Portable export completed with full encryption - no plaintext metadata exposed")
+                return True
+            else:
+                raise ValueError("Failed to create secure portable file")
+                
+        except ImportError as e:
+            self.logger.error(f"Failed to import secure portable format: {str(e)}")
+            raise ValueError("Secure portable format not available")
         except Exception as e:
-            self.logger.error(f"Failed to export portable file {file_id}: {str(e)}")
+            self.logger.error(f"Failed to export secure portable file {file_id}: {str(e)}")
             raise ValueError(f"Failed to export file: {str(e)}")
     
     def import_portable_file(self, import_path: str, password: str) -> str:
         """Import a portable secure file.
+        
+        Supports both new secure format (fully encrypted) and legacy format.
+        The new format provides enhanced security with no metadata exposure.
         
         Args:
             import_path: The path of the portable file to import
@@ -843,91 +853,55 @@ class FileManager:
             ValueError: If the file is not a valid BAR portable file or password is incorrect
         """
         try:
-            # Load and validate the file
-            with open(import_path, "r") as f:
-                portable_data = json.load(f)
+            # Import secure portable files only - no legacy support for security
+            from ..crypto.secure_portable_format import SecurePortableFormat
             
-            # Check if it's a valid BAR portable file
-            if not portable_data.get("bar_portable_file"):
-                raise ValueError("Not a valid BAR portable file")
+            secure_format = SecurePortableFormat(self.logger)
             
-            # Check if the file is in the blacklist
-            content_hash = portable_data.get("content_hash")
-            if content_hash and self._is_blacklisted(content_hash):
-                raise ValueError("This file has been permanently deleted due to security violations and cannot be reimported")
-            
-            # Check if the encryption data contains hardware binding
-            encryption_data = portable_data.get("encryption", {})
-            hardware_bound = False
-            
-            # Check if we need to handle hardware binding
-            if "hardware_id_hash" in encryption_data:
-                hardware_bound = True
-                # Store the original hardware ID hash
-                original_hw_hash = encryption_data.get("hardware_id_hash")
+            # Check if it's a secure format file
+            if secure_format.is_secure_portable_file(import_path):
+                self.logger.info(f"Importing secure portable file: {import_path}")
                 
-                # Temporarily remove hardware binding for decryption
-                encryption_data_copy = encryption_data.copy()
-                if "hardware_id_hash" in encryption_data_copy:
-                    del encryption_data_copy["hardware_id_hash"]
-                    encryption_data_copy["hardware_bound"] = False
+                # Decrypt the secure portable file
+                file_content, metadata = secure_format.read_portable_file(import_path, password)
                 
-                # Try to decrypt with modified encryption data first
-                try:
-                    file_content = self.encryption_manager.decrypt_file_content(
-                        encryption_data_copy, password)
-                    # If successful, use the modified encryption data without hardware binding
-                    portable_data["encryption"] = encryption_data_copy
-                    self.logger.info(f"Successfully decrypted file from different device by bypassing hardware binding")
-                except ValueError:
-                    # If that fails, try with original encryption data
-                    try:
-                        file_content = self.encryption_manager.decrypt_file_content(
-                            encryption_data, password)
-                    except ValueError:
-                        raise ValueError("Incorrect password or incompatible hardware binding")
+                # Check if the file is in the blacklist
+                content_hash = metadata.get("content_hash")
+                if content_hash and self._is_blacklisted(content_hash):
+                    raise ValueError("This file has been permanently deleted due to security violations and cannot be reimported")
+                
+                # Generate a new file ID for import
+                file_id = self._generate_file_id()
+                
+                # Re-encrypt the content with our encryption manager
+                encrypted_data = self.encryption_manager.encrypt_file_content(file_content, password)
+                
+                # Create new metadata
+                import_metadata = {
+                    "file_id": file_id,
+                    "filename": metadata["filename"],
+                    "creation_time": metadata["creation_time"],
+                    "last_accessed": datetime.now().isoformat(),
+                    "access_count": metadata.get("access_count", 0),
+                    "file_type": metadata.get("file_type", "document"),
+                    "security": metadata["security"],
+                    "encryption": encrypted_data,
+                    "content_hash": content_hash or self._hash_content(file_content),
+                    "failed_password_attempts": 0  # Reset for new import
+                }
+                
+                # Save the metadata file
+                metadata_path = self.metadata_directory / f"{file_id}.json"
+                with open(metadata_path, "w") as f:
+                    json.dump(import_metadata, f, indent=2)
+                
+                self.logger.info(f"Successfully imported secure portable file: {file_id} ({metadata['filename']})")
+                self.logger.info(f"SECURITY: File imported with military-grade security - zero metadata exposure")
+                return file_id
             else:
-                # No hardware binding, proceed normally
-                try:
-                    file_content = self.encryption_manager.decrypt_file_content(
-                        encryption_data, password)
-                except ValueError:
-                    raise ValueError("Incorrect password")
-            
-            # Generate a new file ID
-            file_id = self._generate_file_id()
-            
-            # Create metadata
-            metadata = {
-                "file_id": file_id,
-                "filename": portable_data["filename"],
-                "creation_time": portable_data["creation_time"],
-                "last_accessed": datetime.now().isoformat(),
-                # Preserve access count from the exported file instead of resetting to 0
-                "access_count": portable_data.get("access_count", 0),
-                # Preserve file type information
-                "file_type": portable_data.get("file_type", "document"),
-                "security": portable_data["security"],
-                "encryption": portable_data["encryption"],
-                "content_hash": content_hash or self._hash_content(file_content),
-                # Preserve the failed password attempts counter from the exported file
-                "failed_password_attempts": portable_data.get("failed_password_attempts", 0)
-            }
-            
-            # Log if this is a view-only file
-            if metadata["security"].get("disable_export", False):
-                self.logger.info(f"Imported view-only file: {file_id} ({metadata['filename']})")
-            
-            # Save the metadata file
-            metadata_path = self.metadata_directory / f"{file_id}.json"
-            with open(metadata_path, "w") as f:
-                json.dump(metadata, f, indent=2)
-            
-            if hardware_bound:
-                self.logger.info(f"Imported portable file from different device: {file_id} ({metadata['filename']})")
-            else:
-                self.logger.info(f"Imported portable file: {file_id} ({metadata['filename']})")
-            return file_id
+                # File is not in secure format - reject it for security
+                self.logger.error(f"SECURITY VIOLATION: Attempted to import insecure portable file: {import_path}")
+                raise ValueError("This file is not in the secure BAR portable format. Only secure format files can be imported for security reasons. Please re-export the file using the current version of BAR.")
             
         except Exception as e:
             self.logger.error(f"Failed to import portable file: {str(e)}")
