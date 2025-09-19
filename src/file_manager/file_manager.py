@@ -252,6 +252,23 @@ class FileManager:
                     )
                 validated_settings[validated_key] = count_result.sanitized_value
                 
+            elif validated_key == "deadman_switch" and value is not None:
+                deadman_result = validate_integer(
+                    value,
+                    field_name=f"{field_name}.deadman_switch",
+                    min_value=1,
+                    max_value=365,  # Maximum 1 year in days
+                    allow_zero=False,
+                    allow_negative=False
+                )
+                if not deadman_result.is_valid:
+                    raise FileValidationError(
+                        deadman_result.error_message,
+                        field_name=f"{field_name}.deadman_switch",
+                        violation_type=deadman_result.violation_type
+                    )
+                validated_settings[validated_key] = deadman_result.sanitized_value
+                
             elif validated_key == "disable_export":
                 if not isinstance(value, bool):
                     raise FileValidationError(
@@ -260,6 +277,9 @@ class FileManager:
                         violation_type="invalid_type"
                     )
                 validated_settings[validated_key] = value
+            elif validated_key in ["max_access_count", "deadman_switch"] and value is None:
+                # Handle None values for numeric fields
+                validated_settings[validated_key] = None
             else:
                 # Other settings - validate as strings or leave as None
                 if value is not None:
@@ -1021,19 +1041,38 @@ class FileManager:
                 return False
         
         # Check max access count
-        if metadata["security"]["max_access_count"] and \
-           metadata["access_count"] >= metadata["security"]["max_access_count"]:
-            self.logger.info(f"File {metadata['file_id']} has reached max access count")
-            return False
+        max_access_count = metadata["security"]["max_access_count"]
+        if max_access_count:
+            # Handle both string and integer types for backward compatibility
+            if isinstance(max_access_count, str):
+                try:
+                    max_access_count = int(max_access_count)
+                except (ValueError, TypeError):
+                    self.logger.warning(f"Invalid max_access_count value for file {metadata['file_id']}: {max_access_count}")
+                    max_access_count = None
+            
+            if max_access_count and metadata["access_count"] >= max_access_count:
+                self.logger.info(f"File {metadata['file_id']} has reached max access count")
+                return False
         
         # Check deadman switch
-        if metadata["security"]["deadman_switch"]:
-            last_accessed = datetime.fromisoformat(metadata["last_accessed"])
-            inactive_days = (current_time - last_accessed).days
+        deadman_switch = metadata["security"]["deadman_switch"]
+        if deadman_switch:
+            # Handle both string and integer types for backward compatibility
+            if isinstance(deadman_switch, str):
+                try:
+                    deadman_switch = int(deadman_switch)
+                except (ValueError, TypeError):
+                    self.logger.warning(f"Invalid deadman_switch value for file {metadata['file_id']}: {deadman_switch}")
+                    deadman_switch = None
             
-            if inactive_days > metadata["security"]["deadman_switch"]:
-                self.logger.info(f"File {metadata['file_id']} triggered deadman switch")
-                return False
+            if deadman_switch:
+                last_accessed = datetime.fromisoformat(metadata["last_accessed"])
+                inactive_days = (current_time - last_accessed).days
+                
+                if inactive_days > deadman_switch:
+                    self.logger.info(f"File {metadata['file_id']} triggered deadman switch")
+                    return False
         
         return True
     
