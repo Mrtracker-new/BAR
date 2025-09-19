@@ -85,6 +85,31 @@ class DeviceAuthDialog(QDialog):
                 color: #ffffff;
                 padding: 8px;
             }
+            QPushButton {
+                background-color: #3a3a3a;
+                color: #ffffff !important;
+                border: 1px solid #555;
+                border-radius: 4px;
+                padding: 8px 16px;
+                min-width: 80px;
+                font-weight: bold;
+                text-align: center;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #4a4a4a;
+                border: 1px solid #666;
+                color: #ffffff !important;
+            }
+            QPushButton:pressed {
+                background-color: #2a2a2a;
+                color: #ffffff !important;
+            }
+            QPushButton:disabled {
+                background-color: #2a2a2a;
+                color: #888888 !important;
+                border: 1px solid #3a3a3a;
+            }
         """)
         
         self._setup_ui()
@@ -338,6 +363,31 @@ class DeviceResetDialog(QDialog):
             QGroupBox::title {
                 color: #e74c3c;
                 font-weight: bold;
+            }
+            QPushButton {
+                background-color: #3a3a3a;
+                color: #ffffff !important;
+                border: 1px solid #555;
+                border-radius: 4px;
+                padding: 8px 16px;
+                min-width: 80px;
+                font-weight: bold;
+                text-align: center;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #4a4a4a;
+                border: 1px solid #666;
+                color: #ffffff !important;
+            }
+            QPushButton:pressed {
+                background-color: #2a2a2a;
+                color: #ffffff !important;
+            }
+            QPushButton:disabled {
+                background-color: #2a2a2a;
+                color: #888888 !important;
+                border: 1px solid #3a3a3a;
             }
         """)
         
