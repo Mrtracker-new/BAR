@@ -130,20 +130,24 @@ class StyleManager:
             
             QPushButton {
                 background-color: #3a3a3a;
-                color: #ffffff;
+                color: #ffffff !important;
                 border: 1px solid #555;
                 border-radius: 4px;
                 padding: 5px 15px;
                 min-width: 80px;
+                font-weight: bold;
+                text-align: center;
             }
             
             QPushButton:hover {
                 background-color: #4a4a4a;
                 border: 1px solid #666;
+                color: #ffffff !important;
             }
             
             QPushButton:pressed {
                 background-color: #2a2a2a;
+                color: #ffffff !important;
             }
             
             QPushButton:disabled {
@@ -360,20 +364,24 @@ class StyleManager:
             
             QPushButton {
                 background-color: #e0e0e0;
-                color: #31363b;
+                color: #31363b !important;
                 border: 1px solid #c0c0c0;
                 border-radius: 4px;
                 padding: 5px 15px;
                 min-width: 80px;
+                font-weight: bold;
+                text-align: center;
             }
             
             QPushButton:hover {
                 background-color: #f0f0f0;
                 border: 1px solid #a0a0a0;
+                color: #31363b !important;
             }
             
             QPushButton:pressed {
                 background-color: #d0d0d0;
+                color: #31363b !important;
             }
             
             QPushButton:disabled {
@@ -540,7 +548,7 @@ class StyleManager:
             return StyleManager.base_style + """
                 QPushButton {
                     background-color: #2196F3; /* Modern blue */
-                    color: white;
+                    color: #ffffff !important; /* Force white text */
                     border: 2px solid #1976D2; /* Border for depth instead of shadow */
                     border-radius: 6px; /* Slightly more rounded */
                     padding: 12px 24px; /* More padding for better touch targets */
@@ -554,10 +562,12 @@ class StyleManager:
                 QPushButton:hover {
                     background-color: #42A5F5; /* Lighter blue on hover */
                     border: 2px solid #2196F3; /* Lighter border on hover */
+                    color: #ffffff !important; /* Force white text on hover */
                 }
                 QPushButton:pressed {
                     background-color: #1976D2; /* Darker blue when pressed */
                     border: 2px solid #0D47A1; /* Darker border when pressed */
+                    color: #ffffff !important; /* Force white text when pressed */
                 }
                 QPushButton:disabled {
                     background-color: #BBDEFB; /* Lighter, desaturated blue */
@@ -569,7 +579,7 @@ class StyleManager:
             return StyleManager.base_style + """
                 QPushButton {
                     background-color: #F44336; /* Modern red */
-                    color: white;
+                    color: #ffffff !important; /* Force white text */
                     border: 2px solid #D32F2F; /* Border for depth instead of shadow */
                     border-radius: 6px;
                     padding: 12px 24px;
@@ -583,10 +593,12 @@ class StyleManager:
                 QPushButton:hover {
                     background-color: #EF5350; /* Lighter red on hover */
                     border: 2px solid #F44336; /* Lighter border on hover */
+                    color: #ffffff !important; /* Force white text on hover */
                 }
                 QPushButton:pressed {
                     background-color: #D32F2F; /* Darker red when pressed */
                     border: 2px solid #B71C1C; /* Darker border when pressed */
+                    color: #ffffff !important; /* Force white text when pressed */
                 }
                 QPushButton:disabled {
                     background-color: #FFCDD2; /* Lighter, desaturated red */
@@ -627,7 +639,7 @@ class StyleManager:
             return StyleManager.base_style + """
                 QPushButton {
                     background-color: #78909C; /* Modern blue-grey */
-                    color: white; /* White text for better contrast */
+                    color: #ffffff !important; /* Force white text for better contrast */
                     border: 2px solid #546E7A; /* Border for depth instead of shadow */
                     border-radius: 6px;
                     padding: 12px 24px;
@@ -641,14 +653,16 @@ class StyleManager:
                 QPushButton:hover {
                     background-color: #90A4AE; /* Lighter blue-grey on hover */
                     border: 2px solid #78909C; /* Lighter border on hover */
+                    color: #ffffff !important; /* Force white text on hover */
                 }
                 QPushButton:pressed {
                     background-color: #546E7A; /* Darker blue-grey when pressed */
                     border: 2px solid #37474F; /* Darker border when pressed */
+                    color: #ffffff !important; /* Force white text when pressed */
                 }
                 QPushButton:disabled {
                     background-color: #CFD8DC; /* Lighter, desaturated blue-grey */
-                    color: #ECEFF1; /* Lighter text */
+                    color: #90A4AE !important; /* Darker text for better visibility */
                     border: 2px solid #CFD8DC; /* Same color as background */
                 }
             """
@@ -925,3 +939,41 @@ class StyleManager:
                 font-weight: bold;
             }
         """
+    
+    @staticmethod
+    def create_visible_button(text, button_type="default", parent=None):
+        """Create a button with guaranteed text visibility.
+        
+        Args:
+            text: The text to display on the button
+            button_type: The type of button ("default", "primary", "danger", "success")
+            parent: Parent widget
+            
+        Returns:
+            A configured QPushButton with guaranteed text visibility
+        """
+        from PyQt5.QtWidgets import QPushButton
+        from PyQt5.QtGui import QFont
+        from PyQt5.QtCore import Qt
+        
+        button = QPushButton(text, parent)
+        
+        # Set explicit text
+        button.setText(text)
+        
+        # Apply the button style
+        button.setStyleSheet(StyleManager.get_button_style(button_type))
+        
+        # Ensure text is always visible with explicit font settings
+        font = QFont("Segoe UI", 10)
+        font.setBold(True)
+        button.setFont(font)
+        
+        # Force text alignment
+        button.setProperty("text", text)
+        
+        # Ensure button updates properly
+        button.update()
+        button.repaint()
+        
+        return button
