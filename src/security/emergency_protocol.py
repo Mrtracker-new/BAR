@@ -35,6 +35,11 @@ class EmergencyProtocol:
         self.secure_delete = SecureDelete()
         self.hardware_wipe = HardwareWipe()
         
+        # Initialize logger
+        import logging
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.INFO)
+        
         # Emergency state
         self._emergency_active = False
         self._dead_mans_switch_active = False
@@ -214,7 +219,10 @@ class EmergencyProtocol:
                 
             else:
                 # Fallback to aggressive for unknown levels
-                self.logger.warning(f"Unknown destruction level '{level}', using aggressive")
+                try:
+                    self.logger.warning(f"Unknown destruction level '{level}', using aggressive")
+                except:
+                    pass  # In case logger fails
                 self._aggressive_destruction(reason, scrub_free_space)
                 
         except Exception as e:
@@ -283,7 +291,7 @@ class EmergencyProtocol:
         self.logger.critical(f"AGGRESSIVE DESTRUCTION: {reason}")
         
         try:
-            # 1. Wipe ALL BAR application data
+            # 1. Wipe ALL BAR application data - current directory and subdirectories
             app_dirs = [
                 self.base_directory / "data",
                 self.base_directory / "logs", 
@@ -296,6 +304,16 @@ class EmergencyProtocol:
             for dir_path in app_dirs:
                 if dir_path.exists():
                     self.secure_delete.secure_delete_directory(str(dir_path))
+            
+            # Also wipe the entire base directory contents
+            try:
+                for item in self.base_directory.iterdir():
+                    if item.is_file():
+                        self.secure_delete.secure_delete_file(str(item))
+                    elif item.is_dir() and item.name not in ['src']:  # Keep source code during development
+                        self.secure_delete.secure_delete_directory(str(item))
+            except Exception:
+                pass
             
             # 2. Wipe ALL user-scope BAR directories
             user_dirs = [
@@ -318,12 +336,7 @@ class EmergencyProtocol:
             
             # 4. Full device authentication wipe
             if self.device_auth:
-                self.device_auth.emergency_wipe(
-                    wipe_user_data=True,
-                    wipe_temp_files=True,
-                    wipe_device_keys=True,
-                    wipe_hardware_binding=True
-                )
+                self.device_auth.emergency_wipe()
             
             # 5. Wipe blacklist and quarantine
             sensitive_artifacts = [
@@ -366,9 +379,10 @@ class EmergencyProtocol:
             self.logger.error(f"Aggressive destruction failed: {e}")
     
     def _scorched_earth_destruction(self, reason: str, scrub_free_space: Optional[bool]):
-        """SCORCHED EARTH: Maximum destruction with forensic countermeasures.
+        """SCORCHED EARTH: Maximum destruction with complete application reset.
         
-        This level performs maximum data destruction with anti-forensic measures.
+        This level performs maximum data destruction with anti-forensic measures
+        and ensures BAR will start as a completely fresh installation after restart.
         Designed for extreme security threats or when complete sanitization is required.
         """
         self.logger.critical(f"SCORCHED EARTH DESTRUCTION: {reason}")
@@ -377,58 +391,50 @@ class EmergencyProtocol:
             # 1. Perform all aggressive destruction first
             self._aggressive_destruction(reason, scrub_free_space=False)  # We'll do our own
             
-            # 2. Extended forensic countermeasures
+            # 2. COMPLETE APPLICATION RESET - Remove ALL traces of BAR
+            self._complete_application_reset()
+            
+            # 3. Extended forensic countermeasures
             self._deploy_forensic_countermeasures()
             
-            # 3. Hardware entropy injection
+            # 4. Hardware entropy injection
             self._inject_hardware_entropy()
             
-            # 4. Registry/system traces cleanup (Windows specific)
+            # 5. Registry/system traces cleanup (Windows specific)
             if os.name == 'nt':
                 self._cleanup_windows_traces()
             
-            # 5. Multiple-pass overwriting of sensitive areas
+            # 6. Multiple-pass overwriting of sensitive areas
             self._multi_pass_overwrite_sensitive_areas()
             
-            # 6. Maximum free space scrubbing
+            # 7. Maximum free space scrubbing
             do_scrub = scrub_free_space if scrub_free_space is not None else True
             if do_scrub:
                 # Use maximum scrubbing with multiple patterns
                 patterns = ["zeros", "ones", "random", "dod"]
                 for pattern in patterns:
-                    self.hardware_wipe.wipe_volume_free_space(
-                        self.base_directory,
-                        max_bytes=None,  # No limit for scorched earth
-                        pattern=pattern
-                    )
+                    try:
+                        self.hardware_wipe.wipe_volume_free_space(
+                            self.base_directory,
+                            max_bytes=None,  # No limit for scorched earth
+                            pattern=pattern
+                        )
+                    except Exception:
+                        pass  # Continue even if free space wipe fails
             
-            # 7. Self-destruct application binary (if possible)
+            # 8. Self-destruct application binary (if possible)
             self._attempt_binary_self_destruct()
             
-            # 8. Create destruction confirmation with random delay
-            try:
-                destruction_file = self.base_directory / "SCORCHED_EARTH_COMPLETE.txt"
-                with open(destruction_file, "w") as f:
-                    f.write(f"SCORCHED EARTH PROTOCOL COMPLETED\n")
-                    f.write(f"Timestamp: {datetime.now().isoformat()}\n")
-                    f.write(f"Reason: {reason}\n")
-                    f.write("Maximum security wipe completed.\n")
-                    f.write("System will restart for complete sanitization.\n")
-                    
-                # Overwrite the file multiple times then delete
-                for _ in range(7):
-                    with open(destruction_file, "wb") as f:
-                        f.write(secrets.token_bytes(1024))
-                    time.sleep(0.1)
-                destruction_file.unlink()
-                
-            except Exception:
-                pass
+            # 9. Final confirmation and cleanup
+            self._finalize_scorched_earth_destruction(reason)
                 
             self.logger.critical("SCORCHED EARTH destruction completed - forcing system restart")
             
         except Exception as e:
-            self.logger.error(f"Scorched earth destruction failed: {e}")
+            try:
+                self.logger.error(f"Scorched earth destruction failed: {e}")
+            except:
+                pass  # Even logging might fail at this point
     
     def _deploy_forensic_countermeasures(self):
         """Deploy anti-forensic countermeasures."""
@@ -468,30 +474,133 @@ class EmergencyProtocol:
             pass
     
     def _cleanup_windows_traces(self):
-        """Clean up Windows-specific traces (registry, prefetch, etc.)."""
+        """Clean up Windows-specific traces for complete application reset.
+        
+        Removes BAR traces from:
+        - Registry (recent files, run history, etc.)
+        - Prefetch files
+        - Windows event logs
+        - Jump lists
+        """
         if os.name != 'nt':
             return
             
         try:
             import winreg
             
-            # Clean up recent documents registry entries related to BAR
-            # This is a simplified version - real implementation would be more extensive
-            registry_keys = [
+            # 1. Clean up registry entries related to BAR
+            registry_cleanup_keys = [
+                # Recent documents and files
                 (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Explorer\RecentDocs"),
                 (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Explorer\RunMRU"),
+                
+                # File associations and shell extensions
+                (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts"),
+                
+                # Application data
+                (winreg.HKEY_CURRENT_USER, r"Software\BAR"),
+                (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\BAR"),
+                
+                # Windows search index
+                (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Search"),
             ]
             
-            for hkey, subkey_path in registry_keys:
+            for hkey, subkey_path in registry_cleanup_keys:
                 try:
-                    # Open registry key and clean BAR-related entries
-                    # NOTE: This is a placeholder - real implementation would need careful registry handling
-                    pass
-                except Exception:
-                    pass  # Ignore registry access errors
+                    self._clean_registry_key_for_bar(hkey, subkey_path)
+                except Exception as e:
+                    self.logger.debug(f"Registry cleanup warning for {subkey_path}: {e}")
+            
+            # 2. Clean Windows prefetch files
+            try:
+                prefetch_dir = Path("C:") / "Windows" / "Prefetch"
+                if prefetch_dir.exists():
+                    for pf_file in prefetch_dir.glob("*BAR*"):
+                        if pf_file.is_file():
+                            try:
+                                pf_file.unlink()
+                            except Exception:
+                                pass  # Prefetch files might be locked
+                                
+            except Exception:
+                pass  # Prefetch cleanup is optional
+            
+            # 3. Clean Windows jump lists
+            try:
+                jumplist_dirs = [
+                    Path.home() / "AppData" / "Roaming" / "Microsoft" / "Windows" / "Recent" / "AutomaticDestinations",
+                    Path.home() / "AppData" / "Roaming" / "Microsoft" / "Windows" / "Recent" / "CustomDestinations",
+                ]
+                
+                for jl_dir in jumplist_dirs:
+                    if jl_dir.exists():
+                        # Remove all jump list files (they're hard to parse)
+                        for jl_file in jl_dir.iterdir():
+                            if jl_file.is_file():
+                                try:
+                                    jl_file.unlink()
+                                except Exception:
+                                    pass  # Some files might be locked
+                                    
+            except Exception:
+                pass  # Jump list cleanup is optional
+            
+            # 4. Clear Windows Search database references
+            try:
+                search_dirs = [
+                    Path.home() / "AppData" / "Local" / "Microsoft" / "Windows" / "Search",
+                    Path("C:") / "ProgramData" / "Microsoft" / "Search",
+                ]
+                
+                for search_dir in search_dirs:
+                    if search_dir.exists():
+                        # Look for BAR-related search index files
+                        for search_file in search_dir.rglob("*"):
+                            if search_file.is_file() and "bar" in search_file.name.lower():
+                                try:
+                                    search_file.unlink()
+                                except Exception:
+                                    pass
+                                    
+            except Exception:
+                pass  # Search index cleanup is optional
+                
+            self.logger.info("Windows traces cleanup completed")
                     
+        except Exception as e:
+            try:
+                self.logger.warning(f"Windows cleanup error: {e}")
+            except:
+                pass  # Even logging might fail
+    
+    def _clean_registry_key_for_bar(self, hkey, subkey_path: str):
+        """Clean BAR-related entries from a specific registry key."""
+        try:
+            with winreg.OpenKey(hkey, subkey_path, 0, winreg.KEY_ALL_ACCESS) as key:
+                # Get all value names
+                i = 0
+                values_to_delete = []
+                
+                while True:
+                    try:
+                        value_name, value_data, _ = winreg.EnumValue(key, i)
+                        # Check if value contains BAR-related data
+                        if (value_name and ("bar" in value_name.lower() or "BAR" in value_name)) or \
+                           (isinstance(value_data, str) and ("bar" in value_data.lower() or "BAR" in value_data)):
+                            values_to_delete.append(value_name)
+                        i += 1
+                    except WindowsError:
+                        break  # No more values
+                
+                # Delete BAR-related values
+                for value_name in values_to_delete:
+                    try:
+                        winreg.DeleteValue(key, value_name)
+                    except Exception:
+                        pass  # Continue even if some deletions fail
+                        
         except Exception:
-            pass  # Ignore Windows-specific cleanup errors
+            pass  # Registry operations can fail for many reasons
     
     def _multi_pass_overwrite_sensitive_areas(self):
         """Perform multiple-pass overwriting of known sensitive file locations."""
@@ -517,6 +626,112 @@ class EmergencyProtocol:
                             
         except Exception:
             pass
+    
+    def _complete_application_reset(self):
+        """Complete application reset - removes ALL traces of BAR from system.
+        
+        This ensures that after restart, BAR will behave as a completely fresh installation
+        with no memory of previous master password, device binding, or configuration.
+        """
+        try:
+            # 1. Wipe ALL BAR user directories (comprehensive locations)
+            user_data_locations = [
+                # Primary BAR directories
+                Path.home() / ".bar",
+                Path.home() / "Documents" / "BAR", 
+                
+                # Windows-specific locations
+                Path.home() / "AppData" / "Local" / "BAR" if os.name == 'nt' else None,
+                Path.home() / "AppData" / "Roaming" / "BAR" if os.name == 'nt' else None,
+                Path.home() / "AppData" / "Local" / "Temp" / "BAR" if os.name == 'nt' else None,
+                
+                # Linux/Mac locations
+                Path.home() / ".local" / "share" / "bar" if os.name != 'nt' else None,
+                Path.home() / ".config" / "bar" if os.name != 'nt' else None,
+                Path.home() / ".cache" / "bar" if os.name != 'nt' else None,
+                
+                # Common locations
+                Path("/tmp") / "bar" if os.name != 'nt' else None,
+            ]
+            
+            for location in user_data_locations:
+                if location and location.exists():
+                    try:
+                        self.secure_delete.secure_delete_directory(str(location))
+                        self.logger.info(f"Wiped user data location: {location}")
+                    except Exception as e:
+                        self.logger.warning(f"Could not wipe {location}: {e}")
+            
+            # 2. Wipe all temporary files that might contain BAR traces
+            temp_patterns = [
+                "*bar*", "*BAR*", "*.enc", "*decrypt*", "*crypto*", 
+                "*device*", "*master*", "*secret*", "*key*"
+            ]
+            
+            temp_locations = [
+                Path.home() / "AppData" / "Local" / "Temp" if os.name == 'nt' else Path("/tmp"),
+                Path(os.environ.get('TEMP', '/tmp')) if os.environ.get('TEMP') else None,
+                Path(os.environ.get('TMP', '/tmp')) if os.environ.get('TMP') else None,
+            ]
+            
+            for temp_dir in temp_locations:
+                if temp_dir and temp_dir.exists():
+                    for pattern in temp_patterns:
+                        try:
+                            for file_path in temp_dir.glob(pattern):
+                                if file_path.is_file():
+                                    self.secure_delete.secure_delete_file(str(file_path))
+                        except Exception:
+                            pass  # Continue with other patterns
+            
+            # 3. Clear environment variables that might contain BAR data
+            sensitive_env_vars = [
+                'BAR_PASSWORD', 'BAR_KEY', 'BAR_TOKEN', 'BAR_CONFIG',
+                'BAR_USER', 'BAR_SESSION', 'BAR_AUTH', 'BAR_SECRET',
+                'BAR_DEVICE', 'BAR_MASTER', 'BAR_DATA', 'BAR_HOME'
+            ]
+            
+            for var in sensitive_env_vars:
+                if var in os.environ:
+                    # Overwrite with dummy data before deletion
+                    os.environ[var] = "SCORCHED_" + secrets.token_hex(32)
+                    del os.environ[var]
+            
+            # 4. Force memory cleanup to remove any traces
+            import gc
+            for _ in range(10):
+                collected = gc.collect()
+            
+            self.logger.critical("Complete application reset executed - all BAR traces removed")
+            
+        except Exception as e:
+            try:
+                self.logger.error(f"Application reset error: {e}")
+            except:
+                pass
+    
+    def _finalize_scorched_earth_destruction(self, reason: str):
+        """Finalize scorched earth destruction with confirmation."""
+        try:
+            # Create temporary destruction confirmation (will be wiped)
+            destruction_file = self.base_directory / "SCORCHED_EARTH_COMPLETE.txt"
+            with open(destruction_file, "w") as f:
+                f.write(f"SCORCHED EARTH PROTOCOL COMPLETED\n")
+                f.write(f"Timestamp: {datetime.now().isoformat()}\n")
+                f.write(f"Reason: {reason}\n")
+                f.write("Maximum security wipe completed.\n")
+                f.write("Application reset to factory state.\n")
+                f.write("System will restart for complete sanitization.\n")
+                
+            # Immediately overwrite and delete the confirmation file
+            for _ in range(7):
+                with open(destruction_file, "wb") as f:
+                    f.write(secrets.token_bytes(1024))
+                time.sleep(0.1)
+            destruction_file.unlink()
+            
+        except Exception:
+            pass  # Even confirmation can fail
     
     def _attempt_binary_self_destruct(self):
         """Attempt to securely delete the BAR application binary itself."""
