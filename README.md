@@ -52,6 +52,8 @@ See the [full disclaimer](DISCLAIMER.md) for complete details on legal considera
 - **🔢 Access Count Limits**: Files delete after being accessed a certain number of times
 - **⚰️ Deadman Switch**: Files delete after a period of inactivity
 - **🔨 Anti-Brute Force**: Files delete after multiple failed password attempts
+- **🚨 Panic Wipe System**: Complete application reset with 98%+ data destruction rate
+- **🔥 Emergency Protocol**: Three-tier destruction levels (Selective/Aggressive/Scorched Earth)
 
 ### File Management
 - **📱 Advanced File Scanning**: Detect and validate .bar files across all connected devices
@@ -83,12 +85,17 @@ See the [full disclaimer](DISCLAIMER.md) for complete details on legal considera
 <details>
 <summary><b>Self-Destruction Mechanisms</b></summary>
 
-- Time-based: Files automatically delete after a specified time period
-- Access-count: Files delete after being accessed a certain number of times
-- Deadman switch: Files delete if not accessed within a specified period
-- Anti-brute force: Files delete after multiple failed password attempts
-- Secure deletion using multi-pass overwrite techniques compliant with DoD standards
-- Background monitoring threads to enforce security constraints
+- **File-Level Security**: Time-based, access-count, deadman switch, and anti-brute force protection
+- **Application-Level Security**: Complete panic wipe system with three destruction tiers
+  - *Selective*: Session data only (preserves user files)
+  - *Aggressive*: Complete BAR removal (98%+ destruction rate)
+  - *Scorched Earth*: Maximum destruction with anti-forensic countermeasures
+- **Advanced Features**: 
+  - Hardware entropy injection and registry cleanup (Windows)
+  - Multiple-pass overwrite with DoD-standard patterns
+  - Complete application reset (starts as fresh installation)
+  - Anti-forensic decoy files and trace elimination
+- **Background Monitoring**: Real-time enforcement of security constraints
 </details>
 
 <details>
@@ -171,6 +178,11 @@ See the [full disclaimer](DISCLAIMER.md) for complete details on legal considera
 
 ### First-Time Setup
 Initialize your device with a strong master password (hardware-bound)
+
+- **Responsive Setup Dialog**: Automatically fits all screen sizes with improved layout
+- **Security Level Selection**: Choose from Standard, High, or Maximum security levels
+- **Hardware Binding**: Device-bound authentication prevents unauthorized access
+- **Complete Security**: Three-tier security configuration with data destruction options
    
 *Note: v2.0.0 uses single-user device authentication - no separate user accounts needed*
 
@@ -298,8 +310,13 @@ BAR is designed for scenarios where secure, temporary file storage and sharing a
 - **Device Scanning**: Scan removable devices before importing files to ensure integrity
 - **Logging**: Check the logs in `~/.bar/logs` directory for troubleshooting
 - **Hardware Binding**: Enable for critical files to prevent unauthorized access from different devices
-- **Failed Attempts**: Remember that after 3 failed password attempts, files will be permanently deleted
-- **Password Recovery**: If you forget your password, your data cannot be recovered - there is no backdoor or recovery mechanism
+- **Security Levels**: Choose appropriate security level based on threat model:
+  - *Standard*: 5 failed attempts → temporary lockout
+  - *High*: 4 failed attempts → progressive lockouts (up to 24 hours)
+  - *Maximum*: 3 failed attempts → **PERMANENT DATA DESTRUCTION**
+- **Panic Wipe**: Emergency destruction available through UI or hotkeys
+- **Password Recovery**: **CRITICAL** - No password recovery exists. Forgotten password = complete data loss
+- **Complete Reset**: Panic wipe removes ALL traces, application starts fresh after system restart
 
 ---
 

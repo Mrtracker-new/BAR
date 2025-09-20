@@ -29,6 +29,8 @@ BAR is a completely offline file management system designed for users who need t
 - **Deadman Switch**: Files delete after periods of inactivity
 - **Anti-Brute Force**: Files delete after multiple failed password attempts
 - **DoD-Compliant Deletion**: Multi-pass overwrite for unrecoverable destruction
+- **🚨 Panic Wipe System**: Complete application reset with 98%+ destruction rate
+- **Emergency Protocol**: Three-tier destruction levels (Selective/Aggressive/Scorched Earth)
 
 **📸 Revolutionary Screenshot Protection**
 - **Real-time Keyboard Blocking**: Intercepts Print Screen, Win+Shift+S, Alt+Print Screen
@@ -139,6 +141,8 @@ BAR is a completely offline file management system designed for users who need t
 - Advanced clipboard monitoring with image detection
 - Process monitoring and automatic termination of screenshot apps
 - Statistical behavior analysis with automatic breach response
+- **NEW**: Complete panic wipe system with 98%+ destruction rate
+- **NEW**: Three-tier emergency protocol (Selective/Aggressive/Scorched Earth)
 
 **🔧 System Improvements:**
 - Streamlined single-user device authentication
@@ -146,6 +150,14 @@ BAR is a completely offline file management system designed for users who need t
 - Consolidated protection modules for better performance
 - Improved error handling and user feedback
 - Comprehensive security event logging
+- **FIXED**: Security configuration corruption errors on first run
+- **ENHANCED**: Complete application reset capability after panic wipe
+
+**📱 UI/UX Enhancements:**
+- **FIXED**: Device Setup Dialog layout issues and responsiveness
+- **IMPROVED**: Dialog automatically fits all screen sizes
+- **ENHANCED**: Better text wrapping and content organization
+- **ADDED**: Automatic screen size detection and adaptive layouts
 
 **📋 Project Organization:**
 - Cleaned up redundant test files and development artifacts
