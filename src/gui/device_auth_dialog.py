@@ -10,6 +10,7 @@ from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt5.QtGui import QIcon, QPixmap, QFont, QPalette, QColor
 
 from .styles import StyleManager
+from src.security.device_auth import SecurityLevel
 
 
 class AuthWorker(QThread):
@@ -114,13 +115,16 @@ class DeviceAuthDialog(QDialog):
         
         self._setup_ui()
         
-        # Get device info for display
+        # Get device info for display and update security status
         try:
             device_info = device_auth.get_device_info()
             if device_info:
                 self.device_name_label.setText(f"Device: {device_info['device_name']}")
         except:
             pass
+            
+        # Update security status display
+        self._update_security_status()
     
     def _setup_ui(self):
         """Set up the user interface."""
@@ -175,6 +179,26 @@ class DeviceAuthDialog(QDialog):
         notice_label.setStyleSheet("color: #f39c12; font-size: 9pt; margin: 10px;")
         notice_label.setWordWrap(True)
         auth_layout.addWidget(notice_label)
+        
+        # Security status section
+        self.security_status_group = QGroupBox("🛡️ Security Status")
+        self.security_status_layout = QVBoxLayout(self.security_status_group)
+        layout.addWidget(self.security_status_group)
+        
+        self.security_level_label = QLabel("Loading security information...")
+        self.security_level_label.setStyleSheet("color: #3498db; font-weight: bold;")
+        self.security_status_layout.addWidget(self.security_level_label)
+        
+        self.attempts_info_label = QLabel("")
+        self.attempts_info_label.setStyleSheet("color: #95a5a6;")
+        self.attempts_info_label.setWordWrap(True)
+        self.security_status_layout.addWidget(self.attempts_info_label)
+        
+        self.security_warning_label = QLabel("")
+        self.security_warning_label.setStyleSheet("color: #e74c3c; font-weight: bold;")
+        self.security_warning_label.setWordWrap(True)
+        self.security_warning_label.setVisible(False)
+        self.security_status_layout.addWidget(self.security_warning_label)
         
         # Progress bar (hidden initially)
         self.progress_bar = QProgressBar()
@@ -250,22 +274,6 @@ class DeviceAuthDialog(QDialog):
         self.auth_worker.finished.connect(self._on_auth_finished)
         self.auth_worker.start()
     
-    def _on_auth_finished(self, success: bool, message: str):
-        """Handle authentication completion."""
-        self.progress_bar.setVisible(False)
-        
-        if success:
-            self.authenticated = True
-            self.accept()
-        else:
-            QMessageBox.warning(self, "Authentication Failed", message)
-            
-            # Clear password and re-enable UI
-            self.password_edit.clear()
-            self.password_edit.setFocus()
-            self.unlock_button.setEnabled(True)
-            self.reset_button.setEnabled(True)
-            self.exit_button.setEnabled(True)
     
     def _emergency_reset(self):
         """Handle emergency device reset."""
@@ -327,6 +335,119 @@ class DeviceAuthDialog(QDialog):
     def was_reset_requested(self) -> bool:
         """Check if emergency reset was requested."""
         return self.reset_requested
+    
+    def _update_security_status(self):
+        """Update the security status display with current information."""
+        try:
+            # Try to load device configuration to get security level
+            import json
+            from pathlib import Path
+            
+            device_config_path = self.device_auth.device_config_path
+            if device_config_path.exists():
+                with open(device_config_path, 'r') as f:
+                    device_config = json.load(f)
+                    
+                security_level = device_config.get("security_level", "standard")
+                
+                # Try to get persistent security data to show attempt counts
+                security_data = self.device_auth._load_persistent_security_data()
+                
+                if security_data:
+                    failed_attempts = security_data.get("total_failed_attempts", 0)
+                    lockout_count = security_data.get("lockout_count", 0)
+                    data_corrupted = security_data.get("data_corrupted", False)
+                    
+                    # Get security configuration
+                    from src.security.device_auth import SecurityLevel
+                    security_config = self.device_auth.SECURITY_CONFIGS.get(
+                        security_level, self.device_auth.SECURITY_CONFIGS[SecurityLevel.STANDARD]
+                    )
+                    
+                    if data_corrupted:
+                        self.security_level_label.setText("🚨 SECURITY BREACH DETECTED")
+                        self.security_level_label.setStyleSheet("color: #e74c3c; font-weight: bold; font-size: 12pt;")
+                        self.attempts_info_label.setText("All data has been destroyed for security.")
+                        self.security_warning_label.setText("Device requires complete reset.")
+                        self.security_warning_label.setVisible(True)
+                        return
+                    
+                    # Display security level
+                    level_icons = {
+                        SecurityLevel.STANDARD: "🔒",
+                        SecurityLevel.HIGH: "🔐", 
+                        SecurityLevel.MAXIMUM: "🚨"
+                    }
+                    
+                    icon = level_icons.get(security_level, "🔒")
+                    self.security_level_label.setText(f"{icon} Security Level: {security_level.upper()}")
+                    
+                    # Display attempt information
+                    max_attempts = security_config["max_attempts"]
+                    attempts_left = max_attempts - failed_attempts
+                    
+                    if failed_attempts > 0:
+                        self.attempts_info_label.setText(
+                            f"Failed attempts: {failed_attempts}/{max_attempts} • "
+                            f"Attempts remaining: {attempts_left}"
+                        )
+                        
+                        if lockout_count > 0:
+                            self.attempts_info_label.setText(
+                                self.attempts_info_label.text() + f" • Lockouts: {lockout_count}"
+                            )
+                    else:
+                        self.attempts_info_label.setText(f"Maximum attempts allowed: {max_attempts}")
+                    
+                    # Show warning for maximum security or low remaining attempts
+                    if security_config["destroy_data_on_breach"]:
+                        if attempts_left <= 1:
+                            self.security_warning_label.setText(
+                                f"⚠️ CRITICAL: Only {attempts_left} attempt(s) remaining before DATA DESTRUCTION!"
+                            )
+                            self.security_warning_label.setVisible(True)
+                        else:
+                            self.security_warning_label.setText(
+                                f"⚠️ Maximum security active: Data will be destroyed after {max_attempts} failed attempts."
+                            )
+                            self.security_warning_label.setVisible(True)
+                    elif attempts_left <= 1:
+                        self.security_warning_label.setText(
+                            f"⚠️ Warning: Only {attempts_left} attempt(s) remaining before device lockout!"
+                        )
+                        self.security_warning_label.setVisible(True)
+                else:
+                    # Fallback display
+                    self.security_level_label.setText(f"🔒 Security Level: {security_level.upper()}")
+                    self.attempts_info_label.setText("Security status unavailable")
+            else:
+                self.security_level_label.setText("🔒 Device not initialized")
+                self.attempts_info_label.setText("Complete device setup first")
+                
+        except Exception as e:
+            # Fallback error display
+            self.security_level_label.setText("⚠️ Security status unavailable")
+            self.attempts_info_label.setText("Unable to load security information")
+    
+    def _on_auth_finished(self, success: bool, message: str):
+        """Handle authentication completion with security status update."""
+        self.progress_bar.setVisible(False)
+        
+        if success:
+            self.authenticated = True
+            self.accept()
+        else:
+            QMessageBox.warning(self, "Authentication Failed", message)
+            
+            # Update security status after failed attempt
+            self._update_security_status()
+            
+            # Clear password and re-enable UI
+            self.password_edit.clear()
+            self.password_edit.setFocus()
+            self.unlock_button.setEnabled(True)
+            self.reset_button.setEnabled(True)
+            self.exit_button.setEnabled(True)
 
 
 class DeviceResetDialog(QDialog):
