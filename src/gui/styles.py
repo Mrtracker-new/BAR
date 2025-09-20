@@ -690,7 +690,7 @@ class StyleManager:
             A configured QPushButton with proper styling
         """
         from PyQt5.QtWidgets import QPushButton
-        from PyQt5.QtGui import QIcon
+        from PyQt5.QtGui import QIcon, QFont
         
         button = QPushButton(text)
         if icon:
@@ -707,7 +707,7 @@ class StyleManager:
         button.setProperty("displayText", True)
         
         # Set explicit font with good contrast
-        font = QFont("Segoe UI", 10)
+        font = QFont("Segoe UI", 10, QFont.Bold)
         button.setFont(font)
         
         # Force update to ensure text is displayed
@@ -726,16 +726,18 @@ class StyleManager:
             The stylesheet for the action button
         """
         # Common style to ensure text visibility for all action buttons
-        base_style = """
+        action_base_style = """
             QPushButton {
                 color: #ffffff !important; /* Force white text for all action buttons */
                 font-weight: bold !important; /* Make text bold for better visibility */
                 text-align: center !important;
+                font-family: "Segoe UI", Arial, sans-serif !important;
+                outline: none;
             }
         """
         
         if button_type == "primary":
-            return base_style + """
+            return action_base_style + """
                 QPushButton {
                     background-color: #2196F3; /* Modern blue */
                     border: 2px solid #1976D2; /* Border for depth instead of shadow */
@@ -747,24 +749,25 @@ class StyleManager:
                     letter-spacing: 0.5px;
                     qproperty-iconSize: 18px 18px;
                     margin: 4px;
-                    font-family: "Segoe UI", Arial, sans-serif; /* Use a standard font */
                 }
                 QPushButton:hover {
                     background-color: #42A5F5; /* Lighter blue on hover */
                     border: 2px solid #2196F3; /* Lighter border on hover */
+                    color: #ffffff !important; /* Ensure white text on hover */
                 }
                 QPushButton:pressed {
                     background-color: #1976D2; /* Darker blue when pressed */
                     border: 2px solid #0D47A1; /* Darker border when pressed */
+                    color: #ffffff !important; /* Ensure white text when pressed */
                 }
                 QPushButton:disabled {
                     background-color: #BBDEFB; /* Lighter, desaturated blue */
-                    color: #E3F2FD; /* Lighter text */
+                    color: #90A4AE !important; /* Darker text for better visibility */
                     border: 2px solid #BBDEFB; /* Same color as background */
                 }
             """
         elif button_type == "danger":
-            return StyleManager.base_style + """
+            return action_base_style + """
                 QPushButton {
                     background-color: #F44336; /* Modern red */
                     border: 2px solid #D32F2F; /* Border for depth instead of shadow */
@@ -776,24 +779,25 @@ class StyleManager:
                     letter-spacing: 0.5px;
                     qproperty-iconSize: 18px 18px;
                     margin: 4px;
-                    font-family: "Segoe UI", Arial, sans-serif; /* Use a standard font */
                 }
                 QPushButton:hover {
                     background-color: #EF5350; /* Lighter red on hover */
                     border: 2px solid #F44336; /* Lighter border on hover */
+                    color: #ffffff !important; /* Ensure white text on hover */
                 }
                 QPushButton:pressed {
                     background-color: #D32F2F; /* Darker red when pressed */
                     border: 2px solid #B71C1C; /* Darker border when pressed */
+                    color: #ffffff !important; /* Ensure white text when pressed */
                 }
                 QPushButton:disabled {
                     background-color: #FFCDD2; /* Lighter, desaturated red */
-                    color: #FFEBEE;
+                    color: #90A4AE !important; /* Darker text for better visibility */
                     border: 2px solid #FFCDD2; /* Same color as background */
                 }
             """
         elif button_type == "success":
-            return StyleManager.base_style + """
+            return action_base_style + """
                 QPushButton {
                     background-color: #4CAF50; /* Modern green */
                     border: 2px solid #388E3C; /* Border for depth instead of shadow */
@@ -805,24 +809,25 @@ class StyleManager:
                     letter-spacing: 0.5px;
                     qproperty-iconSize: 18px 18px;
                     margin: 4px;
-                    font-family: "Segoe UI", Arial, sans-serif; /* Use a standard font */
                 }
                 QPushButton:hover {
                     background-color: #66BB6A; /* Lighter green on hover */
                     border: 2px solid #4CAF50; /* Lighter border on hover */
+                    color: #ffffff !important; /* Ensure white text on hover */
                 }
                 QPushButton:pressed {
                     background-color: #388E3C; /* Darker green when pressed */
                     border: 2px solid #1B5E20; /* Darker border when pressed */
+                    color: #ffffff !important; /* Ensure white text when pressed */
                 }
                 QPushButton:disabled {
                     background-color: #C8E6C9; /* Lighter, desaturated green */
-                    color: #E8F5E9;
+                    color: #90A4AE !important; /* Darker text for better visibility */
                     border: 2px solid #C8E6C9; /* Same color as background */
                 }
             """
         else:  # default
-            return StyleManager.base_style + """
+            return action_base_style + """
                 QPushButton {
                     background-color: #78909C; /* Modern blue-grey */
                     border: 2px solid #546E7A; /* Border for depth instead of shadow */
@@ -834,19 +839,20 @@ class StyleManager:
                     letter-spacing: 0.5px;
                     qproperty-iconSize: 18px 18px;
                     margin: 4px;
-                    font-family: "Segoe UI", Arial, sans-serif; /* Use a standard font */
                 }
                 QPushButton:hover {
                     background-color: #90A4AE; /* Lighter blue-grey on hover */
                     border: 2px solid #78909C; /* Lighter border on hover */
+                    color: #ffffff !important; /* Ensure white text on hover */
                 }
                 QPushButton:pressed {
                     background-color: #546E7A; /* Darker blue-grey when pressed */
                     border: 2px solid #37474F; /* Darker border when pressed */
+                    color: #ffffff !important; /* Ensure white text when pressed */
                 }
                 QPushButton:disabled {
                     background-color: #CFD8DC; /* Lighter, desaturated blue-grey */
-                    color: #ECEFF1; /* Lighter text */
+                    color: #90A4AE !important; /* Darker text for better visibility */
                     border: 2px solid #CFD8DC; /* Same color as background */
                 }
             """
