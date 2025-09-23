@@ -149,11 +149,27 @@ class DeviceAuthManager:
             success = self._save_encrypted_config(device_config, self._derived_key.get_bytes())
             
             if success:
+                # Create security level tracking file for authentication enforcement
+                try:
+                    failed_attempts_path = self._config_dir / ".auth_attempts"
+                    security_tracking = {
+                        "count": 0,
+                        "security_level": security_level or "standard",
+                        "last_attempt": 0,
+                        "hardware_id": hw_fingerprint[:16],
+                        "initialized_at": time.time()
+                    }
+                    with open(failed_attempts_path, 'w') as f:
+                        f.write(json.dumps(security_tracking))
+                    self.logger.debug(f"Created security tracking with level: {security_level}")
+                except Exception as e:
+                    self.logger.warning(f"Could not create security tracking file: {e}")
+                
                 self._is_initialized = True
                 self._is_authenticated = True  # Automatically authenticate after initialization
                 self._device_name = device_config["device_name"]
-                self.logger.info(f"Device successfully initialized and authenticated: {self._device_name}")
-                return True, f"Device '{self._device_name}' initialized successfully"
+                self.logger.info(f"Device successfully initialized and authenticated: {self._device_name} (Security: {security_level or 'standard'})")
+                return True, f"Device '{self._device_name}' initialized successfully with {security_level or 'standard'} security"
             else:
                 # Clean up on failure
                 self._cleanup_sensitive_data()
@@ -171,12 +187,14 @@ class DeviceAuthManager:
         1. Device is initialized
         2. Hardware matches stored hardware ID
         3. Password is correct
+        4. Security level policies (failed attempt tracking and data destruction)
         
         Args:
             password: Password to authenticate with
             
         Returns:
             Tuple of (success: bool, message: str)
+            Note: For maximum security, failed attempts trigger emergency data destruction
         """
         try:
             if not self.is_device_initialized():
@@ -231,14 +249,68 @@ class DeviceAuthManager:
             config_data = self._load_encrypted_config(temp_derived_key.get_bytes())
             
             if not config_data:
-                # If we got here and hardware tag was verified, it's likely a password issue
+                # Authentication failed - implement security level enforcement
+                
+                # Track failed attempts in a separate unencrypted file for security enforcement
+                # This is necessary because we can't decrypt the main config without the correct password
+                failed_attempts_path = self._config_dir / ".auth_attempts"
+                failed_attempts = 0
+                security_level = "maximum"  # Assume maximum security by default for safety
+                
+                try:
+                    if failed_attempts_path.exists():
+                        with open(failed_attempts_path, 'r') as f:
+                            attempt_data = json.loads(f.read())
+                            failed_attempts = attempt_data.get("count", 0)
+                            security_level = attempt_data.get("security_level", "maximum")
+                except:
+                    failed_attempts = 0  # Start fresh if file is corrupted
+                
+                # Increment failed attempts
+                failed_attempts += 1
+                
+                # Check MAXIMUM SECURITY first (most restrictive)
+                if security_level == "maximum" and failed_attempts >= 3:
+                    # MAXIMUM SECURITY: Destroy all data after 3 failed attempts
+                    self.logger.critical(f"🚨 MAXIMUM SECURITY BREACH: {failed_attempts} failed attempts - TRIGGERING EMERGENCY WIPE 🚨")
+                    try:
+                        # Remove the tracking file first
+                        if failed_attempts_path.exists():
+                            failed_attempts_path.unlink()
+                        
+                        # Immediate emergency data destruction
+                        wipe_results = self.emergency_wipe(wipe_user_data=True, wipe_temp_files=True)
+                        self.logger.critical(f"Emergency wipe completed: {wipe_results['total_files_wiped']} files destroyed")
+                        return False, "🚨 SECURITY BREACH: Maximum attempts exceeded. ALL DATA HAS BEEN PERMANENTLY DESTROYED for security. 🚨"
+                    except Exception as e:
+                        self.logger.critical(f"Emergency wipe failed: {e} - Attempting device reset")
+                        try:
+                            self.reset_device(emergency=True)
+                        except:
+                            pass
+                        return False, "🚨 SECURITY BREACH: Data destruction initiated due to failed authentication attempts. 🚨"
+                
+                # Update failed attempts tracking file
+                try:
+                    attempt_data = {
+                        "count": failed_attempts,
+                        "security_level": security_level,
+                        "last_attempt": time.time(),
+                        "hardware_id": current_hw_id[:16]  # Partial hardware ID for verification
+                    }
+                    with open(failed_attempts_path, 'w') as f:
+                        f.write(json.dumps(attempt_data))
+                except Exception as e:
+                    self.logger.warning(f"Could not update failed attempts tracking: {e}")
+                
+                # Return failure message with attempt count
+                remaining_attempts = max(0, 3 - failed_attempts) if security_level == "maximum" else "?"
                 if has_hardware_tag:
-                    self.logger.warning("Authentication failed - unable to decrypt configuration after hardware verification passed")
-                    return False, "Authentication failed. Incorrect password."
+                    self.logger.warning(f"Authentication failed (attempt {failed_attempts}) - incorrect password")
+                    return False, f"Authentication failed. Incorrect password. (Attempt {failed_attempts}/3 - Remaining: {remaining_attempts})"
                 else:
-                    # Legacy format - could be hardware or password issue
-                    self.logger.warning("Authentication failed - unable to decrypt configuration (legacy format)")
-                    return False, "Authentication failed. Incorrect password."
+                    self.logger.warning(f"Authentication failed (attempt {failed_attempts}) - legacy format")
+                    return False, f"Authentication failed. Incorrect password. (Attempt {failed_attempts}/3 - Remaining: {remaining_attempts})"
             
             # Successfully decrypted - now verify hardware binding as additional check
             stored_hw_id = config_data.get("hardware_id", "")
@@ -261,6 +333,15 @@ class DeviceAuthManager:
             self._hardware_fingerprint = secure_hw_id
             self._is_authenticated = True
             self._device_name = config_data.get("device_name", "Unknown Device")
+            
+            # Clear failed attempts tracking on successful authentication
+            try:
+                failed_attempts_path = self._config_dir / ".auth_attempts"
+                if failed_attempts_path.exists():
+                    failed_attempts_path.unlink()
+                    self.logger.debug("Cleared failed attempts tracking after successful authentication")
+            except Exception as e:
+                self.logger.warning(f"Could not clear failed attempts tracking: {e}")
             
             # Derive session key for secure operations
             salt = create_secure_bytes(
