@@ -84,7 +84,23 @@ class SimpleAuthDialog(QDialog):
         
     def exec_(self):
         """Override exec to use input dialog for simplicity."""
-        max_attempts = 3
+        
+        # First, check for security lockout before attempting authentication
+        # Do a quick lockout check by calling authenticate with empty password
+        try:
+            success, lockout_message = self.device_auth.authenticate("")
+            if not success and ("🔒 DEVICE LOCKED" in lockout_message or "⏰ DEVICE LOCKED" in lockout_message):
+                # Device is locked, show lockout message and exit
+                QMessageBox.critical(
+                    self.parent(),
+                    "Device Locked",
+                    f"{lockout_message}\n\nApplication will exit due to security lockout."
+                )
+                return QDialog.Rejected
+        except:
+            pass  # Ignore errors from lockout check
+        
+        max_attempts = 3  # This is just for the dialog loop, actual security is handled by DeviceAuthManager
         attempts = 0
         
         while attempts < max_attempts:
@@ -108,6 +124,7 @@ class SimpleAuthDialog(QDialog):
                         return QDialog.Rejected
                 
                 success, message = self.device_auth.authenticate(password)
+                
                 if success:
                     self.authenticated = True
                     QMessageBox.information(
@@ -116,7 +133,23 @@ class SimpleAuthDialog(QDialog):
                         message
                     )
                     return QDialog.Accepted
+                    
                 else:
+                    # Check if this is a lockout or emergency wipe message
+                    if ("🔒 DEVICE LOCKED" in message or 
+                        "⏰ DEVICE LOCKED" in message or
+                        "🔒 HIGH SECURITY LOCKOUT" in message or
+                        "⏰ STANDARD SECURITY" in message or
+                        "🚨 SECURITY BREACH" in message):
+                        # Security lockout or emergency action triggered
+                        QMessageBox.critical(
+                            self.parent(),
+                            "Security Action",
+                            f"{message}\n\nApplication will exit."
+                        )
+                        return QDialog.Rejected
+                    
+                    # Regular authentication failure
                     attempts += 1
                     if attempts < max_attempts:
                         QMessageBox.warning(

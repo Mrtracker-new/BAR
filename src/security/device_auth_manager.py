@@ -200,6 +200,43 @@ class DeviceAuthManager:
             if not self.is_device_initialized():
                 return False, "Device not initialized. First-time setup required."
             
+            # Check for active security lockout before attempting authentication
+            failed_attempts_path = self._config_dir / ".auth_attempts"
+            if failed_attempts_path.exists():
+                try:
+                    with open(failed_attempts_path, 'r') as f:
+                        attempt_data = json.loads(f.read())
+                        locked_until = attempt_data.get("locked_until", 0)
+                        security_level = attempt_data.get("security_level", "standard")
+                        failed_attempts = attempt_data.get("count", 0)
+                        lockout_hours = attempt_data.get("lockout_hours", 0)
+                        
+                        # Check if device is currently locked
+                        if locked_until > 0 and time.time() < locked_until:
+                            remaining_seconds = int(locked_until - time.time())
+                            remaining_hours = remaining_seconds // 3600
+                            remaining_minutes = (remaining_seconds % 3600) // 60
+                            
+                            if security_level == "high":
+                                self.logger.warning(f"HIGH SECURITY LOCKOUT ACTIVE: {remaining_hours}h {remaining_minutes}m remaining")
+                                return False, f"🔒 DEVICE LOCKED: HIGH Security lockout active. {remaining_hours} hours, {remaining_minutes} minutes remaining."
+                            else:
+                                self.logger.warning(f"SECURITY LOCKOUT ACTIVE: {remaining_hours}h {remaining_minutes}m remaining")
+                                return False, f"⏰ DEVICE LOCKED: Security lockout active. {remaining_hours} hours, {remaining_minutes} minutes remaining."
+                        
+                        elif locked_until > 0 and time.time() >= locked_until:
+                            # Lockout period has expired, clear the lockout
+                            self.logger.info(f"Security lockout expired, clearing lockout status")
+                            attempt_data["locked_until"] = 0
+                            attempt_data["lockout_hours"] = 0
+                            # Reset failed attempts count after lockout expires
+                            attempt_data["count"] = 0
+                            with open(failed_attempts_path, 'w') as f:
+                                f.write(json.dumps(attempt_data))
+                            
+                except Exception as e:
+                    self.logger.warning(f"Could not check lockout status: {e}")
+            
             self.logger.debug("Starting authentication process")
             
             # Store password in secure memory
@@ -289,6 +326,54 @@ class DeviceAuthManager:
                         except:
                             pass
                         return False, "🚨 SECURITY BREACH: Data destruction initiated due to failed authentication attempts. 🚨"
+                
+                elif security_level == "high" and failed_attempts >= 4:
+                    # HIGH SECURITY: Progressive lockout after 4 attempts
+                    lockout_hours = min(24, 2 ** (failed_attempts - 4))  # Exponential backoff, max 24h
+                    lockout_until = time.time() + (lockout_hours * 3600)  # Convert hours to seconds
+                    
+                    self.logger.warning(f"HIGH SECURITY: {failed_attempts} failed attempts - initiating {lockout_hours}h lockout until {lockout_until}")
+                    
+                    # Update tracking with lockout timestamp
+                    attempt_data = {
+                        "count": failed_attempts,
+                        "security_level": security_level,
+                        "last_attempt": time.time(),
+                        "hardware_id": current_hw_id[:16],
+                        "locked_until": lockout_until,
+                        "lockout_hours": lockout_hours
+                    }
+                    
+                    try:
+                        with open(failed_attempts_path, 'w') as f:
+                            f.write(json.dumps(attempt_data))
+                    except Exception as e:
+                        self.logger.warning(f"Could not update lockout tracking: {e}")
+                    
+                    return False, f"🔒 HIGH SECURITY LOCKOUT: {failed_attempts} failed attempts. Device locked for {lockout_hours} hours until authentication is allowed again."
+                
+                elif failed_attempts >= 5:
+                    # STANDARD SECURITY: Basic lockout after 5 attempts  
+                    lockout_until = time.time() + (1 * 3600)  # 1 hour lockout
+                    self.logger.warning(f"STANDARD SECURITY: {failed_attempts} failed attempts - 1 hour lockout")
+                    
+                    # Update tracking with lockout timestamp
+                    attempt_data = {
+                        "count": failed_attempts,
+                        "security_level": security_level,
+                        "last_attempt": time.time(),
+                        "hardware_id": current_hw_id[:16],
+                        "locked_until": lockout_until,
+                        "lockout_hours": 1
+                    }
+                    
+                    try:
+                        with open(failed_attempts_path, 'w') as f:
+                            f.write(json.dumps(attempt_data))
+                    except Exception as e:
+                        self.logger.warning(f"Could not update lockout tracking: {e}")
+                    
+                    return False, f"⏰ STANDARD SECURITY: Too many failed attempts. Device locked for 1 hour."
                 
                 # Update failed attempts tracking file
                 try:
