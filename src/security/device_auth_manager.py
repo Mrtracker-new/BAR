@@ -91,7 +91,7 @@ class DeviceAuthManager:
         """
         return self._device_config_path.exists()
     
-    def initialize_device(self, password: str, device_name: Optional[str] = None) -> Tuple[bool, str]:
+    def initialize_device(self, password: str, device_name: Optional[str] = None, security_level: Optional[str] = None) -> Tuple[bool, str]:
         """Initialize the device with single-user authentication.
         
         This is a one-time setup that creates the hardware-bound user account.
@@ -100,6 +100,7 @@ class DeviceAuthManager:
         Args:
             password: Master password for device access
             device_name: Optional human-readable device name
+            security_level: Security level configuration (standard, high, maximum) - optional for compatibility
             
         Returns:
             Tuple of (success: bool, message: str)
@@ -135,7 +136,8 @@ class DeviceAuthManager:
                 "salt": salt_bytes.hex(),  # Store salt for key derivation
                 "created_at": int(secrets.randbits(64)),  # Timestamp in secure random bits
                 "version": "1.0",
-                "auth_method": "device_bound_single_user"
+                "auth_method": "device_bound_single_user",
+                "security_level": security_level or "standard"  # Default to standard if not provided
             }
             
             # Create verification hash for authentication
