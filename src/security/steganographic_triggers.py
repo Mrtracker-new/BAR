@@ -554,12 +554,25 @@ class SteganographicTriggerSystem:
     
     def _load_triggers(self):
         """Load triggers from steganographic storage."""
+        trigger_file_to_use = None
+        
         try:
-            if not self.trigger_file.exists():
+            # Check primary location first
+            if self.trigger_file.exists():
+                trigger_file_to_use = self.trigger_file
+            else:
+                # Check fallback location
+                import tempfile
+                fallback_file = Path(tempfile.gettempdir()) / '.bar_integrity.dat'
+                if fallback_file.exists():
+                    trigger_file_to_use = fallback_file
+                    self.logger.debug(f"Using fallback trigger file: {fallback_file}")
+            
+            if not trigger_file_to_use:
                 return
             
             # Read and decode trigger file
-            with open(self.trigger_file, 'rb') as f:
+            with open(trigger_file_to_use, 'rb') as f:
                 encrypted_data = f.read()
             
             # Simple XOR decryption
@@ -598,20 +611,60 @@ class SteganographicTriggerSystem:
             for i, b in enumerate(json_data):
                 encrypted_data.append(b ^ key_bytes[i % len(key_bytes)])
             
+            # Ensure directory exists and is writable
+            self.trigger_file.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Try to remove existing file if it exists and is problematic
+            if self.trigger_file.exists():
+                try:
+                    # Try to make it writable first
+                    if os.name == 'nt':
+                        import subprocess
+                        subprocess.run(['attrib', '-H', '-R', str(self.trigger_file)], 
+                                     capture_output=True, check=False)
+                    else:
+                        os.chmod(self.trigger_file, 0o644)
+                except Exception:
+                    pass
+            
             # Write to file (hidden as system integrity data)
-            with open(self.trigger_file, 'wb') as f:
-                f.write(encrypted_data)
+            # Use a temporary file first to avoid corruption
+            temp_file = self.trigger_file.with_suffix('.tmp')
+            try:
+                with open(temp_file, 'wb') as f:
+                    f.write(encrypted_data)
+                
+                # Move temporary file to final location
+                if self.trigger_file.exists():
+                    self.trigger_file.unlink()
+                temp_file.replace(self.trigger_file)
+                
+            except Exception:
+                # If temp file approach fails, try direct write
+                with open(self.trigger_file, 'wb') as f:
+                    f.write(encrypted_data)
             
             # Set appropriate permissions (hidden/system file on Windows)
             if os.name == 'nt':
                 try:
-                    import ctypes
-                    ctypes.windll.kernel32.SetFileAttributesW(str(self.trigger_file), 0x02)  # Hidden
+                    import subprocess
+                    # Use attrib command to set hidden attribute
+                    subprocess.run(['attrib', '+H', str(self.trigger_file)], 
+                                 capture_output=True, check=False)
                 except Exception:
                     pass
             
         except Exception as e:
             self.logger.error(f"Error saving triggers: {e}")
+            # Try fallback location in user's temp directory
+            try:
+                import tempfile
+                fallback_file = Path(tempfile.gettempdir()) / '.bar_integrity.dat'
+                with open(fallback_file, 'wb') as f:
+                    f.write(encrypted_data)
+                self.logger.debug(f"Saved triggers to fallback location: {fallback_file}")
+            except Exception as fallback_error:
+                self.logger.error(f"Fallback save also failed: {fallback_error}")
     
     def get_trigger_stats(self) -> Dict[str, Any]:
         """Get statistics about active triggers (sanitized for security)."""
