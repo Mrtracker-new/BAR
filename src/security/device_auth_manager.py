@@ -292,7 +292,7 @@ class DeviceAuthManager:
                 # This is necessary because we can't decrypt the main config without the correct password
                 failed_attempts_path = self._config_dir / ".auth_attempts"
                 failed_attempts = 0
-                security_level = "maximum"  # Assume maximum security by default for safety
+                security_level = "high"  # Default to high security instead of maximum to prevent accidental data loss
                 
                 try:
                     if failed_attempts_path.exists():
@@ -328,7 +328,7 @@ class DeviceAuthManager:
                         return False, "🚨 SECURITY BREACH: Data destruction initiated due to failed authentication attempts. 🚨"
                 
                 elif security_level == "high" and failed_attempts >= 4:
-                    # HIGH SECURITY: Progressive lockout after 4 attempts
+                    # HIGH SECURITY: Progressive lockout after 4 attempts (but preserve device config)
                     lockout_hours = min(24, 2 ** (failed_attempts - 4))  # Exponential backoff, max 24h
                     lockout_until = time.time() + (lockout_hours * 3600)  # Convert hours to seconds
                     
