@@ -12,14 +12,80 @@ from PyQt5.QtWidgets import (
     QGroupBox, QFormLayout, QSplitter, QTreeWidget, QTreeWidgetItem, QTabWidget,
     QPlainTextEdit
 )
-from PyQt5.QtCore import Qt, QSize, pyqtSignal, QThread, pyqtSlot, QTimer
-from PyQt5.QtGui import QPixmap, QImage, QFont, QPalette, QColor, QSyntaxHighlighter, QTextCharFormat
+from PyQt5.QtCore import Qt, QSize, pyqtSignal, QThread, pyqtSlot, QTimer, QPointF
+from PyQt5.QtGui import QPixmap, QImage, QFont, QPalette, QColor, QSyntaxHighlighter, QTextCharFormat, QPainter, QPen
 
 # Note: Watermarker functionality now integrated into AdvancedScreenProtectionManager
-# For standalone use, import from the legacy module
-from ..security.screen_protection_legacy import Watermarker
+# For standalone use, import from the advanced module
+from ..security.advanced_screen_protection import AdvancedScreenProtectionManager
 from ..file_manager.format_detector import FileFormatDetector
 from .styles import StyleManager
+
+
+class SimpleWatermarker:
+    """Simple watermarker for view-only files - extracted from legacy protection."""
+    
+    def __init__(self, username: str):
+        self.username = username
+    
+    def apply_text_watermark(self, text_edit):
+        """Apply watermark to text content."""
+        import time
+        current_text = text_edit.toPlainText()
+        timestamp = time.strftime("%Y-%m-%d %H:%M")
+        watermark_header = f"--- Viewed by {self.username} at {timestamp} ---\n\n"
+        watermark_footer = f"\n\n--- Protected content - Do not distribute ---"
+        watermarked_text = watermark_header + current_text + watermark_footer
+        text_edit.setPlainText(watermarked_text)
+        text_edit.setTextInteractionFlags(Qt.TextSelectableByKeyboard | Qt.TextSelectableByMouse)
+        text_edit.setStyleSheet(
+            "background: repeating-linear-gradient(45deg, transparent, "
+            "transparent 100px, rgba(200, 200, 200, 0.1) 100px, "
+            "rgba(200, 200, 200, 0.1) 200px);"
+        )
+    
+    def apply_image_watermark(self, image_label, pixmap):
+        """Apply watermark to image content."""
+        import time
+        try:
+            if pixmap.isNull() or pixmap.width() <= 0 or pixmap.height() <= 0:
+                return pixmap
+            if pixmap.width() * pixmap.height() > 25000000:
+                return pixmap
+            
+            watermarked_pixmap = pixmap.copy()
+            painter = QPainter()
+            if not painter.begin(watermarked_pixmap):
+                return pixmap
+            
+            try:
+                painter.setOpacity(0.8)
+                painter.setPen(QPen(QColor(255, 0, 0, 255)))
+                font_size = max(14, min(24, watermarked_pixmap.width() // 30))
+                font = QFont("Arial", font_size)
+                font.setBold(True)
+                painter.setFont(font)
+                
+                timestamp = time.strftime("%Y-%m-%d %H:%M")
+                watermark_text = f"Viewed by {self.username} at {timestamp}"
+                
+                painter.save()
+                painter.translate(watermarked_pixmap.width() / 2, watermarked_pixmap.height() / 2)
+                painter.rotate(-45)
+                text_width = painter.fontMetrics().width(watermark_text)
+                painter.drawText(QPointF(-text_width / 2, 0), watermark_text)
+                painter.restore()
+                
+                painter.setOpacity(0.9)
+                painter.setPen(QPen(QColor(255, 0, 0, 255), 5))
+                painter.drawRect(5, 5, watermarked_pixmap.width() - 10, watermarked_pixmap.height() - 10)
+            finally:
+                painter.end()
+            
+            return watermarked_pixmap
+        except Exception as e:
+            print(f"Error applying watermark: {e}")
+            return pixmap
 
 
 class PythonSyntaxHighlighter(QSyntaxHighlighter):
@@ -265,7 +331,8 @@ class FileViewer(QWidget):
             self.current_content = content
             self.current_metadata = metadata
             self.username = username
-            self.watermarker = Watermarker(username)
+            # Use the simple watermarker for view-only file protection
+            self.watermarker = SimpleWatermarker(username)
             self.is_view_only = metadata.get("security", {}).get("disable_export", False)
             
             # Detect file format
