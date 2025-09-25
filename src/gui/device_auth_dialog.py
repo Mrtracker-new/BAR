@@ -10,7 +10,7 @@ from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt5.QtGui import QIcon, QPixmap, QFont, QPalette, QColor
 
 from .styles import StyleManager
-from src.security.device_auth import SecurityLevel
+from src.security.device_auth_manager import SecurityLevel
 
 
 class AuthWorker(QThread):
@@ -359,7 +359,7 @@ class DeviceAuthDialog(QDialog):
                     data_corrupted = security_data.get("data_corrupted", False)
                     
                     # Get security configuration
-                    from src.security.device_auth import SecurityLevel
+                    from src.security.device_auth_manager import SecurityLevel
                     security_config = self.device_auth.SECURITY_CONFIGS.get(
                         security_level, self.device_auth.SECURITY_CONFIGS[SecurityLevel.STANDARD]
                     )

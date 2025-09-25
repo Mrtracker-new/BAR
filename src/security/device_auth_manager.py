@@ -22,6 +22,27 @@ from src.security.secure_file_ops import SecureFileOperations, SecureDeletionMet
 from src.config.config_manager import ConfigManager
 
 
+class SecurityLevel:
+    """Security level configurations for authentication protection."""
+    
+    STANDARD = "standard"
+    HIGH = "high"
+    MAXIMUM = "maximum"
+    
+    @classmethod
+    def get_all_levels(cls):
+        return [cls.STANDARD, cls.HIGH, cls.MAXIMUM]
+    
+    @classmethod
+    def get_description(cls, level: str) -> str:
+        descriptions = {
+            cls.STANDARD: "Standard security with temporary lockouts after 5 failed attempts",
+            cls.HIGH: "High security with progressive lockouts and 24-hour maximum",
+            cls.MAXIMUM: "Maximum security with data corruption after 3 failed attempts"
+        }
+        return descriptions.get(level, "Unknown security level")
+
+
 class DeviceAuthManager:
     """Enhanced device authentication manager using secure memory for single-user device-bound authentication.
     
@@ -44,6 +65,29 @@ class DeviceAuthManager:
     KEY_SIZE = 32   # 256-bit key
     IV_SIZE = 16    # 128-bit IV for AES
     HARDWARE_TAG_SIZE = 32  # 256-bit HMAC tag for hardware verification
+    
+    # API compatibility - security level configurations
+    SECURITY_CONFIGS = {
+        SecurityLevel.STANDARD: {
+            "max_attempts": 5,
+            "lockout_duration_minutes": 60,
+            "destroy_data_on_breach": False,
+            "progressive_lockout": False
+        },
+        SecurityLevel.HIGH: {
+            "max_attempts": 4,
+            "lockout_duration_minutes": 60,
+            "max_lockout_duration_minutes": 1440,  # 24 hours
+            "destroy_data_on_breach": False,
+            "progressive_lockout": True
+        },
+        SecurityLevel.MAXIMUM: {
+            "max_attempts": 3,
+            "lockout_duration_minutes": 0,  # No temporary lockout
+            "destroy_data_on_breach": True,
+            "progressive_lockout": False
+        }
+    }
     
     def __init__(self):
         """Initialize the device authentication manager with secure memory."""
@@ -73,6 +117,27 @@ class DeviceAuthManager:
         self._ensure_config_directory()
         
         self.logger.debug("DeviceAuthManager initialized with secure memory protection")
+    
+    @property
+    def device_config_path(self):
+        """API compatibility: provide access to device config path."""
+        return self._device_config_path
+    
+    def _load_persistent_security_data(self) -> Optional[Dict[str, Any]]:
+        """API compatibility: load persistent security data.
+        
+        Returns:
+            Dictionary with security data from .auth_attempts file or None
+        """
+        try:
+            failed_attempts_path = self._config_dir / ".auth_attempts"
+            if not failed_attempts_path.exists():
+                return None
+            
+            with open(failed_attempts_path, 'r') as f:
+                return json.loads(f.read())
+        except Exception:
+            return None
     
     def _ensure_config_directory(self):
         """Ensure the configuration directory exists with proper permissions."""
