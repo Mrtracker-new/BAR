@@ -324,11 +324,22 @@ class KeyboardHook(QObject):
             screenshot_apps = [
                 "Snipping Tool", 
                 "Snip & Sketch",
-                "Screenshot",
                 "Greenshot",
                 "Lightshot",
                 "Screenpresso",
                 "Snagit"
+            ]
+            
+            # Whitelist development environments and common applications
+            dev_whitelist = [
+                "Visual Studio Code",
+                "PyCharm",
+                "Sublime Text",
+                "Notepad++",
+                "Atom",
+                "Visual Studio",
+                "Eclipse",
+                "IntelliJ"
             ]
             
             # Function to be called for each window
@@ -337,6 +348,13 @@ class KeyboardHook(QObject):
                     return True
                 
                 window_text = win32gui.GetWindowText(hwnd)
+                
+                # Skip if it's a whitelisted development environment
+                for dev_app in dev_whitelist:
+                    if dev_app.lower() in window_text.lower():
+                        return True  # Skip this window, it's a development environment
+                
+                # Check for screenshot apps (but not generic "Screenshot" term)
                 for app in screenshot_apps:
                     if app.lower() in window_text.lower():
                         print(f"Screenshot app detected: {window_text}")
