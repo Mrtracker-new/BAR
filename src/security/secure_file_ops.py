@@ -408,6 +408,66 @@ class SecureFileOperations:
             self.logger.error(f"Secure deletion failed for {file_path}: {e}")
             return False
     
+    def secure_delete_directory(self, directory_path: Union[str, Path], 
+                               method: SecureDeletionMethod = SecureDeletionMethod.DOD_7_PASS) -> bool:
+        """Securely delete an entire directory and all its contents.
+        
+        Args:
+            directory_path: Path to directory to delete
+            method: Deletion method to use for all files
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        directory_path = Path(directory_path)
+        
+        if not directory_path.exists():
+            self.logger.info(f"Directory already deleted: {directory_path.name}")
+            return True
+            
+        if not directory_path.is_dir():
+            self.logger.warning(f"Path is not a directory: {directory_path}")
+            return False
+        
+        try:
+            # Get all files in directory (recursively)
+            all_files = list(directory_path.rglob('*'))
+            files_only = [f for f in all_files if f.is_file()]
+            
+            self.logger.info(f"Securely deleting directory: {directory_path.name} ({len(files_only)} files)")
+            
+            success_count = 0
+            for file_path in files_only:
+                try:
+                    if self.secure_delete_file(file_path, method=method, verify=False):
+                        success_count += 1
+                except Exception as e:
+                    self.logger.warning(f"Failed to delete file {file_path.name}: {e}")
+            
+            # Remove empty directories (bottom-up)
+            try:
+                for dir_path in sorted(directory_path.rglob('*'), key=lambda x: str(x), reverse=True):
+                    if dir_path.is_dir() and dir_path != directory_path:
+                        try:
+                            if not any(dir_path.iterdir()):  # Only remove if empty
+                                dir_path.rmdir()
+                        except Exception:
+                            pass  # Ignore directory removal errors
+                
+                # Finally remove the root directory
+                if not any(directory_path.iterdir()):
+                    directory_path.rmdir()
+                    
+            except Exception as e:
+                self.logger.warning(f"Directory cleanup warning: {e}")
+            
+            self.logger.info(f"Directory deletion completed: {success_count}/{len(files_only)} files deleted")
+            return success_count == len(files_only)
+            
+        except Exception as e:
+            self.logger.error(f"Secure directory deletion failed for {directory_path}: {e}")
+            return False
+    
     def _secure_delete_basic(self, file_path: Path, file_size: int) -> bool:
         """Basic secure deletion with single zero overwrite."""
         try:
