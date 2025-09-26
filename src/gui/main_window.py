@@ -613,7 +613,7 @@ class MainWindow(QMainWindow):
         screen_protection = None
         if disable_export:
             try:
-                from ..security.advanced_screen_protection import AdvancedScreenProtectionManager
+                from ..security.ENHANCED_advanced_screen_protection import AdvancedScreenProtectionManager
                 import os
                 
                 # Create log directory for security events
