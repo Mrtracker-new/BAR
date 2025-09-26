@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Callable
 
-from security.secure_delete import SecureDelete
+from security.secure_file_ops import SecureFileOperations, SecureDeletionMethod
 from security.hardware_wipe import HardwareWipe
 
 
@@ -32,7 +32,7 @@ class EmergencyProtocol:
         """
         self.base_directory = Path(base_directory)
         self.device_auth = device_auth
-        self.secure_delete = SecureDelete()
+        self.secure_file_ops = SecureFileOperations()
         self.hardware_wipe = HardwareWipe()
         
         # Initialize logger
@@ -253,9 +253,9 @@ class EmergencyProtocol:
             for path in session_paths:
                 if path.exists():
                     if path.is_dir():
-                        self.secure_delete.secure_delete_directory(str(path))
+                        self.secure_file_ops.secure_delete_directory(str(path))
                     else:
-                        self.secure_delete.secure_delete_file(str(path))
+                        self.secure_file_ops.secure_delete_file(str(path), SecureDeletionMethod.DOD_7_PASS)
             
             # 2. Clear authentication tokens but keep user data
             if self.device_auth:
@@ -303,15 +303,15 @@ class EmergencyProtocol:
             
             for dir_path in app_dirs:
                 if dir_path.exists():
-                    self.secure_delete.secure_delete_directory(str(dir_path))
+                    self.secure_file_ops.secure_delete_directory(str(dir_path))
             
             # Also wipe the entire base directory contents
             try:
                 for item in self.base_directory.iterdir():
                     if item.is_file():
-                        self.secure_delete.secure_delete_file(str(item))
+                        self.secure_file_ops.secure_delete_file(str(item), SecureDeletionMethod.DOD_7_PASS)
                     elif item.is_dir() and item.name not in ['src']:  # Keep source code during development
-                        self.secure_delete.secure_delete_directory(str(item))
+                        self.secure_file_ops.secure_delete_directory(str(item))
             except Exception:
                 pass
             
@@ -325,14 +325,14 @@ class EmergencyProtocol:
             
             for dir_path in user_dirs:
                 if dir_path.exists():
-                    self.secure_delete.secure_delete_directory(str(dir_path))
+                    self.secure_file_ops.secure_delete_directory(str(dir_path))
             
             # 3. Wipe ALL configuration files
             config_patterns = ["*.json", "*.key", "*.enc", "*.conf", "*.cfg", "*.ini"]
             for pattern in config_patterns:
                 for file_path in self.base_directory.glob(pattern):
                     if file_path.exists():
-                        self.secure_delete.secure_delete_file(str(file_path))
+                        self.secure_file_ops.secure_delete_file(str(file_path), SecureDeletionMethod.DOD_7_PASS)
             
             # 4. Full device authentication wipe
             if self.device_auth:
@@ -348,9 +348,9 @@ class EmergencyProtocol:
             for item in sensitive_artifacts:
                 if item.exists():
                     if item.is_dir():
-                        self.secure_delete.secure_delete_directory(str(item))
+                        self.secure_file_ops.secure_delete_directory(str(item))
                     else:
-                        self.secure_delete.secure_delete_file(str(item))
+                        self.secure_file_ops.secure_delete_file(str(item), SecureDeletionMethod.DOD_7_PASS)
             
             # 6. Free space scrubbing (default enabled)
             do_scrub = scrub_free_space if scrub_free_space is not None else True
@@ -620,7 +620,7 @@ class EmergencyProtocol:
                             for file_path in location.glob(pattern):
                                 if file_path.is_file():
                                     # Multiple pass overwrite
-                                    self.secure_delete.secure_delete_file(str(file_path))
+                                    self.secure_file_ops.secure_delete_file(str(file_path), SecureDeletionMethod.DOD_7_PASS)
                         except Exception:
                             pass
                             
@@ -657,7 +657,7 @@ class EmergencyProtocol:
             for location in user_data_locations:
                 if location and location.exists():
                     try:
-                        self.secure_delete.secure_delete_directory(str(location))
+                        self.secure_file_ops.secure_delete_directory(str(location))
                         self.logger.info(f"Wiped user data location: {location}")
                     except Exception as e:
                         self.logger.warning(f"Could not wipe {location}: {e}")
@@ -680,7 +680,7 @@ class EmergencyProtocol:
                         try:
                             for file_path in temp_dir.glob(pattern):
                                 if file_path.is_file():
-                                    self.secure_delete.secure_delete_file(str(file_path))
+                                    self.secure_file_ops.secure_delete_file(str(file_path), SecureDeletionMethod.DOD_7_PASS)
                         except Exception:
                             pass  # Continue with other patterns
             
@@ -811,7 +811,7 @@ class EmergencyProtocol:
         
         # Immediately delete the file if it exists
         if Path(file_path).exists():
-            self.secure_delete.secure_delete_file(file_path)
+            self.secure_file_ops.secure_delete_file(file_path, SecureDeletionMethod.DOD_7_PASS)
     
     def remove_from_blacklist(self, file_path: str):
         """Remove a file from the blacklist.
@@ -871,7 +871,7 @@ class EmergencyProtocol:
             
         except Exception as e:
             # If move fails, just delete it
-            self.secure_delete.secure_delete_file(str(file_path))
+            self.secure_file_ops.secure_delete_file(str(file_path), SecureDeletionMethod.DOD_7_PASS)
     
     def secure_file_shredding(self, file_path: str, passes: int = 7):
         """Perform secure file shredding with anti-forensics.
@@ -889,7 +889,17 @@ class EmergencyProtocol:
         self.add_to_blacklist(str(file_path), "Secure shredding requested")
         
         # Perform multi-pass secure deletion
-        self.secure_delete.secure_delete_file(str(file_path), passes)
+        # Use appropriate deletion method based on passes
+        if passes >= 35:
+            method = SecureDeletionMethod.GUTMANN
+        elif passes >= 7:
+            method = SecureDeletionMethod.DOD_7_PASS
+        elif passes >= 3:
+            method = SecureDeletionMethod.DOD_3_PASS
+        else:
+            method = SecureDeletionMethod.BASIC
+        
+        self.secure_file_ops.secure_delete_file(str(file_path), method)
         
         # Anti-forensics: Create decoy files with similar names
         self._create_decoy_files(file_path.parent, file_path.name)
@@ -918,7 +928,7 @@ class EmergencyProtocol:
                     f.write(decoy_content)
                 
                 # Immediately delete the decoy securely
-                self.secure_delete.secure_delete_file(str(decoy_path))
+                self.secure_file_ops.secure_delete_file(str(decoy_path), SecureDeletionMethod.DOD_7_PASS)
                 
         except Exception:
             pass  # Ignore errors in decoy creation
