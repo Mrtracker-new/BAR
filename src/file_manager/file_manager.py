@@ -607,7 +607,7 @@ class FileManager:
         Returns:
             True if the file was deleted, False if it doesn't exist
         """
-        from ..security.secure_delete import SecureDelete
+        from ..security.secure_file_ops import SecureFileOperations, SecureDeletionMethod
         
         # Validate file_id
         if not file_id or not isinstance(file_id, str):
@@ -646,9 +646,9 @@ class FileManager:
                             file_path = Path(metadata["file_path"])
                             if file_path.exists() and file_path.is_file():
                                 # Initialize secure delete
-                                secure_delete = SecureDelete(self.logger)
+                                secure_file_ops = SecureFileOperations()
                                 # Securely delete the actual file
-                                secure_delete.secure_delete_file(str(file_path))
+                                secure_file_ops.secure_delete_file(str(file_path), SecureDeletionMethod.DOD_7_PASS)
                                 self.logger.info(f"Securely deleted actual file at: {file_path}")
                         except Exception as file_error:
                             self.logger.error(f"Error deleting associated file: {str(file_error)}")
@@ -659,8 +659,8 @@ class FileManager:
                         if export_dir.exists() and export_dir.is_dir():
                             for export_file in export_dir.glob(f"*{file_id}*"):
                                 if export_file.exists() and export_file.is_file():
-                                    secure_delete = SecureDelete(self.logger)
-                                    secure_delete.secure_delete_file(str(export_file))
+                                    secure_file_ops = SecureFileOperations()
+                                    secure_file_ops.secure_delete_file(str(export_file), SecureDeletionMethod.DOD_7_PASS)
                                     self.logger.info(f"Securely deleted exported file: {export_file}")
                     except Exception as export_error:
                         self.logger.error(f"Error deleting exported files: {str(export_error)}")
@@ -671,8 +671,8 @@ class FileManager:
                         if temp_dir.exists() and temp_dir.is_dir():
                             for temp_file in temp_dir.glob(f"*{file_id}*"):
                                 if temp_file.exists() and temp_file.is_file():
-                                    secure_delete = SecureDelete(self.logger)
-                                    secure_delete.secure_delete_file(str(temp_file))
+                                    secure_file_ops = SecureFileOperations()
+                                    secure_file_ops.secure_delete_file(str(temp_file), SecureDeletionMethod.DOD_7_PASS)
                                     self.logger.info(f"Securely deleted temporary file: {temp_file}")
                     except Exception as temp_error:
                         self.logger.error(f"Error deleting temporary files: {str(temp_error)}")
@@ -683,8 +683,8 @@ class FileManager:
                         if portable_dir.exists() and portable_dir.is_dir():
                             for portable_file in portable_dir.glob(f"*{file_id}*"):
                                 if portable_file.exists() and portable_file.is_file():
-                                    secure_delete = SecureDelete(self.logger)
-                                    secure_delete.secure_delete_file(str(portable_file))
+                                    secure_file_ops = SecureFileOperations()
+                                    secure_file_ops.secure_delete_file(str(portable_file), SecureDeletionMethod.DOD_7_PASS)
                                     self.logger.info(f"Securely deleted portable file: {portable_file}")
                     except Exception as portable_error:
                         self.logger.error(f"Error deleting portable files: {str(portable_error)}")
@@ -710,12 +710,12 @@ class FileManager:
         except Exception as e:
             self.logger.error(f"Error reading metadata during secure deletion: {str(e)}")
         
-        # Initialize secure delete
-        secure_delete = SecureDelete(self.logger)
+        # Initialize secure file operations
+        secure_file_ops = SecureFileOperations()
         
         # Securely delete the metadata file
         try:
-            secure_delete.secure_delete_file(str(metadata_path))
+            secure_file_ops.secure_delete_file(str(metadata_path), SecureDeletionMethod.DOD_7_PASS)
         except Exception as delete_error:
             self.logger.error(f"Error securely deleting metadata file: {str(delete_error)}")
             # Try regular deletion as fallback
@@ -1274,8 +1274,8 @@ class FileManager:
                 self.logger.warning(f"Invalid content hash provided: {type(content_hash)}")
                 return 0
                 
-            from ..security.secure_delete import SecureDelete
-            secure_delete = SecureDelete(self.logger)
+            from ..security.secure_file_ops import SecureFileOperations, SecureDeletionMethod
+            secure_file_ops = SecureFileOperations()
             deleted_count = 0
             
             # Get all available devices - handle potential errors
@@ -1332,7 +1332,7 @@ class FileManager:
                                             
                                             if file_hash and file_hash == content_hash:
                                                 # Found a match, securely delete it
-                                                if secure_delete.secure_delete_file(str(bar_file)):
+                                                if secure_file_ops.secure_delete_file(str(bar_file), SecureDeletionMethod.DOD_7_PASS):
                                                     self.logger.info(f"Deleted matching .bar file: {bar_file}")
                                                     deleted_count += 1
                                         except (json.JSONDecodeError, UnicodeDecodeError):
