@@ -19,6 +19,7 @@ from src.security.secure_memory import get_secure_memory_manager, force_secure_m
 from src.security.emergency_protocol import EmergencyProtocol
 from src.security.intelligent_monitor import IntelligentFileMonitor, ThreatLevel
 from src.security.steganographic_triggers import SteganographicTriggerSystem, TriggerType, TriggerAction
+from src.security.system_health_monitor import SystemHealthMonitor, ThreatLevel as HealthThreatLevel
 from src.file_manager.file_manager import FileManager
 
 # Import PyQt5 modules
@@ -205,6 +206,7 @@ def main():
         emergency = EmergencyProtocol(str(app_dir), device_auth)
         monitor = IntelligentFileMonitor(Path(app_dir))
         steg = SteganographicTriggerSystem(Path(app_dir))
+        health_monitor = SystemHealthMonitor(check_interval=5.0, memory_threshold=85.0, cpu_threshold=90.0, temperature_threshold=80.0)
         
         # Check if device is initialized
         if not device_auth.is_device_initialized():
@@ -243,6 +245,19 @@ def main():
         monitor.register_threat_callback(ThreatLevel.HIGH, handle_high_threat)
         monitor.register_threat_callback(ThreatLevel.CRITICAL, handle_critical_threat)
 
+        # Register health monitor callbacks for system threats
+        def handle_health_threat(metrics):
+            if metrics.threat_level == HealthThreatLevel.CRITICAL:
+                threats_summary = ", ".join(metrics.active_threats[:3])  # Limit to first 3 threats
+                reason = f"Critical system health threat: {threats_summary}"
+                emergency.trigger_emergency_destruction(reason=reason, level="aggressive")
+            elif metrics.threat_level == HealthThreatLevel.HIGH:
+                threats_summary = ", ".join(metrics.active_threats[:2])  # Limit to first 2 threats
+                reason = f"High system health threat: {threats_summary}"
+                emergency.trigger_emergency_destruction(reason=reason, level="selective")
+        
+        health_monitor.add_callback(handle_health_threat)
+
         # Install a safe default steganographic trigger (example can be customized)
         # Note: avoid using real sensitive patterns in code
         steg.install_trigger(TriggerType.ACCESS_SEQUENCE, "count:access:20", TriggerAction.AGGRESSIVE_WIPE, sensitivity=0.9, description="Rapid access default")
@@ -265,10 +280,11 @@ def main():
 
         # Start systems
         monitor.start_monitoring()
+        health_monitor.start_monitoring()
         emergency.start_dead_mans_switch()
         
         # Create and show main window with device authentication and self-destruct systems
-        main_window = MainWindow(config_manager, file_manager, device_auth, emergency=emergency, monitor=monitor, steg=steg)
+        main_window = MainWindow(config_manager, file_manager, device_auth, emergency=emergency, monitor=monitor, steg=steg, health_monitor=health_monitor)
         main_window.show()
         
         logger.info("BAR application started successfully")
@@ -282,6 +298,10 @@ def main():
         try:
             try:
                 monitor.stop_monitoring()
+            except Exception:
+                pass
+            try:
+                health_monitor.stop_monitoring()
             except Exception:
                 pass
             try:

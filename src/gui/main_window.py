@@ -24,7 +24,7 @@ class MainWindow(QMainWindow):
     """Main window for the BAR application."""
     
     def __init__(self, config_manager: ConfigManager, file_manager: FileManager, 
-                 device_auth, parent=None, emergency=None, monitor=None, steg=None):
+                 device_auth, parent=None, emergency=None, monitor=None, steg=None, health_monitor=None):
         """Initialize the main window.
         
         Args:
@@ -32,6 +32,10 @@ class MainWindow(QMainWindow):
             file_manager: The secure file manager
             device_auth: The device authentication manager (already authenticated)
             parent: The parent widget
+            emergency: Emergency protocol manager (optional)
+            monitor: Intelligent file monitor (optional)
+            steg: Steganographic trigger system (optional)
+            health_monitor: System health monitor (optional)
         """
         super().__init__(parent)
         
@@ -42,6 +46,7 @@ class MainWindow(QMainWindow):
         self.emergency = emergency
         self.monitor = monitor
         self.steg = steg
+        self.health_monitor = health_monitor
         
         # Set up window properties
         self.setWindowTitle("BAR - Burn After Reading")
@@ -172,7 +177,7 @@ class MainWindow(QMainWindow):
         self.settings_layout.addWidget(self.save_settings_button)
         
         # Add self-destruct status section (if systems are available)
-        if self.emergency or self.monitor or self.steg:
+        if self.emergency or self.monitor or self.steg or self.health_monitor:
             self.destruct_group = QGroupBox("Enhanced Self-Destruct System Status")
             self.destruct_layout = QFormLayout(self.destruct_group)
             self.settings_layout.addWidget(self.destruct_group)
@@ -187,6 +192,11 @@ class MainWindow(QMainWindow):
             self.steg_status_label = QLabel("Triggers: Loading...")
             self.destruct_layout.addRow("Steganographic:", self.steg_status_label)
             
+            # Add system health monitor status if available
+            if self.health_monitor:
+                self.health_status_label = QLabel("System Health: Loading...")
+                self.destruct_layout.addRow("Health Monitor:", self.health_status_label)
+            
             # Update button
             self.update_status_button = QPushButton("Refresh Status")
             self.update_status_button.clicked.connect(self._update_destruct_status)
@@ -194,6 +204,44 @@ class MainWindow(QMainWindow):
             
             # Update status initially
             QTimer.singleShot(1000, self._update_destruct_status)  # Delay to allow systems to initialize
+        
+        # Add detailed system health monitor section (if available)
+        if self.health_monitor:
+            self.health_group = QGroupBox("System Health Monitoring")
+            self.health_layout = QFormLayout(self.health_group)
+            self.settings_layout.addWidget(self.health_group)
+            
+            # System metrics displays
+            self.cpu_usage_label = QLabel("Loading...")
+            self.health_layout.addRow("CPU Usage:", self.cpu_usage_label)
+            
+            self.memory_usage_label = QLabel("Loading...")
+            self.health_layout.addRow("Memory Usage:", self.memory_usage_label)
+            
+            self.disk_usage_label = QLabel("Loading...")
+            self.health_layout.addRow("Disk Usage:", self.disk_usage_label)
+            
+            self.temperature_label = QLabel("Loading...")
+            self.health_layout.addRow("Temperature:", self.temperature_label)
+            
+            self.threat_level_label = QLabel("Loading...")
+            self.health_layout.addRow("Threat Level:", self.threat_level_label)
+            
+            self.active_threats_label = QLabel("Loading...")
+            self.health_layout.addRow("Active Threats:", self.active_threats_label)
+            
+            # Health status refresh button
+            self.refresh_health_button = QPushButton("Refresh Health Status")
+            self.refresh_health_button.clicked.connect(self._update_health_status)
+            self.health_layout.addRow("", self.refresh_health_button)
+            
+            # Set up automatic health status updates
+            self.health_update_timer = QTimer(self)
+            self.health_update_timer.timeout.connect(self._update_health_status)
+            self.health_update_timer.start(10000)  # Update every 10 seconds
+            
+            # Initial health status update
+            QTimer.singleShot(1500, self._update_health_status)  # Delay slightly more than destruct status
         
         # Create status bar
         self.status_bar = QStatusBar()
@@ -1366,10 +1414,124 @@ class MainWindow(QMainWindow):
                 self.steg_status_label.setText(f"{active_triggers}/{total_triggers} triggers active")
             else:
                 self.steg_status_label.setText("Not available")
+            
+            # Update health monitor status if available
+            if self.health_monitor and hasattr(self, 'health_status_label'):
+                try:
+                    metrics = self.health_monitor.get_current_metrics()
+                    threat_level = metrics.threat_level.value.upper()
+                    threat_count = len(metrics.active_threats)
+                    
+                    # Color code based on threat level
+                    if threat_level == "CRITICAL":
+                        status_text = f"<span style='color: red; font-weight: bold;'>{threat_level}</span> ({threat_count} threats)"
+                    elif threat_level == "HIGH":
+                        status_text = f"<span style='color: orange; font-weight: bold;'>{threat_level}</span> ({threat_count} threats)"
+                    elif threat_level == "MEDIUM":
+                        status_text = f"<span style='color: yellow; font-weight: bold;'>{threat_level}</span> ({threat_count} threats)"
+                    else:
+                        status_text = f"<span style='color: green; font-weight: bold;'>{threat_level}</span> ({threat_count} threats)"
+                    
+                    self.health_status_label.setText(status_text)
+                except Exception as health_error:
+                    self.health_status_label.setText(f"Error: {str(health_error)}")
+            elif self.health_monitor:
+                self.health_status_label.setText("Loading...")
                 
         except Exception as e:
             if hasattr(self, 'emergency_status_label'):
                 self.emergency_status_label.setText(f"Error: {str(e)}")
+    
+    def _update_health_status(self):
+        """Update the detailed system health monitoring display."""
+        try:
+            if not self.health_monitor:
+                return
+            
+            # Get current health metrics
+            metrics = self.health_monitor.get_current_metrics()
+            
+            # Update CPU usage
+            cpu_text = f"{metrics.cpu_percent:.1f}%"
+            if metrics.cpu_percent > 90:
+                cpu_text = f"<span style='color: red; font-weight: bold;'>{cpu_text}</span>"
+            elif metrics.cpu_percent > 75:
+                cpu_text = f"<span style='color: orange; font-weight: bold;'>{cpu_text}</span>"
+            else:
+                cpu_text = f"<span style='color: green;'>{cpu_text}</span>"
+            self.cpu_usage_label.setText(cpu_text)
+            
+            # Update memory usage
+            mem_text = f"{metrics.memory_percent:.1f}%"
+            if metrics.memory_percent > 90:
+                mem_text = f"<span style='color: red; font-weight: bold;'>{mem_text}</span>"
+            elif metrics.memory_percent > 80:
+                mem_text = f"<span style='color: orange; font-weight: bold;'>{mem_text}</span>"
+            else:
+                mem_text = f"<span style='color: green;'>{mem_text}</span>"
+            self.memory_usage_label.setText(mem_text)
+            
+            # Update disk usage
+            disk_text = f"{metrics.disk_usage:.1f}%"
+            if metrics.disk_usage > 95:
+                disk_text = f"<span style='color: red; font-weight: bold;'>{disk_text}</span>"
+            elif metrics.disk_usage > 85:
+                disk_text = f"<span style='color: orange; font-weight: bold;'>{disk_text}</span>"
+            else:
+                disk_text = f"<span style='color: green;'>{disk_text}</span>"
+            self.disk_usage_label.setText(disk_text)
+            
+            # Update temperature
+            if metrics.temperature is not None:
+                temp_text = f"{metrics.temperature:.1f}°C"
+                if metrics.temperature > 80:
+                    temp_text = f"<span style='color: red; font-weight: bold;'>{temp_text}</span>"
+                elif metrics.temperature > 70:
+                    temp_text = f"<span style='color: orange; font-weight: bold;'>{temp_text}</span>"
+                else:
+                    temp_text = f"<span style='color: green;'>{temp_text}</span>"
+                self.temperature_label.setText(temp_text)
+            else:
+                self.temperature_label.setText("<span style='color: gray;'>N/A</span>")
+            
+            # Update threat level
+            threat_level = metrics.threat_level.value.upper()
+            if threat_level == "CRITICAL":
+                threat_text = f"<span style='color: red; font-weight: bold; font-size: 14px;'>{threat_level}</span>"
+            elif threat_level == "HIGH":
+                threat_text = f"<span style='color: orange; font-weight: bold; font-size: 14px;'>{threat_level}</span>"
+            elif threat_level == "MEDIUM":
+                threat_text = f"<span style='color: yellow; font-weight: bold;'>{threat_level}</span>"
+            else:
+                threat_text = f"<span style='color: green; font-weight: bold;'>{threat_level}</span>"
+            self.threat_level_label.setText(threat_text)
+            
+            # Update active threats
+            if metrics.active_threats:
+                threats_text = "<br>".join([f"• {threat}" for threat in metrics.active_threats[:5]])  # Show up to 5 threats
+                if len(metrics.active_threats) > 5:
+                    threats_text += f"<br>... and {len(metrics.active_threats) - 5} more"
+                threats_text = f"<span style='color: red;'>{threats_text}</span>"
+            else:
+                threats_text = "<span style='color: green;'>No active threats</span>"
+            
+            self.active_threats_label.setText(threats_text)
+            
+        except Exception as e:
+            # Update all labels with error state
+            error_text = f"<span style='color: red;'>Error: {str(e)}</span>"
+            if hasattr(self, 'cpu_usage_label'):
+                self.cpu_usage_label.setText(error_text)
+            if hasattr(self, 'memory_usage_label'):
+                self.memory_usage_label.setText(error_text)
+            if hasattr(self, 'disk_usage_label'):
+                self.disk_usage_label.setText(error_text)
+            if hasattr(self, 'temperature_label'):
+                self.temperature_label.setText(error_text)
+            if hasattr(self, 'threat_level_label'):
+                self.threat_level_label.setText(error_text)
+            if hasattr(self, 'active_threats_label'):
+                self.active_threats_label.setText(error_text)
     
     def _send_heartbeat(self):
         """Send heartbeat to emergency protocol to keep dead man's switch active."""
