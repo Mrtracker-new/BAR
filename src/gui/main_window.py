@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QFileDialog, QMessageBox, QTabWidget, QTableWidget, QTableWidgetItem,
     QHeaderView, QComboBox, QSpinBox, QDateTimeEdit, QCheckBox, QDialog,
-    QFormLayout, QGroupBox, QAction, QMenu,
+    QFormLayout, QGroupBox, QAction, QMenu, QGridLayout,
     QStatusBar, QApplication, QInputDialog, QTextEdit
 )
 from PyQt5.QtCore import Qt, QTimer, QDateTime
@@ -205,71 +205,103 @@ class MainWindow(QMainWindow):
             # Update status initially
             QTimer.singleShot(1000, self._update_destruct_status)  # Delay to allow systems to initialize
         
-        # Add detailed system health monitor section (if available)
+        # Add compact system health monitor section (if available)
         if self.health_monitor:
             self.health_group = QGroupBox("System Health Monitoring")
-            self.health_layout = QVBoxLayout(self.health_group)  # Use VBox instead of Form layout
+            self.health_layout = QVBoxLayout(self.health_group)
+            self.health_layout.setSpacing(10)  # Compact spacing
             self.settings_layout.addWidget(self.health_group)
             
-            # Create a grid layout for better organization
-            self.health_grid_layout = QFormLayout()
-            self.health_grid_layout.setVerticalSpacing(8)  # Add vertical spacing
-            self.health_grid_layout.setHorizontalSpacing(15)  # Add horizontal spacing
-            self.health_layout.addLayout(self.health_grid_layout)
+            # Create a compact grid layout using QGridLayout for better control
+            self.health_grid = QWidget()
+            self.health_grid_layout = QGridLayout(self.health_grid)
+            self.health_grid_layout.setSpacing(6)  # Tight spacing
+            self.health_layout.addWidget(self.health_grid)
             
-            # System metrics displays with improved sizing
+            # Row 1: CPU and Memory (side by side)
+            cpu_label = QLabel("CPU:")
+            cpu_label.setMinimumWidth(60)
             self.cpu_usage_label = QLabel("Loading...")
-            self.cpu_usage_label.setMinimumHeight(25)  # Ensure adequate height
-            self.cpu_usage_label.setWordWrap(True)
-            self.health_grid_layout.addRow("CPU Usage:", self.cpu_usage_label)
+            self.cpu_usage_label.setMinimumHeight(20)
+            self.health_grid_layout.addWidget(cpu_label, 0, 0)
+            self.health_grid_layout.addWidget(self.cpu_usage_label, 0, 1)
             
+            mem_label = QLabel("Memory:")
+            mem_label.setMinimumWidth(60)
             self.memory_usage_label = QLabel("Loading...")
-            self.memory_usage_label.setMinimumHeight(25)
-            self.memory_usage_label.setWordWrap(True)
-            self.health_grid_layout.addRow("Memory Usage:", self.memory_usage_label)
+            self.memory_usage_label.setMinimumHeight(20)
+            self.health_grid_layout.addWidget(mem_label, 0, 2)
+            self.health_grid_layout.addWidget(self.memory_usage_label, 0, 3)
             
+            # Row 2: Disk and Temperature (side by side)
+            disk_label = QLabel("Disk:")
+            disk_label.setMinimumWidth(60)
             self.disk_usage_label = QLabel("Loading...")
-            self.disk_usage_label.setMinimumHeight(25)
-            self.disk_usage_label.setWordWrap(True)
-            self.health_grid_layout.addRow("Disk Usage:", self.disk_usage_label)
+            self.disk_usage_label.setMinimumHeight(20)
+            self.health_grid_layout.addWidget(disk_label, 1, 0)
+            self.health_grid_layout.addWidget(self.disk_usage_label, 1, 1)
             
+            temp_label = QLabel("Temp:")
+            temp_label.setMinimumWidth(60)
             self.temperature_label = QLabel("Loading...")
-            self.temperature_label.setMinimumHeight(25)
-            self.temperature_label.setWordWrap(True)
-            self.health_grid_layout.addRow("Temperature:", self.temperature_label)
+            self.temperature_label.setMinimumHeight(20)
+            self.health_grid_layout.addWidget(temp_label, 1, 2)
+            self.health_grid_layout.addWidget(self.temperature_label, 1, 3)
             
+            # Row 3: Threat Level (full width)
+            threat_label = QLabel("Status:")
+            threat_label.setMinimumWidth(60)
             self.threat_level_label = QLabel("Loading...")
-            self.threat_level_label.setMinimumHeight(30)  # Slightly taller for emphasis
-            self.threat_level_label.setWordWrap(True)
-            self.health_grid_layout.addRow("Threat Level:", self.threat_level_label)
+            self.threat_level_label.setMinimumHeight(25)
+            self.health_grid_layout.addWidget(threat_label, 2, 0)
+            self.health_grid_layout.addWidget(self.threat_level_label, 2, 1, 1, 3)  # Span 3 columns
             
-            # Active threats with more space and scroll area if needed
+            # Active threats in a collapsible/compact format
             self.active_threats_label = QLabel("Loading...")
-            self.active_threats_label.setMinimumHeight(60)  # Much taller for multi-line content
-            self.active_threats_label.setMaximumHeight(120)  # Limit max height
+            self.active_threats_label.setMinimumHeight(25)
+            self.active_threats_label.setMaximumHeight(60)  # Much more compact
             self.active_threats_label.setWordWrap(True)
             self.active_threats_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
             self.active_threats_label.setStyleSheet("""
                 QLabel {
                     background-color: #2a2a2a;
                     border: 1px solid #555;
-                    border-radius: 4px;
-                    padding: 8px;
-                    margin: 2px;
+                    border-radius: 3px;
+                    padding: 4px 6px;
+                    margin: 1px;
+                    font-size: 12px;
                 }
             """)
-            self.health_grid_layout.addRow("Active Threats:", self.active_threats_label)
+            self.health_grid_layout.addWidget(self.active_threats_label, 3, 0, 1, 4)  # Full width, compact height
             
-            # Health status refresh button
-            self.refresh_health_button = QPushButton("Refresh Health Status")
+            # Make the grid layout more compact
+            self.health_grid_layout.setColumnStretch(1, 1)  # CPU/Disk value columns
+            self.health_grid_layout.setColumnStretch(3, 1)  # Memory/Temp value columns
+            
+            # Compact refresh button
+            self.refresh_health_button = QPushButton("↻ Refresh")
             self.refresh_health_button.clicked.connect(self._update_health_status)
-            self.refresh_health_button.setStyleSheet(StyleManager.get_action_button_style())
+            self.refresh_health_button.setFixedHeight(30)  # Compact button
+            self.refresh_health_button.setStyleSheet("""
+                QPushButton {
+                    background-color: #404040;
+                    color: white;
+                    border: 1px solid #666;
+                    border-radius: 4px;
+                    padding: 4px 8px;
+                    font-size: 12px;
+                }
+                QPushButton:hover {
+                    background-color: #505050;
+                    border-color: #777;
+                }
+            """)
             
-            # Add button in a separate layout for better spacing
+            # Add compact button layout
             self.health_button_layout = QHBoxLayout()
-            self.health_button_layout.addStretch()  # Push button to center
+            self.health_button_layout.addStretch()
             self.health_button_layout.addWidget(self.refresh_health_button)
-            self.health_button_layout.addStretch()  # Push button to center
+            self.health_button_layout.addStretch()
             self.health_layout.addLayout(self.health_button_layout)
             
             # Set up automatic health status updates
@@ -278,7 +310,7 @@ class MainWindow(QMainWindow):
             self.health_update_timer.start(10000)  # Update every 10 seconds
             
             # Initial health status update
-            QTimer.singleShot(1500, self._update_health_status)  # Delay slightly more than destruct status
+            QTimer.singleShot(1500, self._update_health_status)
         
         # Create status bar
         self.status_bar = QStatusBar()
@@ -1488,75 +1520,72 @@ class MainWindow(QMainWindow):
             # Get current health metrics
             metrics = self.health_monitor.get_current_metrics()
             
-            # Update CPU usage with better styling
+            # Update CPU usage with compact styling
             cpu_text = f"{metrics.cpu_percent:.1f}%"
             if metrics.cpu_percent > 90:
-                cpu_text = f"<span style='color: #ff6b6b; font-weight: bold; font-size: 14px;'>{cpu_text}</span>"
+                cpu_text = f"<span style='color: #ff6b6b; font-weight: bold; font-size: 13px;'>{cpu_text}</span>"
             elif metrics.cpu_percent > 75:
-                cpu_text = f"<span style='color: #ffa726; font-weight: bold; font-size: 14px;'>{cpu_text}</span>"
+                cpu_text = f"<span style='color: #ffa726; font-weight: bold; font-size: 13px;'>{cpu_text}</span>"
             else:
-                cpu_text = f"<span style='color: #66bb6a; font-size: 14px;'>{cpu_text}</span>"
+                cpu_text = f"<span style='color: #66bb6a; font-size: 13px;'>{cpu_text}</span>"
             self.cpu_usage_label.setText(cpu_text)
             
-            # Update memory usage with better styling
+            # Update memory usage with compact styling
             mem_text = f"{metrics.memory_percent:.1f}%"
             if metrics.memory_percent > 90:
-                mem_text = f"<span style='color: #ff6b6b; font-weight: bold; font-size: 14px;'>{mem_text}</span>"
+                mem_text = f"<span style='color: #ff6b6b; font-weight: bold; font-size: 13px;'>{mem_text}</span>"
             elif metrics.memory_percent > 80:
-                mem_text = f"<span style='color: #ffa726; font-weight: bold; font-size: 14px;'>{mem_text}</span>"
+                mem_text = f"<span style='color: #ffa726; font-weight: bold; font-size: 13px;'>{mem_text}</span>"
             else:
-                mem_text = f"<span style='color: #66bb6a; font-size: 14px;'>{mem_text}</span>"
+                mem_text = f"<span style='color: #66bb6a; font-size: 13px;'>{mem_text}</span>"
             self.memory_usage_label.setText(mem_text)
             
-            # Update disk usage with better styling
+            # Update disk usage with compact styling
             disk_text = f"{metrics.disk_usage:.1f}%"
             if metrics.disk_usage > 95:
-                disk_text = f"<span style='color: #ff6b6b; font-weight: bold; font-size: 14px;'>{disk_text}</span>"
+                disk_text = f"<span style='color: #ff6b6b; font-weight: bold; font-size: 13px;'>{disk_text}</span>"
             elif metrics.disk_usage > 85:
-                disk_text = f"<span style='color: #ffa726; font-weight: bold; font-size: 14px;'>{disk_text}</span>"
+                disk_text = f"<span style='color: #ffa726; font-weight: bold; font-size: 13px;'>{disk_text}</span>"
             else:
-                disk_text = f"<span style='color: #66bb6a; font-size: 14px;'>{disk_text}</span>"
+                disk_text = f"<span style='color: #66bb6a; font-size: 13px;'>{disk_text}</span>"
             self.disk_usage_label.setText(disk_text)
             
-            # Update temperature with better styling
+            # Update temperature with compact styling
             if metrics.temperature is not None:
                 temp_text = f"{metrics.temperature:.1f}°C"
                 if metrics.temperature > 80:
-                    temp_text = f"<span style='color: #ff6b6b; font-weight: bold; font-size: 14px;'>{temp_text}</span>"
+                    temp_text = f"<span style='color: #ff6b6b; font-weight: bold; font-size: 13px;'>{temp_text}</span>"
                 elif metrics.temperature > 70:
-                    temp_text = f"<span style='color: #ffa726; font-weight: bold; font-size: 14px;'>{temp_text}</span>"
+                    temp_text = f"<span style='color: #ffa726; font-weight: bold; font-size: 13px;'>{temp_text}</span>"
                 else:
-                    temp_text = f"<span style='color: #66bb6a; font-size: 14px;'>{temp_text}</span>"
+                    temp_text = f"<span style='color: #66bb6a; font-size: 13px;'>{temp_text}</span>"
                 self.temperature_label.setText(temp_text)
             else:
-                self.temperature_label.setText("<span style='color: #9e9e9e; font-size: 14px;'>Not Available</span>")
+                self.temperature_label.setText("<span style='color: #9e9e9e; font-size: 13px;'>Not Available</span>")
             
-            # Update threat level with prominent styling
+            # Update threat level with compact prominent styling
             threat_level = metrics.threat_level.value.upper()
             if threat_level == "CRITICAL":
-                threat_text = f"<span style='color: #ff1744; font-weight: bold; font-size: 16px; background-color: rgba(255, 23, 68, 0.1); padding: 4px 8px; border-radius: 4px;'>⚠ {threat_level}</span>"
+                threat_text = f"<span style='color: #ff1744; font-weight: bold; font-size: 14px; background-color: rgba(255, 23, 68, 0.1); padding: 2px 6px; border-radius: 3px;'>⚠ {threat_level}</span>"
             elif threat_level == "HIGH":
-                threat_text = f"<span style='color: #ff9800; font-weight: bold; font-size: 16px; background-color: rgba(255, 152, 0, 0.1); padding: 4px 8px; border-radius: 4px;'>⚠ {threat_level}</span>"
+                threat_text = f"<span style='color: #ff9800; font-weight: bold; font-size: 14px; background-color: rgba(255, 152, 0, 0.1); padding: 2px 6px; border-radius: 3px;'>⚠ {threat_level}</span>"
             elif threat_level == "MEDIUM":
-                threat_text = f"<span style='color: #ffc107; font-weight: bold; font-size: 15px; background-color: rgba(255, 193, 7, 0.1); padding: 4px 8px; border-radius: 4px;'>⚡ {threat_level}</span>"
+                threat_text = f"<span style='color: #ffc107; font-weight: bold; font-size: 13px; background-color: rgba(255, 193, 7, 0.1); padding: 2px 6px; border-radius: 3px;'>⚡ {threat_level}</span>"
             else:
-                threat_text = f"<span style='color: #4caf50; font-weight: bold; font-size: 15px; background-color: rgba(76, 175, 80, 0.1); padding: 4px 8px; border-radius: 4px;'>✓ {threat_level}</span>"
+                threat_text = f"<span style='color: #4caf50; font-weight: bold; font-size: 13px; background-color: rgba(76, 175, 80, 0.1); padding: 2px 6px; border-radius: 3px;'>✓ {threat_level}</span>"
             self.threat_level_label.setText(threat_text)
             
-            # Update active threats with better formatting
+            # Update active threats with compact formatting
             if metrics.active_threats:
-                # Format each threat on a new line with proper indentation
-                threat_lines = []
-                for i, threat in enumerate(metrics.active_threats[:5]):  # Show up to 5 threats
-                    threat_lines.append(f"• {threat}")
-                
-                if len(metrics.active_threats) > 5:
-                    threat_lines.append(f"... and {len(metrics.active_threats) - 5} more")
-                
-                threats_text = "<br>".join(threat_lines)
-                threats_text = f"<span style='color: #ff6b6b; line-height: 1.4;'>{threats_text}</span>"
+                # Show only first 2 threats in compact format, then count
+                if len(metrics.active_threats) == 1:
+                    threats_text = f"<span style='color: #ff6b6b; font-size: 12px;'>⚠ {metrics.active_threats[0]}</span>"
+                elif len(metrics.active_threats) == 2:
+                    threats_text = f"<span style='color: #ff6b6b; font-size: 12px;'>⚠ {metrics.active_threats[0]}<br>⚠ {metrics.active_threats[1]}</span>"
+                else:
+                    threats_text = f"<span style='color: #ff6b6b; font-size: 12px;'>⚠ {metrics.active_threats[0]}<br>⚠ {metrics.active_threats[1]}<br>... +{len(metrics.active_threats) - 2} more threats</span>"
             else:
-                threats_text = "<span style='color: #51cf66; font-weight: bold;'>✓ No active threats detected</span>"
+                threats_text = "<span style='color: #51cf66; font-weight: bold; font-size: 12px;'>✓ No active threats detected</span>"
             
             self.active_threats_label.setText(threats_text)
             
