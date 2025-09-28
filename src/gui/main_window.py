@@ -50,7 +50,7 @@ class MainWindow(QMainWindow):
         
         # Set up window properties
         self.setWindowTitle("BAR - Burn After Reading")
-        self.setMinimumSize(900, 600)
+        self.setMinimumSize(950, 650)  # Slightly larger to accommodate health monitor
         
         # Initialize UI components
         self.current_user = "Device User"  # Single user system
@@ -212,54 +212,89 @@ class MainWindow(QMainWindow):
             self.health_layout.setSpacing(10)  # Compact spacing
             self.settings_layout.addWidget(self.health_group)
             
-            # Create a compact grid layout using QGridLayout for better control
-            self.health_grid = QWidget()
-            self.health_grid_layout = QGridLayout(self.health_grid)
-            self.health_grid_layout.setSpacing(6)  # Tight spacing
-            self.health_layout.addWidget(self.health_grid)
+            # Use a vertical layout with horizontal pairs for better responsive design
+            self.health_metrics_layout = QVBoxLayout()
+            self.health_layout.addLayout(self.health_metrics_layout)
             
-            # Row 1: CPU and Memory (side by side)
+            # Row 1: CPU and Memory in horizontal layout
+            self.row1_layout = QHBoxLayout()
+            self.row1_layout.setSpacing(15)
+            self.health_metrics_layout.addLayout(self.row1_layout)
+            
+            # CPU section
+            self.cpu_section = QHBoxLayout()
             cpu_label = QLabel("CPU:")
-            cpu_label.setMinimumWidth(60)
+            cpu_label.setMinimumWidth(50)
+            cpu_label.setMaximumWidth(50)
             self.cpu_usage_label = QLabel("Loading...")
-            self.cpu_usage_label.setMinimumHeight(20)
-            self.health_grid_layout.addWidget(cpu_label, 0, 0)
-            self.health_grid_layout.addWidget(self.cpu_usage_label, 0, 1)
+            self.cpu_usage_label.setMinimumWidth(70)
+            self.cpu_usage_label.setMinimumHeight(22)
+            self.cpu_section.addWidget(cpu_label)
+            self.cpu_section.addWidget(self.cpu_usage_label)
+            self.cpu_section.addStretch()
             
+            # Memory section
+            self.mem_section = QHBoxLayout()
             mem_label = QLabel("Memory:")
-            mem_label.setMinimumWidth(60)
+            mem_label.setMinimumWidth(50)
+            mem_label.setMaximumWidth(50)
             self.memory_usage_label = QLabel("Loading...")
-            self.memory_usage_label.setMinimumHeight(20)
-            self.health_grid_layout.addWidget(mem_label, 0, 2)
-            self.health_grid_layout.addWidget(self.memory_usage_label, 0, 3)
+            self.memory_usage_label.setMinimumWidth(70)
+            self.memory_usage_label.setMinimumHeight(22)
+            self.mem_section.addWidget(mem_label)
+            self.mem_section.addWidget(self.memory_usage_label)
+            self.mem_section.addStretch()
             
-            # Row 2: Disk and Temperature (side by side)
+            self.row1_layout.addLayout(self.cpu_section)
+            self.row1_layout.addLayout(self.mem_section)
+            
+            # Row 2: Disk and Temperature in horizontal layout
+            self.row2_layout = QHBoxLayout()
+            self.row2_layout.setSpacing(15)
+            self.health_metrics_layout.addLayout(self.row2_layout)
+            
+            # Disk section
+            self.disk_section = QHBoxLayout()
             disk_label = QLabel("Disk:")
-            disk_label.setMinimumWidth(60)
+            disk_label.setMinimumWidth(50)
+            disk_label.setMaximumWidth(50)
             self.disk_usage_label = QLabel("Loading...")
-            self.disk_usage_label.setMinimumHeight(20)
-            self.health_grid_layout.addWidget(disk_label, 1, 0)
-            self.health_grid_layout.addWidget(self.disk_usage_label, 1, 1)
+            self.disk_usage_label.setMinimumWidth(70)
+            self.disk_usage_label.setMinimumHeight(22)
+            self.disk_section.addWidget(disk_label)
+            self.disk_section.addWidget(self.disk_usage_label)
+            self.disk_section.addStretch()
             
+            # Temperature section
+            self.temp_section = QHBoxLayout()
             temp_label = QLabel("Temp:")
-            temp_label.setMinimumWidth(60)
+            temp_label.setMinimumWidth(50)
+            temp_label.setMaximumWidth(50)
             self.temperature_label = QLabel("Loading...")
-            self.temperature_label.setMinimumHeight(20)
-            self.health_grid_layout.addWidget(temp_label, 1, 2)
-            self.health_grid_layout.addWidget(self.temperature_label, 1, 3)
+            self.temperature_label.setMinimumWidth(70)
+            self.temperature_label.setMinimumHeight(22)
+            self.temp_section.addWidget(temp_label)
+            self.temp_section.addWidget(self.temperature_label)
+            self.temp_section.addStretch()
+            
+            self.row2_layout.addLayout(self.disk_section)
+            self.row2_layout.addLayout(self.temp_section)
             
             # Row 3: Threat Level (full width)
+            self.threat_layout = QHBoxLayout()
             threat_label = QLabel("Status:")
-            threat_label.setMinimumWidth(60)
+            threat_label.setMinimumWidth(50)
+            threat_label.setMaximumWidth(50)
             self.threat_level_label = QLabel("Loading...")
             self.threat_level_label.setMinimumHeight(25)
-            self.health_grid_layout.addWidget(threat_label, 2, 0)
-            self.health_grid_layout.addWidget(self.threat_level_label, 2, 1, 1, 3)  # Span 3 columns
+            self.threat_layout.addWidget(threat_label)
+            self.threat_layout.addWidget(self.threat_level_label)
+            self.health_metrics_layout.addLayout(self.threat_layout)
             
-            # Active threats in a collapsible/compact format
+            # Active threats - full width compact display
             self.active_threats_label = QLabel("Loading...")
             self.active_threats_label.setMinimumHeight(25)
-            self.active_threats_label.setMaximumHeight(60)  # Much more compact
+            self.active_threats_label.setMaximumHeight(50)  # Even more compact
             self.active_threats_label.setWordWrap(True)
             self.active_threats_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
             self.active_threats_label.setStyleSheet("""
@@ -269,14 +304,10 @@ class MainWindow(QMainWindow):
                     border-radius: 3px;
                     padding: 4px 6px;
                     margin: 1px;
-                    font-size: 12px;
+                    font-size: 11px;
                 }
             """)
-            self.health_grid_layout.addWidget(self.active_threats_label, 3, 0, 1, 4)  # Full width, compact height
-            
-            # Make the grid layout more compact
-            self.health_grid_layout.setColumnStretch(1, 1)  # CPU/Disk value columns
-            self.health_grid_layout.setColumnStretch(3, 1)  # Memory/Temp value columns
+            self.health_metrics_layout.addWidget(self.active_threats_label)
             
             # Compact refresh button
             self.refresh_health_button = QPushButton("↻ Refresh")
@@ -1575,17 +1606,17 @@ class MainWindow(QMainWindow):
                 threat_text = f"<span style='color: #4caf50; font-weight: bold; font-size: 13px; background-color: rgba(76, 175, 80, 0.1); padding: 2px 6px; border-radius: 3px;'>✓ {threat_level}</span>"
             self.threat_level_label.setText(threat_text)
             
-            # Update active threats with compact formatting
+            # Update active threats with very compact formatting
             if metrics.active_threats:
-                # Show only first 2 threats in compact format, then count
-                if len(metrics.active_threats) == 1:
-                    threats_text = f"<span style='color: #ff6b6b; font-size: 12px;'>⚠ {metrics.active_threats[0]}</span>"
-                elif len(metrics.active_threats) == 2:
-                    threats_text = f"<span style='color: #ff6b6b; font-size: 12px;'>⚠ {metrics.active_threats[0]}<br>⚠ {metrics.active_threats[1]}</span>"
+                # For very limited space, show only count and first threat
+                threat_count = len(metrics.active_threats)
+                if threat_count == 1:
+                    threats_text = f"<span style='color: #ff6b6b; font-size: 11px;'>⚠ {metrics.active_threats[0][:50]}{'...' if len(metrics.active_threats[0]) > 50 else ''}</span>"
                 else:
-                    threats_text = f"<span style='color: #ff6b6b; font-size: 12px;'>⚠ {metrics.active_threats[0]}<br>⚠ {metrics.active_threats[1]}<br>... +{len(metrics.active_threats) - 2} more threats</span>"
+                    first_threat = metrics.active_threats[0][:40] + ('...' if len(metrics.active_threats[0]) > 40 else '')
+                    threats_text = f"<span style='color: #ff6b6b; font-size: 11px;'>⚠ {first_threat}<br>+ {threat_count - 1} more threat{'s' if threat_count > 2 else ''}</span>"
             else:
-                threats_text = "<span style='color: #51cf66; font-weight: bold; font-size: 12px;'>✓ No active threats detected</span>"
+                threats_text = "<span style='color: #51cf66; font-weight: bold; font-size: 11px;'>✓ No active threats</span>"
             
             self.active_threats_label.setText(threats_text)
             
