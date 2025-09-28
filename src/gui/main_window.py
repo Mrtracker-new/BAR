@@ -50,7 +50,8 @@ class MainWindow(QMainWindow):
         
         # Set up window properties
         self.setWindowTitle("BAR - Burn After Reading")
-        self.setMinimumSize(950, 650)  # Slightly larger to accommodate health monitor
+        self.setMinimumSize(1100, 750)  # Much larger to properly accommodate health monitor
+        self.resize(1200, 800)  # Set default size even larger for better initial display
         
         # Initialize UI components
         self.current_user = "Device User"  # Single user system
@@ -209,7 +210,8 @@ class MainWindow(QMainWindow):
         if self.health_monitor:
             self.health_group = QGroupBox("System Health Monitoring")
             self.health_layout = QVBoxLayout(self.health_group)
-            self.health_layout.setSpacing(10)  # Compact spacing
+            self.health_layout.setSpacing(15)  # More generous spacing
+            self.health_layout.setContentsMargins(15, 15, 15, 15)  # Add margins for better appearance
             self.settings_layout.addWidget(self.health_group)
             
             # Use a vertical layout with horizontal pairs for better responsive design
@@ -218,17 +220,17 @@ class MainWindow(QMainWindow):
             
             # Row 1: CPU and Memory in horizontal layout
             self.row1_layout = QHBoxLayout()
-            self.row1_layout.setSpacing(15)
+            self.row1_layout.setSpacing(30)  # More space between CPU and Memory
             self.health_metrics_layout.addLayout(self.row1_layout)
             
             # CPU section
             self.cpu_section = QHBoxLayout()
             cpu_label = QLabel("CPU:")
-            cpu_label.setMinimumWidth(50)
-            cpu_label.setMaximumWidth(50)
+            cpu_label.setMinimumWidth(70)  # Wider label
+            cpu_label.setMaximumWidth(70)
             self.cpu_usage_label = QLabel("Loading...")
-            self.cpu_usage_label.setMinimumWidth(70)
-            self.cpu_usage_label.setMinimumHeight(22)
+            self.cpu_usage_label.setMinimumWidth(100)  # Wider value area
+            self.cpu_usage_label.setMinimumHeight(25)
             self.cpu_section.addWidget(cpu_label)
             self.cpu_section.addWidget(self.cpu_usage_label)
             self.cpu_section.addStretch()
@@ -236,11 +238,11 @@ class MainWindow(QMainWindow):
             # Memory section
             self.mem_section = QHBoxLayout()
             mem_label = QLabel("Memory:")
-            mem_label.setMinimumWidth(50)
-            mem_label.setMaximumWidth(50)
+            mem_label.setMinimumWidth(70)
+            mem_label.setMaximumWidth(70)
             self.memory_usage_label = QLabel("Loading...")
-            self.memory_usage_label.setMinimumWidth(70)
-            self.memory_usage_label.setMinimumHeight(22)
+            self.memory_usage_label.setMinimumWidth(100)
+            self.memory_usage_label.setMinimumHeight(25)
             self.mem_section.addWidget(mem_label)
             self.mem_section.addWidget(self.memory_usage_label)
             self.mem_section.addStretch()
@@ -250,17 +252,17 @@ class MainWindow(QMainWindow):
             
             # Row 2: Disk and Temperature in horizontal layout
             self.row2_layout = QHBoxLayout()
-            self.row2_layout.setSpacing(15)
+            self.row2_layout.setSpacing(30)  # More space between Disk and Temp
             self.health_metrics_layout.addLayout(self.row2_layout)
             
             # Disk section
             self.disk_section = QHBoxLayout()
             disk_label = QLabel("Disk:")
-            disk_label.setMinimumWidth(50)
-            disk_label.setMaximumWidth(50)
+            disk_label.setMinimumWidth(70)
+            disk_label.setMaximumWidth(70)
             self.disk_usage_label = QLabel("Loading...")
-            self.disk_usage_label.setMinimumWidth(70)
-            self.disk_usage_label.setMinimumHeight(22)
+            self.disk_usage_label.setMinimumWidth(100)
+            self.disk_usage_label.setMinimumHeight(25)
             self.disk_section.addWidget(disk_label)
             self.disk_section.addWidget(self.disk_usage_label)
             self.disk_section.addStretch()
@@ -268,11 +270,11 @@ class MainWindow(QMainWindow):
             # Temperature section
             self.temp_section = QHBoxLayout()
             temp_label = QLabel("Temp:")
-            temp_label.setMinimumWidth(50)
-            temp_label.setMaximumWidth(50)
+            temp_label.setMinimumWidth(70)
+            temp_label.setMaximumWidth(70)
             self.temperature_label = QLabel("Loading...")
-            self.temperature_label.setMinimumWidth(70)
-            self.temperature_label.setMinimumHeight(22)
+            self.temperature_label.setMinimumWidth(100)
+            self.temperature_label.setMinimumHeight(25)
             self.temp_section.addWidget(temp_label)
             self.temp_section.addWidget(self.temperature_label)
             self.temp_section.addStretch()
@@ -283,8 +285,8 @@ class MainWindow(QMainWindow):
             # Row 3: Threat Level (full width)
             self.threat_layout = QHBoxLayout()
             threat_label = QLabel("Status:")
-            threat_label.setMinimumWidth(50)
-            threat_label.setMaximumWidth(50)
+            threat_label.setMinimumWidth(70)
+            threat_label.setMaximumWidth(70)
             self.threat_level_label = QLabel("Loading...")
             self.threat_level_label.setMinimumHeight(25)
             self.threat_layout.addWidget(threat_label)
@@ -293,8 +295,8 @@ class MainWindow(QMainWindow):
             
             # Active threats - full width compact display
             self.active_threats_label = QLabel("Loading...")
-            self.active_threats_label.setMinimumHeight(25)
-            self.active_threats_label.setMaximumHeight(50)  # Even more compact
+            self.active_threats_label.setMinimumHeight(35)
+            self.active_threats_label.setMaximumHeight(80)  # More space for threats with larger window
             self.active_threats_label.setWordWrap(True)
             self.active_threats_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
             self.active_threats_label.setStyleSheet("""
