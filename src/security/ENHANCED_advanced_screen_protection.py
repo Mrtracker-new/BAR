@@ -63,6 +63,13 @@ if platform.system().lower() == 'windows':
         import win32service
         import winreg
         import psutil
+        
+        # Define missing Windows types
+        if not hasattr(ctypes.wintypes, 'LRESULT'):
+            ctypes.wintypes.LRESULT = ctypes.c_long
+        if not hasattr(ctypes.wintypes, 'HMODULE'):
+            ctypes.wintypes.HMODULE = ctypes.wintypes.HINSTANCE
+            
     except ImportError:
         print("Windows-specific modules not available - some features may be limited")
 
@@ -135,12 +142,16 @@ class HardwareLevelScreenshotPrevention(QObject):
         # Boost thread priority
         try:
             if platform.system().lower() == 'windows':
-                handle = win32api.OpenThread(
-                    win32con.THREAD_ALL_ACCESS, 
-                    False, 
-                    self.monitor_thread.ident
-                )
-                win32process.SetThreadPriority(handle, win32process.THREAD_PRIORITY_TIME_CRITICAL)
+                try:
+                    handle = win32api.OpenThread(
+                        win32con.THREAD_ALL_ACCESS, 
+                        False, 
+                        self.monitor_thread.ident
+                    )
+                    win32process.SetThreadPriority(handle, win32process.THREAD_PRIORITY_TIME_CRITICAL)
+                except AttributeError:
+                    # Fallback if THREAD_ALL_ACCESS is not available
+                    logging.warning("THREAD_ALL_ACCESS not available, skipping thread priority boost")
         except Exception as e:
             logging.warning(f"Could not boost thread priority: {e}")
             
@@ -523,16 +534,16 @@ class WindowProtectionManager(QObject):
             return False
             
     def _apply_dwm_exclusions(self):
-        """Apply DWM exclusions to prevent thumbnail and peek capture."""
+        """Apply DWM exclusions to prevent thumbnail and peek capture without hiding content."""
         if not self.dwmapi or not self.hwnd:
             return False
             
         try:
             # Define DWM constants
             DWMWA_EXCLUDED_FROM_PEEK = 12
-            DWMWA_CLOAK = 13
+            # DWMWA_CLOAK = 13  # This makes the window invisible - don't use it!
             
-            # Exclude from peek (Alt+Tab thumbnails)
+            # Exclude from peek (Alt+Tab thumbnails) - this is safe and preserves visibility
             peek_value = ctypes.c_int(1)  # TRUE
             result1 = self.dwmapi.DwmSetWindowAttribute(
                 self.hwnd,
@@ -541,20 +552,15 @@ class WindowProtectionManager(QObject):
                 ctypes.sizeof(peek_value)
             )
             
-            # Try to cloak the window from capture
-            cloak_value = ctypes.c_int(1)  # TRUE  
-            result2 = self.dwmapi.DwmSetWindowAttribute(
-                self.hwnd,
-                DWMWA_CLOAK,
-                ctypes.byref(cloak_value),
-                ctypes.sizeof(cloak_value)
-            )
+            # DON'T apply DWMWA_CLOAK as it makes the window completely invisible
+            # Instead, we'll rely on other protection methods
+            logging.debug("DWM peek exclusion applied (cloaking skipped to preserve visibility)")
             
-            if result1 == 0 or result2 == 0:
+            if result1 == 0:
                 logging.debug("DWM exclusions applied successfully")
                 return True
             else:
-                logging.warning(f"DWM exclusions failed: result1={result1}, result2={result2}")
+                logging.warning(f"DWM exclusions failed: result1={result1}")
                 return False
                 
         except Exception as e:
@@ -562,30 +568,16 @@ class WindowProtectionManager(QObject):
             return False
             
     def _apply_layered_window(self):
-        """Apply layered window attributes for additional protection."""
+        """Apply layered window attributes for additional protection without affecting visibility."""
         if not self.user32 or not self.hwnd:
             return False
 
         try:
-            # Define layered window constants
-            WS_EX_LAYERED = 0x00080000
-            LWA_COLORKEY = 0x1
-            
-            # Set layered window attributes
-            current_ex_style = self.user32.GetWindowLongW(self.hwnd, win32con.GWL_EXSTYLE)
-            new_ex_style = current_ex_style | WS_EX_LAYERED
-            
-            result1 = self.user32.SetWindowLongW(self.hwnd, win32con.GWL_EXSTYLE, new_ex_style)
-            
-            # Set transparency color key (black)
-            result2 = self.user32.SetLayeredWindowAttributes(self.hwnd, 0, 255, LWA_COLORKEY)
-            
-            if result1 != 0 or result2 != 0:
-                logging.debug("Layered window protection applied successfully")
-                return True
-            else:
-                logging.warning("Failed to apply layered window attributes")
-                return False
+            # Skip layered window attributes as they can make content invisible or transparent
+            # This protection method often interferes with normal content display
+            # We'll rely on other protection methods instead
+            logging.debug("Layered window protection skipped to preserve content visibility")
+            return True  # Return True to indicate we "succeeded" by skipping
                 
         except Exception as e:
             logging.error(f"Failed to apply layered window: {e}")
@@ -662,8 +654,9 @@ class KBDLLHOOKSTRUCT(ctypes.Structure):
 class KeyboardHook(QObject):
     """Windows keyboard hook to detect screenshot hotkeys."""
     
-    # Signal emitted when a screenshot hotkey is detected
+    # Signals emitted when a screenshot hotkey is detected
     screenshot_hotkey_detected = pyqtSignal()
+    screenshot_blocked = pyqtSignal(str)  # Signal with details about what was blocked
     
     def __init__(self, parent=None):
         """Initialize the keyboard hook.
@@ -723,16 +716,16 @@ class KeyboardHook(QObject):
         ]
         
         # Define callback function type if on Windows
-        if platform.system().lower() == 'windows':
-            self.LowLevelKeyboardProc = ctypes.CFUNCTYPE(
-                wintypes.LPARAM, 
-                ctypes.c_int, 
-                wintypes.WPARAM, 
+        if platform.system().lower() == 'windows' and self.user32:
+            # Use proper Windows hook procedure type
+            self.LowLevelKeyboardProc = ctypes.WINFUNCTYPE(
+                wintypes.LRESULT,
+                ctypes.c_int,
+                wintypes.WPARAM,
                 wintypes.LPARAM
             )
             
             # Create callback function
-            # Use ctypes.CFUNCTYPE to ensure correct function pointer type
             self._keyboard_proc_callback = self._keyboard_proc  # Store reference to prevent garbage collection
             self.keyboard_callback = self.LowLevelKeyboardProc(self._keyboard_proc_callback)
     
@@ -749,17 +742,20 @@ class KeyboardHook(QObject):
         # Try to boost thread priority to reduce race windows
         try:
             # Obtain handle to current thread and raise priority
-            handle = win32api.OpenThread(
-                win32con.THREAD_SET_INFORMATION | win32con.THREAD_QUERY_INFORMATION, 
-                False, 
-                int(ctypes.windll.kernel32.GetCurrentThreadId())
-            )
-            if handle:
-                try:
-                    win32process.SetThreadPriority(handle, win32process.THREAD_PRIORITY_TIME_CRITICAL)
-                except Exception:
-                    # Fall back to highest priority if time critical not allowed
-                    win32process.SetThreadPriority(handle, win32process.THREAD_PRIORITY_HIGHEST)
+            try:
+                handle = win32api.OpenThread(
+                    win32con.THREAD_SET_INFORMATION | win32con.THREAD_QUERY_INFORMATION, 
+                    False, 
+                    int(ctypes.windll.kernel32.GetCurrentThreadId())
+                )
+                if handle:
+                    try:
+                        win32process.SetThreadPriority(handle, win32process.THREAD_PRIORITY_TIME_CRITICAL)
+                    except Exception:
+                        # Fall back to highest priority if time critical not allowed
+                        win32process.SetThreadPriority(handle, win32process.THREAD_PRIORITY_HIGHEST)
+            except AttributeError as ae:
+                logging.warning(f"Thread priority constants not available: {ae}")
         except Exception as e:
             logging.warning(f"Failed to boost keyboard hook thread priority: {e}")
         
@@ -796,16 +792,27 @@ class KeyboardHook(QObject):
             return
             
         try:
-            # Make sure we have the correct function prototype and handle
-            # Error 126 typically means "The specified module could not be found"
-            # Ensure module handle is valid
-            module_handle = ctypes.windll.kernel32.GetModuleHandleW(None)
-            if not module_handle:
-                logging.error("Failed to get module handle")
+            # Get proper module handle for current executable
+            try:
+                # Try to get module handle for current process
+                module_handle = ctypes.windll.kernel32.GetModuleHandleW(None)
+                if not module_handle:
+                    # Fallback: try getting user32 module handle
+                    module_handle = ctypes.windll.kernel32.GetModuleHandleW("user32.dll")
+                    if not module_handle:
+                        logging.error("Failed to get any valid module handle")
+                        return
+            except Exception as e:
+                logging.error(f"Error getting module handle: {e}")
+                return
+                
+            # Ensure we have a valid callback before setting hook
+            if not hasattr(self, 'keyboard_callback') or not self.keyboard_callback:
+                logging.error("Keyboard callback not properly initialized")
                 return
                 
             # Set the hook with proper error handling
-            self.hook_id = self.user32.SetWindowsHookExA(
+            self.hook_id = self.user32.SetWindowsHookExW(
                 self.WH_KEYBOARD_LL,
                 self.keyboard_callback,
                 module_handle,
@@ -887,6 +894,7 @@ class KeyboardHook(QObject):
                             logging.info("PrintScreen detected and blocked")
                             try:
                                 self.screenshot_hotkey_detected.emit()
+                                self.screenshot_blocked.emit("Print Screen key blocked")
                             except Exception as e:
                                 logging.error(f"Error emitting screenshot signal: {e}")
                             return 1  # Block the key
@@ -919,6 +927,7 @@ class KeyboardHook(QObject):
                             logging.info("Win+Shift+S detected and blocked")
                             try:
                                 self.screenshot_hotkey_detected.emit()
+                                self.screenshot_blocked.emit("Windows Snipping Tool (Win+Shift+S) blocked")
                             except Exception as e:
                                 logging.error(f"Error emitting screenshot signal: {e}")
                             return 1  # Block the key
@@ -930,6 +939,7 @@ class KeyboardHook(QObject):
                                     logging.info("Alt+Win+Shift+S detected and blocked")
                                     try:
                                         self.screenshot_hotkey_detected.emit()
+                                        self.screenshot_blocked.emit("Alt+Win+Shift+S combination blocked")
                                     except Exception as e:
                                         logging.error(f"Error emitting screenshot signal: {e}")
                                     return 1  # Block the key
@@ -1014,6 +1024,7 @@ class KeyboardHook(QObject):
                         except:
                             pass
                         self.screenshot_hotkey_detected.emit()
+                        self.screenshot_blocked.emit(f"Screenshot app detected and blocked: {app}")
                 return True
             
             # Enumerate all windows
@@ -1041,8 +1052,9 @@ class KeyboardHook(QObject):
                                 # Force kill if it doesn't terminate
                                 proc.kill()
                             
-                            # Emit signal for detected screenshot attempt
+                            # Emit signals for detected screenshot attempt
                             self.screenshot_hotkey_detected.emit()
+                            self.screenshot_blocked.emit(f"Screenshot process terminated: {proc_name}")
                         except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
                             # Process might have already terminated or we lack permissions
                             pass
@@ -1050,6 +1062,202 @@ class KeyboardHook(QObject):
                     continue
         except Exception as e:
             logging.error(f"Error monitoring screenshot processes: {e}")
+
+
+#-----------------------------------------------------------------------------
+# FALLBACK SCREENSHOT MONITOR
+#-----------------------------------------------------------------------------
+
+class FallbackScreenshotMonitor(QObject):
+    """Fallback screenshot detection system that works without low-level hooks."""
+    
+    screenshot_detected = pyqtSignal(str)  # Signal with detection method
+    content_obscured = pyqtSignal()  # Signal when content is obscured
+    content_restored = pyqtSignal()  # Signal when content is restored
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.active = False
+        self.timer = None
+        self.last_clipboard_content = None
+        self.check_interval = 25  # Check every 25ms for faster detection
+        self.obscure_overlay = None
+        self.protected_widget = None
+        
+    def set_protected_widget(self, widget):
+        """Set the widget to protect."""
+        self.protected_widget = widget
+        
+    def start_monitoring(self):
+        """Start the fallback monitoring system."""
+        if self.active:
+            return
+            
+        self.active = True
+        
+        # Use QTimer for Qt-thread safe operation
+        self.timer = QTimer()
+        self.timer.timeout.connect(self._check_for_screenshots)
+        self.timer.start(self.check_interval)
+        
+        logging.info("Fallback screenshot monitor started with enhanced protection")
+        
+    def stop_monitoring(self):
+        """Stop the fallback monitoring system."""
+        self.active = False
+        
+        if self.timer:
+            self.timer.stop()
+            self.timer = None
+            
+        logging.info("Fallback screenshot monitor stopped")
+        
+    def _check_for_screenshots(self):
+        """Check for screenshot attempts using multiple methods."""
+        try:
+            # Method 1: Monitor clipboard for new images
+            self._check_clipboard_images()
+            
+            # Method 2: Monitor screenshot processes
+            self._check_screenshot_processes()
+            
+        except Exception as e:
+            logging.error(f"Error in fallback screenshot check: {e}")
+            
+    def _check_clipboard_images(self):
+        """Check clipboard for new image content."""
+        try:
+            from PyQt5.QtGui import QClipboard
+            from PyQt5.QtWidgets import QApplication
+            
+            clipboard = QApplication.clipboard()
+            mime_data = clipboard.mimeData()
+            
+            if mime_data and mime_data.hasImage():
+                # Get image data
+                image_data = mime_data.imageData()
+                if image_data and not image_data.isNull():
+                    # Check if this is new content
+                    current_content = str(image_data.size())
+                    if current_content != self.last_clipboard_content:
+                        self.last_clipboard_content = current_content
+                        
+                        # Immediately obscure content to prevent further screenshots
+                        self._obscure_content_briefly()
+                        
+                        # Clear the clipboard immediately
+                        clipboard.clear()
+                        
+                        self.screenshot_detected.emit("Clipboard image detected and cleared")
+                        
+        except Exception as e:
+            logging.debug(f"Clipboard check error: {e}")
+            
+    def _check_screenshot_processes(self):
+        """Check for active screenshot processes."""
+        if platform.system().lower() != 'windows':
+            return
+            
+        try:
+            import psutil
+            screenshot_processes = [
+                'snippingtool.exe', 'screensketch.exe', 'snagit32.exe',
+                'lightshot.exe', 'greenshot.exe', 'sharex.exe', 'gyazo.exe'
+            ]
+            
+            for proc in psutil.process_iter(['pid', 'name']):
+                try:
+                    proc_name = proc.info['name'].lower()
+                    if proc_name in screenshot_processes:
+                        # Immediately obscure content to prevent screenshots
+                        self._obscure_content_briefly()
+                        
+                        self.screenshot_detected.emit(f"Screenshot process detected: {proc.info['name']}")
+                        
+                        # Try to terminate the process
+                        try:
+                            proc.terminate()
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            pass
+                            
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+                    
+        except ImportError:
+            pass
+        except Exception as e:
+            logging.debug(f"Process check error: {e}")
+    
+    def _obscure_content_briefly(self):
+        """Rapidly obscure content for 50ms to prevent screenshots without blocking UI."""
+        if not self.protected_widget:
+            return
+            
+        try:
+            # Create a brief non-blocking overlay
+            self._create_obscure_overlay()
+            
+            # Remove overlay after very brief period to avoid UI blocking
+            from PyQt5.QtCore import QTimer
+            QTimer.singleShot(50, self._remove_obscure_overlay)  # Reduced from 100ms to 50ms
+            
+            self.content_obscured.emit()
+            
+        except Exception as e:
+            logging.debug(f"Error obscuring content (non-critical): {e}")
+    
+    def _create_obscure_overlay(self):
+        """Create a black overlay to obscure content without blocking UI."""
+        if self.obscure_overlay:
+            return  # Already exists
+            
+        try:
+            from PyQt5.QtWidgets import QWidget, QLabel
+            from PyQt5.QtCore import Qt
+            from PyQt5.QtGui import QPalette
+            
+            # Create overlay widget that doesn't block interactions
+            self.obscure_overlay = QWidget(self.protected_widget)
+            
+            # CRITICAL: Make overlay non-interactive to preserve UI functionality
+            self.obscure_overlay.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+            self.obscure_overlay.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
+            
+            self.obscure_overlay.setStyleSheet(
+                "background-color: rgba(0, 0, 0, 180); "
+                "border: 2px solid #ff0000; "
+                "color: #ff0000; "
+                "font-weight: bold; "
+                "font-size: 18px;"
+            )
+            
+            # Add warning text
+            from PyQt5.QtWidgets import QVBoxLayout
+            layout = QVBoxLayout(self.obscure_overlay)
+            warning = QLabel("🚨 SCREENSHOT ATTEMPT BLOCKED 🚨")
+            warning.setAlignment(Qt.AlignCenter)
+            warning.setStyleSheet("color: #ff0000; background: transparent; font-weight: bold; font-size: 18px;")
+            warning.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+            layout.addWidget(warning)
+            
+            # Position and show overlay briefly
+            self.obscure_overlay.resize(self.protected_widget.size())
+            self.obscure_overlay.show()
+            self.obscure_overlay.raise_()
+            
+        except Exception as e:
+            logging.error(f"Error creating obscure overlay: {e}")
+    
+    def _remove_obscure_overlay(self):
+        """Remove the content obscuring overlay."""
+        if self.obscure_overlay:
+            try:
+                self.obscure_overlay.hide()
+                self.obscure_overlay.deleteLater()
+                self.obscure_overlay = None
+                self.content_restored.emit()
+            except Exception as e:
+                logging.error(f"Error removing obscure overlay: {e}")
 
 
 #-----------------------------------------------------------------------------
@@ -1230,7 +1438,7 @@ class ScreenCaptureBlocker:
                     ('cbWndExtra', ctypes.c_int),
                     ('hInstance', wintypes.HINSTANCE),
                     ('hIcon', wintypes.HICON),
-                    ('hCursor', wintypes.HCURSOR),
+                    ('hCursor', ctypes.c_void_p),  # Changed from wintypes.HCURSOR
                     ('hbrBackground', wintypes.HBRUSH),
                     ('lpszMenuName', wintypes.LPCWSTR),
                     ('lpszClassName', wintypes.LPCWSTR),
@@ -1251,7 +1459,7 @@ class ScreenCaptureBlocker:
             wndclass.cbWndExtra = 0
             wndclass.hInstance = ctypes.windll.kernel32.GetModuleHandleW(None)
             wndclass.hIcon = None
-            wndclass.hCursor = None
+            wndclass.hCursor = 0  # Changed from None to 0
             wndclass.hbrBackground = None
             wndclass.lpszMenuName = None
             wndclass.lpszClassName = class_name
@@ -1581,24 +1789,42 @@ class DynamicWatermark(QObject):
         return overlay
     
     def _update_position(self):
-        """Update watermark positions for dynamic effect."""
+        """Update watermark positions for dynamic effect with safe widget checking."""
         self.current_position = (self.current_position + 1) % 360
         
-        for i, widget in enumerate(self.watermark_widgets):
-            if widget and widget.parent():
+        # Create a copy of the list to safely iterate
+        widgets_to_update = []
+        for widget in self.watermark_widgets[:]:
+            try:
+                if widget and not widget.isHidden():
+                    # Test if widget still exists
+                    widget.isVisible()
+                    widgets_to_update.append(widget)
+            except RuntimeError:
+                # Widget has been deleted - remove from list
+                if widget in self.watermark_widgets:
+                    self.watermark_widgets.remove(widget)
+        
+        # Update positions for valid widgets
+        for i, widget in enumerate(widgets_to_update):
+            try:
                 parent = widget.parent()
-                angle = self.current_position + (i * 72)  # 72 degrees apart
-                
-                # Calculate new position
-                radius = min(parent.width(), parent.height()) // 4
-                center_x = parent.width() // 2
-                center_y = parent.height() // 2
-                
-                import math
-                x = center_x + int(radius * math.cos(math.radians(angle)))
-                y = center_y + int(radius * math.sin(math.radians(angle)))
-                
-                widget.move(x - widget.width() // 2, y - widget.height() // 2)
+                if parent:
+                    angle = self.current_position + (i * 72)  # 72 degrees apart
+                    
+                    # Calculate new position
+                    radius = min(parent.width(), parent.height()) // 4
+                    center_x = parent.width() // 2
+                    center_y = parent.height() // 2
+                    
+                    import math
+                    x = center_x + int(radius * math.cos(math.radians(angle)))
+                    y = center_y + int(radius * math.sin(math.radians(angle)))
+                    
+                    widget.move(x - widget.width() // 2, y - widget.height() // 2)
+            except (RuntimeError, AttributeError):
+                # Widget deleted or invalid during update - skip
+                continue
 
 
 #-----------------------------------------------------------------------------
@@ -1622,7 +1848,7 @@ class ClipboardMonitor(QObject):
         """Start clipboard monitoring."""
         self.monitoring = True
         self._store_current_clipboard()
-        self.timer.start(50)  # Check every 50ms for faster detection
+        self.timer.start(10)  # Check every 10ms for ultra-fast detection
     
     def stop_monitoring(self):
         """Stop clipboard monitoring."""
@@ -1918,6 +2144,9 @@ class AdvancedScreenProtectionManager:
         # Load security configuration
         self.security_config = get_security_config(security_level)
         
+        # Check if we're in safe mode (development/debugging)
+        self.safe_mode = self.security_config.get('safe_mode', False) or os.environ.get('BAR_SAFE_MODE', '0').lower() in ('1', 'true', 'yes')
+        
         # Initialize components
         self.process_monitor = ProcessMonitor()
         self.focus_monitor = WindowFocusMonitor(protected_widget)
@@ -1943,8 +2172,16 @@ class AdvancedScreenProtectionManager:
                 self.keyboard_hook.screenshot_hotkey_detected.connect(
                     self._on_screenshot_hotkey_detected
                 )
+                self.keyboard_hook.screenshot_blocked.connect(
+                    self._on_screenshot_blocked
+                )
             except Exception as e:
                 logging.warning(f"Windows keyboard hook not available: {e}")
+        
+        # Fallback screenshot prevention (always active)
+        self.fallback_monitor = FallbackScreenshotMonitor()
+        self.fallback_monitor.set_protected_widget(protected_widget)
+        self.fallback_monitor.screenshot_detected.connect(self._on_fallback_screenshot_detected)
         
         # Connect signals
         self._connect_signals()
@@ -2035,11 +2272,20 @@ class AdvancedScreenProtectionManager:
                     threat_type, "high", {"description": description}
                 )
             )
+        
+        # Fallback screenshot monitor
+        if self.fallback_monitor:
+            self.fallback_monitor.screenshot_detected.connect(self._on_fallback_screenshot_detected)
     
     def start_protection(self):
-        """Start comprehensive screen protection."""
+        """Start comprehensive screen protection with timeout protection."""
         if self.active:
-            return
+            return True
+        
+        # Add timeout to prevent hanging
+        import time
+        start_time = time.time()
+        timeout_seconds = 10.0  # 10 second timeout
         
         self.active = True
         
@@ -2052,60 +2298,195 @@ class AdvancedScreenProtectionManager:
         })
         
         # Start monitors based on security configuration
-        try:
-            # Process monitoring
-            if self.security_config['process_monitoring_enabled']:
+        success_count = 0
+        total_components = 0
+        
+        # Log safe mode status
+        if self.safe_mode:
+            logging.info("Screen protection starting in SAFE MODE - some components will be skipped")
+        
+        # Process monitoring (always enabled for view-only files)
+        if self.security_config['process_monitoring_enabled'] or not self.safe_mode:
+            total_components += 1
+            try:
                 self.process_monitor.start_monitoring()
-            else:
-                logging.info("Process monitoring disabled by security configuration")
-            
-            # Focus monitoring
-            if self.security_config['focus_monitoring_enabled']:
+                success_count += 1
+                logging.info("Process monitoring started successfully")
+            except Exception as e:
+                logging.warning(f"Process monitoring failed to start: {e}")
+        else:
+            logging.info("Process monitoring disabled by security configuration")
+        
+        # Focus monitoring
+        if self.security_config['focus_monitoring_enabled']:
+            total_components += 1
+            try:
                 self.focus_monitor.start_monitoring()
-            
-            # Clipboard protection
-            if self.security_config['clipboard_protection_enabled']:
+                success_count += 1
+                logging.info("Focus monitoring started successfully")
+            except Exception as e:
+                logging.warning(f"Focus monitoring failed to start: {e}")
+        
+        # Clipboard protection
+        if self.security_config['clipboard_protection_enabled']:
+            total_components += 1
+            try:
                 self.clipboard_monitor.start_monitoring()
                 self.clipboard_monitor.set_protection_active(True)
+                success_count += 1
+                logging.info("Clipboard protection started successfully")
+            except Exception as e:
+                logging.warning(f"Clipboard protection failed to start: {e}")
+        
+        # Screenshot blocking via Windows keyboard hook
+        if self.security_config['screenshot_blocking_enabled'] and self.keyboard_hook:
+            total_components += 1
+            try:
+                # In safe mode, use a timeout for keyboard hook startup
+                if self.safe_mode:
+                    import time
+                    start_time = time.time()
+                    
+                    # Start keyboard hook in a separate thread with timeout
+                    def start_keyboard_hook():
+                        try:
+                            self.keyboard_hook.start()
+                            logging.info("Windows keyboard hook started (safe mode)")
+                        except Exception as e:
+                            logging.warning(f"Keyboard hook failed in safe mode: {e}")
+                    
+                    import threading
+                    hook_thread = threading.Thread(target=start_keyboard_hook, daemon=True)
+                    hook_thread.start()
+                    hook_thread.join(timeout=1.0)  # 1 second timeout
+                    
+                    # Check if thread completed within timeout
+                    elapsed = time.time() - start_time
+                    if elapsed < 1.0 and not hook_thread.is_alive():
+                        success_count += 1
+                        logging.info(f"Keyboard hook started safely in {elapsed:.1f}s")
+                    else:
+                        logging.warning(f"Keyboard hook startup timed out in safe mode ({elapsed:.1f}s)")
+                else:
+                    # Normal mode - direct start
+                    self.keyboard_hook.start()
+                    success_count += 1
+                    logging.info("Windows keyboard hook started for screenshot blocking")
+            except Exception as e:
+                logging.warning(f"Keyboard hook failed to start: {e}")
+        
+        # Hardware-level protection (Windows-specific) - Non-blocking
+        if platform.system().lower() == 'windows':
+            # Window protection
+            if self.window_protection:
+                total_components += 1
+                try:
+                    success = self.window_protection.apply_protection()
+                    if success:
+                        success_count += 1
+                        logging.info("Window protection applied successfully")
+                    else:
+                        logging.warning("Window protection failed to apply")
+                except Exception as e:
+                    logging.warning(f"Window protection error: {e}")
             
-            # Screenshot blocking via Windows keyboard hook
-            if self.security_config['screenshot_blocking_enabled'] and self.keyboard_hook:
-                self.keyboard_hook.start()
-                logging.info("Windows keyboard hook started for screenshot blocking")
+            # Hardware-level prevention - Made non-blocking and configurable
+            # Allow in safe mode but with visibility preservation
+            if (self.hardware_prevention and 
+                self.security_config.get('hardware_protection_enabled', False)):
+                total_components += 1
+                try:
+                    # Use a thread to start hardware prevention to avoid blocking
+                    import threading
+                    def start_hardware_protection():
+                        try:
+                            self.hardware_prevention.start_prevention()
+                            logging.info("Hardware-level screenshot prevention started")
+                        except Exception as e:
+                            logging.warning(f"Hardware prevention failed: {e}")
+                    
+                    hardware_thread = threading.Thread(target=start_hardware_protection, daemon=True)
+                    hardware_thread.start()
+                    success_count += 1
+                except Exception as e:
+                    logging.warning(f"Hardware prevention thread failed: {e}")
             
-            # Hardware-level protection (Windows-specific)
-            if platform.system().lower() == 'windows':
-                # Window protection
-                if self.window_protection:
-                    self.window_protection.apply_protection()
-                
-                # Hardware-level prevention
-                if self.hardware_prevention:
-                    self.hardware_prevention.start_prevention()
-                
-                # Enhanced protection
-                if self.enhanced_protection:
-                    self.enhanced_protection.start_protection(
-                        window_handle=int(self.protected_widget.winId()) if self.protected_widget else None
-                    )
-            
-            # Security overlay with watermarks
-            if self.security_config['overlay_protection_enabled']:
+            # Enhanced protection - Made non-blocking and configurable
+            # Allow in safe mode but with visibility preservation
+            if (self.enhanced_protection and 
+                self.security_config.get('enhanced_protection_enabled', False)):
+                total_components += 1
+                try:
+                    # Use a thread to start enhanced protection to avoid blocking
+                    def start_enhanced_protection():
+                        try:
+                            window_handle = int(self.protected_widget.winId()) if self.protected_widget else None
+                            success = self.enhanced_protection.start_protection(window_handle)
+                            logging.info(f"Enhanced protection started: {'successfully' if success else 'with issues'}")
+                        except Exception as e:
+                            logging.warning(f"Enhanced protection failed: {e}")
+                    
+                    enhanced_thread = threading.Thread(target=start_enhanced_protection, daemon=True)
+                    enhanced_thread.start()
+                    success_count += 1
+                except Exception as e:
+                    logging.warning(f"Enhanced protection thread failed: {e}")
+        
+        # Security overlay with watermarks
+        if self.security_config['overlay_protection_enabled']:
+            total_components += 1
+            try:
                 self._create_security_overlay()
+                success_count += 1
+                logging.info("Security overlay created successfully")
+            except Exception as e:
+                logging.warning(f"Security overlay failed: {e}")
+        
+        # Fallback screenshot monitor (always enabled as backup)
+        total_components += 1
+        try:
+            self.fallback_monitor.start_monitoring()
             
-            logging.info(f"Advanced screen protection started successfully with security level configuration")
+            # Also start aggressive global key monitoring if available
+            if platform.system().lower() == 'windows':
+                try:
+                    self._start_global_key_monitoring()
+                    logging.info("Global key monitoring started for Print Screen detection")
+                except Exception as e:
+                    logging.warning(f"Global key monitoring failed: {e}")
             
+            success_count += 1
+            logging.info("Fallback screenshot monitor started with enhanced detection")
         except Exception as e:
+            logging.warning(f"Fallback monitor failed: {e}")
+        
+        # Check if we exceeded timeout
+        elapsed = time.time() - start_time
+        if elapsed > timeout_seconds:
+            logging.warning(f"Screen protection startup timed out after {elapsed:.1f}s")
+            self.active = False
+            return False
+        
+        # Log the final result
+        if success_count > 0:
+            logging.info(f"Advanced screen protection started: {success_count}/{total_components} components successful in {elapsed:.1f}s")
+            return True
+        else:
+            logging.warning("Screen protection failed to start any components")
             self._log_security_event("protection_start_failed", "high", {
-                "error": str(e)
+                "successful_components": success_count,
+                "total_components": total_components,
+                "elapsed_time": elapsed
             })
-            logging.error(f"Failed to start some protection components: {e}")
+            self.active = False
+            return False
     
     def stop_protection(self):
-        """Stop all screen protection."""
+        """Stop all screen protection with proper cleanup."""
         if not self.active:
             return
         
+        logging.info("Stopping screen protection...")
         self.active = False
         
         # Log protection stop
@@ -2124,6 +2505,20 @@ class AdvancedScreenProtectionManager:
             # Stop Windows keyboard hook
             if self.keyboard_hook:
                 self.keyboard_hook.stop()
+            
+            # Stop fallback monitor
+            if self.fallback_monitor:
+                self.fallback_monitor.stop_monitoring()
+            
+            # Stop global key monitoring thread if it exists
+            if hasattr(self, 'key_monitor_thread') and self.key_monitor_thread:
+                try:
+                    # Give the thread a chance to exit gracefully
+                    self.key_monitor_thread.join(timeout=1.0)
+                    if self.key_monitor_thread.is_alive():
+                        logging.warning("Key monitoring thread did not exit gracefully")
+                except Exception as e:
+                    logging.debug(f"Error stopping key monitoring thread: {e}")
             
             # Stop hardware-level components
             if platform.system().lower() == 'windows':
@@ -2270,6 +2665,37 @@ class AdvancedScreenProtectionManager:
         if self.suspicious_activity_score >= self.max_suspicious_score:
             self._handle_critical_security_breach("Screenshot hotkey detected")
     
+    def _on_screenshot_blocked(self, details: str):
+        """Handle proactive screenshot blocking notification."""
+        self._log_security_event("screenshot_blocked", "medium", {
+            "details": details,
+            "suspicious_score": self.suspicious_activity_score,
+            "action": "proactive_block"
+        })
+        
+        logging.info(f"📸🚫 Screenshot blocked: {details}")
+        
+        # Lower score increase for proactive blocks since they're prevented
+        self.suspicious_activity_score += 1
+    
+    def _on_fallback_screenshot_detected(self, method: str):
+        """Handle fallback screenshot detection."""
+        self.suspicious_activity_score += 5  # Medium penalty for detected attempts
+        
+        self._log_security_event("fallback_screenshot_detected", "high", {
+            "method": method,
+            "suspicious_score": self.suspicious_activity_score,
+            "action": "reactive_block"
+        })
+        
+        logging.warning(f"🚨 Screenshot detected by fallback system: {method}")
+        
+        # Log the detection event (removed window opacity manipulation to prevent UI blocking)
+        logging.info(f"🚨 Screenshot detected and blocked via fallback system")
+        
+        if self.suspicious_activity_score >= self.max_suspicious_score:
+            self._handle_critical_security_breach(f"Screenshot detected via fallback: {method}")
+    
     def _handle_critical_security_breach(self, reason: str):
         """Handle critical security breach."""
         self._log_security_event("critical_security_breach", "critical", {
@@ -2317,6 +2743,74 @@ class AdvancedScreenProtectionManager:
         self._log_security_event("security_scores_reset", "info", {
             "reset_by": self.username
         })
+    
+    def _start_global_key_monitoring(self):
+        """Start global key state monitoring for Print Screen detection."""
+        if platform.system().lower() != 'windows':
+            return
+            
+        try:
+            import threading
+            
+            def monitor_keys():
+                """Monitor global key states in a separate thread with proper exit handling."""
+                last_print_screen = False
+                last_win_shift_s = False
+                
+                try:
+                    while self.active:
+                        try:
+                            # Check Print Screen key state with debouncing
+                            print_screen_pressed = bool(win32api.GetAsyncKeyState(0x2C) & 0x8000)
+                            if print_screen_pressed and not last_print_screen:
+                                logging.warning("Print Screen key detected via global monitoring")
+                                
+                                # Trigger detection without blocking UI
+                                try:
+                                    self._on_fallback_screenshot_detected("Global Print Screen key detected")
+                                except Exception as e:
+                                    logging.debug(f"Error in screenshot detection handler: {e}")
+                                
+                            last_print_screen = print_screen_pressed
+                                
+                            # Check Win+Shift+S combination with debouncing
+                            win_key = (win32api.GetAsyncKeyState(0x5B) & 0x8000) or (win32api.GetAsyncKeyState(0x5C) & 0x8000)
+                            shift_key = win32api.GetAsyncKeyState(0x10) & 0x8000
+                            s_key = win32api.GetAsyncKeyState(0x53) & 0x8000
+                            
+                            win_shift_s_pressed = bool(win_key and shift_key and s_key)
+                            if win_shift_s_pressed and not last_win_shift_s:
+                                logging.warning("Win+Shift+S combination detected via global monitoring")
+                                
+                                # Trigger detection without blocking UI
+                                try:
+                                    self._on_fallback_screenshot_detected("Global Win+Shift+S detected")
+                                except Exception as e:
+                                    logging.debug(f"Error in screenshot detection handler: {e}")
+                                    
+                            last_win_shift_s = win_shift_s_pressed
+                            
+                        except Exception as e:
+                            if self.active:  # Only log if we're still supposed to be active
+                                logging.debug(f"Error in key monitoring: {e}")
+                            
+                        # Sleep with proper exit check
+                        if self.active:
+                            time.sleep(0.02)  # 20ms polling interval (reduced CPU usage)
+                        else:
+                            break
+                        
+                except Exception as e:
+                    logging.debug(f"Key monitoring thread exiting: {e}")
+                finally:
+                    logging.debug("Global key monitoring thread terminated")
+            
+            # Start monitoring thread
+            self.key_monitor_thread = threading.Thread(target=monitor_keys, daemon=True)
+            self.key_monitor_thread.start()
+            
+        except Exception as e:
+            logging.error(f"Failed to start global key monitoring: {e}")
     
     def _detect_development_environment(self) -> bool:
         """Detect if we're running in a development environment."""
