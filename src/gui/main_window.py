@@ -1,4 +1,5 @@
 import sys
+import os
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 
@@ -748,6 +749,7 @@ class MainWindow(QMainWindow):
         
         # Export restriction
         disable_export = metadata["security"].get("disable_export", False)
+# Debug info removed for cleaner output
         export_text = "View-only (cannot be exported)" if disable_export else "Exportable"
         export_label = QLabel(export_text)
         if disable_export:
@@ -760,23 +762,123 @@ class MainWindow(QMainWindow):
         security_layout.addRow("Export Status:", export_label)
         
         # Initialize advanced screen protection if view-only is enabled
+        # Can be disabled via config or environment variable for development
         screen_protection = None
-        if disable_export:
+        # Enable protection by default, but allow override for debugging
+        config_protection = self.config_manager.get_value("enable_screen_protection", True)
+        env_disable = os.environ.get("BAR_DISABLE_SCREEN_PROTECTION", "0").lower() in ("1", "true", "yes")
+        enable_protection = config_protection and not env_disable
+        
+# Screen protection logic (debug info available if needed)
+        
+        if disable_export and enable_protection:
             try:
                 from ..security.ENHANCED_advanced_screen_protection import AdvancedScreenProtectionManager
-                import os
+                import threading
                 
                 # Create log directory for security events
                 log_dir = os.path.join(os.path.expanduser("~"), ".bar", "security_logs")
                 screen_protection = AdvancedScreenProtectionManager(
                     self.current_user, dialog, log_dir
                 )
-                screen_protection.start_protection()
                 
-                # Show security status
+                # Start protection using QTimer to avoid blocking the UI
+                from PyQt5.QtCore import QTimer
+                
+                def start_protection_delayed():
+                    try:
+                        result = screen_protection.start_protection()
+                        
+                        if result:
+                            self.status_bar.showMessage(
+                                f"🔒 Enhanced security active for {metadata['filename']} (View-only)"
+                            )
+                            
+                            # Connect to screenshot detection signals
+                            def handle_screenshot_detected():
+                                from PyQt5.QtWidgets import QMessageBox
+                                QMessageBox.warning(
+                                    dialog,
+                                    "🚨 Screenshot Blocked",
+                                    f"Screenshot attempt detected and blocked!\n\n"
+                                    f"This content is protected and cannot be captured.\n"
+                                    f"Screenshots are automatically cleared from clipboard."
+                                )
+                            
+                            # Connect clipboard detection signal
+                            if hasattr(screen_protection, 'clipboard_monitor'):
+                                screen_protection.clipboard_monitor.clipboard_access_detected.connect(
+                                    handle_screenshot_detected
+                                )
+                            
+                            # Connect keyboard hook screenshot blocked signal
+                            if hasattr(screen_protection, 'keyboard_hook') and screen_protection.keyboard_hook:
+                                def handle_screenshot_blocked(details):
+                                    from PyQt5.QtWidgets import QMessageBox
+                                    from PyQt5.QtCore import QTimer
+                                    
+                                    # Create non-blocking message box
+                                    msg_box = QMessageBox(dialog)
+                                    msg_box.setIcon(QMessageBox.Warning)
+                                    msg_box.setWindowTitle("🚨 Screenshot Blocked")
+                                    msg_box.setText(
+                                        f"Screenshot attempt blocked!\n\n"
+                                        f"Method: {details}\n\n"
+                                        f"This content is protected and cannot be captured."
+                                    )
+                                    msg_box.setStandardButtons(QMessageBox.Ok)
+                                    
+                                    # Show message box non-blocking and auto-close after 2 seconds
+                                    msg_box.show()
+                                    QTimer.singleShot(2000, msg_box.close)
+                                
+                                screen_protection.keyboard_hook.screenshot_blocked.connect(
+                                    handle_screenshot_blocked
+                                )
+                            
+                            # Connect fallback monitor screenshot detected signal
+                            if hasattr(screen_protection, 'fallback_monitor') and screen_protection.fallback_monitor:
+                                def handle_fallback_detection(method):
+                                    from PyQt5.QtWidgets import QMessageBox
+                                    from PyQt5.QtCore import QTimer
+                                    
+                                    # Create non-blocking message box
+                                    msg_box = QMessageBox(dialog)
+                                    msg_box.setIcon(QMessageBox.Warning)
+                                    msg_box.setWindowTitle("🚨 Screenshot Detected!")
+                                    msg_box.setText(
+                                        f"Screenshot attempt detected and blocked!\n\n"
+                                        f"Detection method: {method}\n\n"
+                                        f"This content is protected and screenshots are automatically cleared."
+                                    )
+                                    msg_box.setStandardButtons(QMessageBox.Ok)
+                                    
+                                    # Show message box non-blocking and auto-close after 3 seconds
+                                    msg_box.show()
+                                    QTimer.singleShot(3000, msg_box.close)
+                                
+                                screen_protection.fallback_monitor.screenshot_detected.connect(
+                                    handle_fallback_detection
+                                )
+                        else:
+                            self.status_bar.showMessage(
+                                f"⚠️ Partial security protection for {metadata['filename']}"
+                            )
+                            
+                    except Exception as e:
+                        logging.warning(f"Screen protection startup error: {e}")
+                        self.status_bar.showMessage(
+                            f"Warning: Limited security protection for {metadata['filename']}"
+                        )
+                
+                # Start protection after a short delay to allow dialog to fully load
+                QTimer.singleShot(100, start_protection_delayed)
+                
+                # Show initial status immediately
                 self.status_bar.showMessage(
-                    f"Enhanced security active for {metadata['filename']} (View-only mode)"
+                    f"Loading security protection for {metadata['filename']} (View-only mode)"
                 )
+                
             except Exception as e:
                 print(f"Failed to initialize advanced screen protection: {e}")
                 self.status_bar.showMessage(
@@ -789,8 +891,19 @@ class MainWindow(QMainWindow):
         layout.addWidget(content_group)
         
         # Use the FileViewer component for displaying content
+        print(f"Creating FileViewer for {metadata['filename']}")
+        print(f"Content size: {len(content)} bytes")
+        
         file_viewer = FileViewer()
-        file_viewer.display_content(content, metadata, self.current_user)
+        
+        print(f"Calling display_content...")
+        try:
+            file_viewer.display_content(content, metadata, self.current_user)
+            print(f"File viewer content displayed successfully")
+        except Exception as e:
+            print(f"Error displaying content: {e}")
+            import traceback
+            traceback.print_exc()
         
         # Set up export handler if not view-only
         if not disable_export:
@@ -803,7 +916,12 @@ class MainWindow(QMainWindow):
         
         content_layout.addWidget(file_viewer)
         
-        dialog.exec_()
+        print(f"About to show dialog for {metadata['filename']}")
+        print(f"Dialog size: {dialog.size()}")
+        print(f"FileViewer size: {file_viewer.size()}")
+        
+        result = dialog.exec_()
+        print(f"Dialog closed with result: {result}")
     
     def _close_content_dialog(self, dialog, screen_protection):
         """Close the content dialog and clean up resources.
