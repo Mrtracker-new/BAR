@@ -324,6 +324,9 @@ class FileViewer(QWidget):
             username: The current username for watermarking
         """
         try:
+            print(f"FileViewer.display_content called for {metadata.get('filename', 'unknown')}")
+            print(f"Content size: {len(content)} bytes")
+            
             # Clean up any previous content to free memory
             self._cleanup_resources()
             
@@ -338,6 +341,7 @@ class FileViewer(QWidget):
             # Detect file format
             filename = metadata.get("filename", "unknown")
             self.current_format_info = self.format_detector.detect_format(filename, content)
+            print(f"Format detected: {self.current_format_info}")
             
             # Update UI based on format detection
             self._update_ui_for_format()
@@ -346,16 +350,23 @@ class FileViewer(QWidget):
             self._update_details_tab()
             
             # Display content based on format
+            print(f"Displaying content - viewable: {self.current_format_info['viewable']}, type: {self.current_format_info['type']}")
+            
             if self.current_format_info['viewable']:
                 if self.current_format_info['type'] == 'image':
+                    print("Calling _display_image_enhanced")
                     self._display_image_enhanced(content)
                 elif self.current_format_info['type'] in ['text', 'code', 'data']:
+                    print("Calling _display_text_enhanced")
                     self._display_text_enhanced(content)
                 elif self.current_format_info['type'] == 'document' and self.current_format_info['format'] == 'pdf':
+                    print("Calling _display_pdf_info")
                     self._display_pdf_info()
                 else:
+                    print("Calling _display_generic_viewable")
                     self._display_generic_viewable()
             else:
+                print("Calling _display_non_viewable")
                 self._display_non_viewable()
                 
         except Exception as e:
@@ -437,29 +448,44 @@ class FileViewer(QWidget):
     def _display_image_enhanced(self, content: bytes):
         """Display image with enhanced UI."""
         try:
+            print(f"_display_image_enhanced called with {len(content)} bytes")
+            
             # Check if content is too large (>10MB) to prevent memory issues
             if len(content) > 10 * 1024 * 1024:
+                print(f"Large image detected: {len(content) / (1024*1024):.1f} MB")
                 self.status_label.setText(f"Large image ({len(content) / (1024*1024):.1f} MB) - may load slowly")
             
             pixmap = QPixmap()
             load_success = False
             
+            print("Attempting to load image data into QPixmap...")
+            
             # Try to load the image data
             try:
                 load_success = pixmap.loadFromData(content)
+                print(f"Primary image loading: {'success' if load_success else 'failed'}")
+                if load_success:
+                    print(f"Pixmap size: {pixmap.width()}x{pixmap.height()}")
             except Exception as e:
                 print(f"Primary image loading failed: {str(e)}")
                 try:
+                    print("Trying alternative QImage approach...")
                     image = QImage()
                     if image.loadFromData(content):
                         pixmap = QPixmap.fromImage(image)
                         load_success = not pixmap.isNull()
+                        print(f"Alternative image loading: {'success' if load_success else 'failed'}")
+                        if load_success:
+                            print(f"Pixmap size: {pixmap.width()}x{pixmap.height()}")
                 except Exception as alt_e:
                     print(f"Alternative image loading also failed: {str(alt_e)}")
             
             if load_success:
+                print("Calling _display_image with loaded pixmap")
                 self._display_image(pixmap)
+                print("_display_image completed")
             else:
+                print("Image loading failed, showing error")
                 self._display_error("Failed to load image data")
         except Exception as e:
             self._display_error(f"Error displaying image: {str(e)}")
@@ -712,9 +738,19 @@ class FileViewer(QWidget):
     def _display_image(self, pixmap: QPixmap):
         """Display image content using the existing image display logic."""
         try:
+            print(f"_display_image called with pixmap: {pixmap.width()}x{pixmap.height()}")
+            
             # Verify the pixmap is valid
             if pixmap.isNull():
+                print("Pixmap is null, showing error")
                 self._display_error("Invalid image data")
+                return
+            
+            # Check for extremely large images that could cause memory issues
+            pixel_count = pixmap.width() * pixmap.height()
+            if pixel_count > 50000000:  # 50 million pixels
+                print(f"Image too large: {pixel_count} pixels")
+                self._display_error(f"Image too large to display safely ({pixmap.width()}x{pixmap.height()})")
                 return
                 
             # Check if image dimensions are too large
@@ -788,7 +824,11 @@ class FileViewer(QWidget):
                 if final_pixmap and not final_pixmap.isNull():
                     # Set the pixmap in a safe way
                     try:
+                        print(f"Setting pixmap on image_label: {final_pixmap.width()}x{final_pixmap.height()}")
                         self.image_label.setPixmap(final_pixmap)
+                        print(f"Image label size after setting pixmap: {self.image_label.size()}")
+                        print(f"Image label pixmap size: {self.image_label.pixmap().size() if self.image_label.pixmap() else 'None'}")
+                        
                         # Update status with image dimensions
                         self.status_label.setText(f"Image: {final_pixmap.width()}x{final_pixmap.height()} pixels")
                     except Exception as set_error:
@@ -817,7 +857,9 @@ class FileViewer(QWidget):
                 notice.setStyleSheet("color: #e74c3c;")
                 self.image_layout.addWidget(notice)
             
+            print("Setting image_container as content area widget")
             self.content_area.setWidget(self.image_container)
+            print("Content area widget set successfully")
         except Exception as e:
             print(f"Error displaying image: {str(e)}")
             self._display_error(f"Error displaying image: {str(e)}")
