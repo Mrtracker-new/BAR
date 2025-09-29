@@ -30,15 +30,18 @@ class SecurityConfig:
             SecurityLevel.DEVELOPMENT: {
                 "max_suspicious_score": 50,
                 "max_focus_loss_count": 50,
-                "process_monitoring_enabled": False,
+                "process_monitoring_enabled": True,  # Enable to catch screenshot apps
                 "clipboard_protection_enabled": True,
                 "watermark_enabled": True,
                 "focus_monitoring_enabled": True,
-                "overlay_protection_enabled": False,
+                "overlay_protection_enabled": True,  # Enable overlay protection
                 "screenshot_blocking_enabled": True,
+                "hardware_protection_enabled": True,  # Enable hardware protection
+                "enhanced_protection_enabled": True,  # Enable enhanced protection
                 "aggressive_mode": False,
-                "check_interval": 10.0,
-                "description": "Development-friendly settings with minimal interference"
+                "check_interval": 2.0,  # Faster monitoring
+                "safe_mode": True,  # Keep safe mode but with more features
+                "description": "Enhanced protection with content visibility preserved"
             },
             SecurityLevel.BASIC: {
                 "max_suspicious_score": 30,
@@ -49,6 +52,8 @@ class SecurityConfig:
                 "focus_monitoring_enabled": True,
                 "overlay_protection_enabled": False,
                 "screenshot_blocking_enabled": True,
+                "hardware_protection_enabled": False,
+                "enhanced_protection_enabled": False,
                 "aggressive_mode": False,
                 "check_interval": 5.0,
                 "description": "Basic protection suitable for most users"
@@ -62,6 +67,8 @@ class SecurityConfig:
                 "focus_monitoring_enabled": True,
                 "overlay_protection_enabled": True,
                 "screenshot_blocking_enabled": True,
+                "hardware_protection_enabled": True,
+                "enhanced_protection_enabled": True,
                 "aggressive_mode": False,
                 "check_interval": 3.0,
                 "description": "Standard protection with all features enabled"
@@ -75,6 +82,8 @@ class SecurityConfig:
                 "focus_monitoring_enabled": True,
                 "overlay_protection_enabled": True,
                 "screenshot_blocking_enabled": True,
+                "hardware_protection_enabled": True,
+                "enhanced_protection_enabled": True,
                 "aggressive_mode": True,
                 "check_interval": 2.0,
                 "description": "High security for sensitive environments"
@@ -88,6 +97,8 @@ class SecurityConfig:
                 "focus_monitoring_enabled": True,
                 "overlay_protection_enabled": True,
                 "screenshot_blocking_enabled": True,
+                "hardware_protection_enabled": True,
+                "enhanced_protection_enabled": True,
                 "aggressive_mode": True,
                 "check_interval": 1.0,
                 "description": "Maximum security for highly sensitive content"
