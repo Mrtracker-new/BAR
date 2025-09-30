@@ -1,13 +1,13 @@
 import sys
 from typing import Optional
 
-from PyQt5.QtWidgets import (
+from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
     QMessageBox, QFormLayout, QWidget, QCheckBox, QGroupBox, QTextEdit,
     QProgressBar, QFrame
 )
-from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
-from PyQt5.QtGui import QIcon, QPixmap, QFont, QPalette, QColor
+from PySide6.QtCore import Qt, QTimer, QThread, Signal as pyqtSignal
+from PySide6.QtGui import QIcon, QPixmap, QFont, QPalette, QColor
 
 from .styles import StyleManager
 from src.security.device_auth_manager import SecurityLevel
@@ -132,7 +132,7 @@ class DeviceAuthDialog(QDialog):
         
         # Title section
         title_label = QLabel("🔓 Unlock BAR Device")
-        title_label.setAlignment(Qt.AlignCenter)
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title_font = QFont()
         title_font.setPointSize(18)
         title_font.setBold(True)
@@ -142,7 +142,7 @@ class DeviceAuthDialog(QDialog):
         
         # Device name (will be updated if available)
         self.device_name_label = QLabel("Secure Device")
-        self.device_name_label.setAlignment(Qt.AlignCenter)
+        self.device_name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         subtitle_font = QFont()
         subtitle_font.setPointSize(10)
         self.device_name_label.setFont(subtitle_font)
@@ -162,7 +162,7 @@ class DeviceAuthDialog(QDialog):
         self.password_label = QLabel("Master Password:")
         self.password_edit = QLineEdit()
         self.password_edit.setPlaceholderText("Enter your master password")
-        self.password_edit.setEchoMode(QLineEdit.Password)
+        self.password_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.password_edit.returnPressed.connect(self._authenticate)
         form_layout.addRow(self.password_label, self.password_edit)
         
@@ -240,9 +240,9 @@ class DeviceAuthDialog(QDialog):
     def _toggle_password_visibility(self, checked):
         """Toggle password visibility."""
         if checked:
-            self.password_edit.setEchoMode(QLineEdit.Normal)
+            self.password_edit.setEchoMode(QLineEdit.EchoMode.Normal)
         else:
-            self.password_edit.setEchoMode(QLineEdit.Password)
+            self.password_edit.setEchoMode(QLineEdit.EchoMode.Password)
     
     def _check_password_entered(self):
         """Check if password is entered and update button state."""
@@ -300,7 +300,7 @@ class DeviceAuthDialog(QDialog):
             self,
             "Final Confirmation",
             "To confirm emergency reset, type exactly:\nDESTROY ALL DATA",
-            QLineEdit.Normal,
+            QLineEdit.EchoMode.Normal,
             ""
         )
         
@@ -520,7 +520,7 @@ class DeviceResetDialog(QDialog):
         
         # Title
         title_label = QLabel("🚨 EMERGENCY DEVICE RESET")
-        title_label.setAlignment(Qt.AlignCenter)
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title_font = QFont()
         title_font.setPointSize(16)
         title_font.setBold(True)
