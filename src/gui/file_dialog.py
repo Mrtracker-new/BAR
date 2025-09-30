@@ -3,13 +3,13 @@ import sys
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, Tuple, List
 
-from PyQt5.QtWidgets import (
+from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
     QMessageBox, QFormLayout, QWidget, QCheckBox, QSpinBox, QDateTimeEdit,
     QFileDialog, QTabWidget, QTextEdit, QGroupBox, QProgressBar, QApplication
 )
-from PyQt5.QtCore import Qt, QDateTime
-from PyQt5.QtGui import QFont, QIcon
+from PySide6.QtCore import Qt, QDateTime
+from PySide6.QtGui import QFont, QIcon
 import time
 from .styles import StyleManager
 
@@ -51,7 +51,7 @@ class FileDialog(QDialog):
         
         # Title
         title_label = QLabel("Add Secure File")
-        title_label.setAlignment(Qt.AlignCenter)
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title_font = QFont()
         title_font.setPointSize(14)
         title_font.setBold(True)
@@ -106,7 +106,7 @@ class FileDialog(QDialog):
         if "expiration_time" in self.default_security and self.default_security["expiration_time"]:
             self.expiration_check.setChecked(True)
             self.expiration_datetime.setDateTime(
-                QDateTime.fromString(self.default_security["expiration_time"], Qt.ISODate))
+                QDateTime.fromString(self.default_security["expiration_time"], Qt.DateFormat.ISODate))
         
         expiration_layout = QHBoxLayout()
         expiration_layout.addWidget(self.expiration_check)
@@ -171,14 +171,14 @@ class FileDialog(QDialog):
         self.password_label = QLabel("Password:")
         self.password_edit = QLineEdit()
         self.password_edit.setPlaceholderText("Enter a strong password")
-        self.password_edit.setEchoMode(QLineEdit.Password)
+        self.password_edit.setEchoMode(QLineEdit.EchoMode.Password)
         password_layout.addRow(self.password_label, self.password_edit)
         
         # Confirm password field
         self.confirm_password_label = QLabel("Confirm Password:")
         self.confirm_password_edit = QLineEdit()
         self.confirm_password_edit.setPlaceholderText("Confirm your password")
-        self.confirm_password_edit.setEchoMode(QLineEdit.Password)
+        self.confirm_password_edit.setEchoMode(QLineEdit.EchoMode.Password)
         password_layout.addRow(self.confirm_password_label, self.confirm_password_edit)
         
         # Security note
@@ -404,7 +404,7 @@ class FileDialog(QDialog):
         
         # Expiration time
         if self.expiration_check.isChecked():
-            security_settings["expiration_time"] = self.expiration_datetime.dateTime().toString(Qt.ISODate)
+            security_settings["expiration_time"] = self.expiration_datetime.dateTime().toString(Qt.DateFormat.ISODate)
         else:
             security_settings["expiration_time"] = None
         
