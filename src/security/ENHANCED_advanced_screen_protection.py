@@ -39,17 +39,17 @@ from enum import Enum
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from config.security_config import get_security_config, SecurityLevel
 
-# PyQt imports for GUI integration
-from PyQt5.QtWidgets import (
+# PySide6 imports for GUI integration
+from PySide6.QtWidgets import (
     QWidget, QTextEdit, QLabel, QApplication, QVBoxLayout, QHBoxLayout,
     QFrame, QGraphicsEffect, QGraphicsBlurEffect, QGraphicsOpacityEffect
 )
-from PyQt5.QtGui import (
+from PySide6.QtGui import (
     QPixmap, QPainter, QColor, QFont, QPen, QBrush, QImage, QPalette,
     QLinearGradient, QRadialGradient, QConicalGradient
 )
-from PyQt5.QtCore import (
-    Qt, QTimer, QSize, QPoint, QRect, QObject, pyqtSignal, QPointF,
+from PySide6.QtCore import (
+    Qt, QTimer, QSize, QPoint, QRect, QObject, Signal as pyqtSignal, QPointF,
     QThread, QMutex, QPropertyAnimation, QEasingCurve
 )
 
@@ -1127,8 +1127,8 @@ class FallbackScreenshotMonitor(QObject):
     def _check_clipboard_images(self):
         """Check clipboard for new image content."""
         try:
-            from PyQt5.QtGui import QClipboard
-            from PyQt5.QtWidgets import QApplication
+            from PySide6.QtGui import QClipboard
+            from PySide6.QtWidgets import QApplication
             
             clipboard = QApplication.clipboard()
             mime_data = clipboard.mimeData()
@@ -1198,7 +1198,7 @@ class FallbackScreenshotMonitor(QObject):
             self._create_obscure_overlay()
             
             # Remove overlay after very brief period to avoid UI blocking
-            from PyQt5.QtCore import QTimer
+            from PySide6.QtCore import QTimer
             QTimer.singleShot(50, self._remove_obscure_overlay)  # Reduced from 100ms to 50ms
             
             self.content_obscured.emit()
@@ -1212,16 +1212,16 @@ class FallbackScreenshotMonitor(QObject):
             return  # Already exists
             
         try:
-            from PyQt5.QtWidgets import QWidget, QLabel
-            from PyQt5.QtCore import Qt
-            from PyQt5.QtGui import QPalette
+            from PySide6.QtWidgets import QWidget, QLabel
+            from PySide6.QtCore import Qt
+            from PySide6.QtGui import QPalette
             
             # Create overlay widget that doesn't block interactions
             self.obscure_overlay = QWidget(self.protected_widget)
             
             # CRITICAL: Make overlay non-interactive to preserve UI functionality
-            self.obscure_overlay.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-            self.obscure_overlay.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
+            self.obscure_overlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+            self.obscure_overlay.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.FramelessWindowHint)
             
             self.obscure_overlay.setStyleSheet(
                 "background-color: rgba(0, 0, 0, 180); "
@@ -1232,12 +1232,12 @@ class FallbackScreenshotMonitor(QObject):
             )
             
             # Add warning text
-            from PyQt5.QtWidgets import QVBoxLayout
+            from PySide6.QtWidgets import QVBoxLayout
             layout = QVBoxLayout(self.obscure_overlay)
             warning = QLabel("🚨 SCREENSHOT ATTEMPT BLOCKED 🚨")
-            warning.setAlignment(Qt.AlignCenter)
+            warning.setAlignment(Qt.AlignmentFlag.AlignCenter)
             warning.setStyleSheet("color: #ff0000; background: transparent; font-weight: bold; font-size: 18px;")
-            warning.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+            warning.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
             layout.addWidget(warning)
             
             # Position and show overlay briefly
@@ -1763,7 +1763,7 @@ class DynamicWatermark(QObject):
         """Create a dynamic watermark overlay."""
         overlay = QFrame(parent_widget)
         overlay.setFrameStyle(QFrame.NoFrame)
-        overlay.setAttribute(Qt.WA_TransparentForMouseEvents)
+        overlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         overlay.setStyleSheet("background: transparent;")
         
         # Create watermark text
@@ -1780,7 +1780,7 @@ class DynamicWatermark(QObject):
                     background: transparent;
                 }
             """)
-            label.setAttribute(Qt.WA_TransparentForMouseEvents)
+            label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
             self.watermark_widgets.append(label)
         
         # Start animation
