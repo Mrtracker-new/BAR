@@ -3,15 +3,15 @@ import os
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 
-from PyQt5.QtWidgets import (
+from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QFileDialog, QMessageBox, QTabWidget, QTableWidget, QTableWidgetItem,
     QHeaderView, QComboBox, QSpinBox, QDateTimeEdit, QCheckBox, QDialog,
-    QFormLayout, QGroupBox, QAction, QMenu, QGridLayout,
+    QFormLayout, QGroupBox, QMenu, QGridLayout,
     QStatusBar, QApplication, QInputDialog, QTextEdit
 )
-from PyQt5.QtCore import Qt, QTimer, QDateTime
-from PyQt5.QtGui import QFont, QColor
+from PySide6.QtGui import QFont, QColor, QAction
+from PySide6.QtCore import Qt, QTimer, QDateTime
 
 from src.config.config_manager import ConfigManager
 from src.crypto.encryption import EncryptionManager
@@ -93,7 +93,7 @@ class MainWindow(QMainWindow):
         self.file_table.setColumnCount(7)
         self.file_table.setHorizontalHeaderLabels(["Filename", "Created", "Last Accessed", 
                                                  "Access Count", "Expiration", "Restrictions", "Actions"])
-        self.file_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.file_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.files_layout.addWidget(self.file_table)
         
         # Create file action buttons
@@ -299,7 +299,7 @@ class MainWindow(QMainWindow):
             self.active_threats_label.setMinimumHeight(35)
             self.active_threats_label.setMaximumHeight(80)  # More space for threats with larger window
             self.active_threats_label.setWordWrap(True)
-            self.active_threats_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+            self.active_threats_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
             self.active_threats_label.setStyleSheet("""
                 QLabel {
                     background-color: #2a2a2a;
@@ -452,9 +452,9 @@ class MainWindow(QMainWindow):
             
             from .device_auth_dialog import DeviceAuthDialog
             auth_dialog = DeviceAuthDialog(self.device_auth, self)
-            auth_result = auth_dialog.exec_()
+            auth_result = auth_dialog.exec()
             
-            if auth_result == QDialog.Accepted and auth_dialog.is_authenticated():
+            if auth_result == QDialog.DialogCode.Accepted and auth_dialog.is_authenticated():
                 # Re-authenticated successfully
                 self.show()
                 self._initialize_main_app()
@@ -610,7 +610,7 @@ class MainWindow(QMainWindow):
         default_security = {}
         
         if self.expiration_check.isChecked():
-            default_security["expiration_time"] = self.expiration_datetime.dateTime().toString(Qt.ISODate)
+            default_security["expiration_time"] = self.expiration_datetime.dateTime().toString(Qt.DateFormat.ISODate)
         
         if self.access_check.isChecked():
             default_security["max_access_count"] = self.access_spin.value()
@@ -620,7 +620,7 @@ class MainWindow(QMainWindow):
         
         # Show file dialog
         file_dialog = FileDialog(default_security, self)
-        if file_dialog.exec_() == QDialog.Accepted:
+        if file_dialog.exec() == QDialog.DialogCode.Accepted:
             file_data = file_dialog.get_file_data()
             security_settings = file_dialog.get_security_settings()
             password = file_dialog.get_password()
@@ -647,7 +647,7 @@ class MainWindow(QMainWindow):
         
         # Ask for password
         password, ok = QInputDialog.getText(
-            self, "Enter Password", "Enter the file password:", QLineEdit.Password)
+            self, "Enter Password", "Enter the file password:", QLineEdit.EchoMode.Password)
         
         if ok and password:
             try:
@@ -783,7 +783,7 @@ class MainWindow(QMainWindow):
                 )
                 
                 # Start protection using QTimer to avoid blocking the UI
-                from PyQt5.QtCore import QTimer
+                from PySide6.QtCore import QTimer
                 
                 def start_protection_delayed():
                     try:
@@ -796,7 +796,7 @@ class MainWindow(QMainWindow):
                             
                             # Connect to screenshot detection signals
                             def handle_screenshot_detected():
-                                from PyQt5.QtWidgets import QMessageBox
+                                from PySide6.QtWidgets import QMessageBox
                                 QMessageBox.warning(
                                     dialog,
                                     "🚨 Screenshot Blocked",
@@ -814,19 +814,19 @@ class MainWindow(QMainWindow):
                             # Connect keyboard hook screenshot blocked signal
                             if hasattr(screen_protection, 'keyboard_hook') and screen_protection.keyboard_hook:
                                 def handle_screenshot_blocked(details):
-                                    from PyQt5.QtWidgets import QMessageBox
-                                    from PyQt5.QtCore import QTimer
+                                    from PySide6.QtWidgets import QMessageBox
+                                    from PySide6.QtCore import QTimer
                                     
                                     # Create non-blocking message box
                                     msg_box = QMessageBox(dialog)
-                                    msg_box.setIcon(QMessageBox.Warning)
+                                    msg_box.setIcon(QMessageBox.Icon.Warning)
                                     msg_box.setWindowTitle("🚨 Screenshot Blocked")
                                     msg_box.setText(
                                         f"Screenshot attempt blocked!\n\n"
                                         f"Method: {details}\n\n"
                                         f"This content is protected and cannot be captured."
                                     )
-                                    msg_box.setStandardButtons(QMessageBox.Ok)
+                                    msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
                                     
                                     # Show message box non-blocking and auto-close after 2 seconds
                                     msg_box.show()
@@ -839,19 +839,19 @@ class MainWindow(QMainWindow):
                             # Connect fallback monitor screenshot detected signal
                             if hasattr(screen_protection, 'fallback_monitor') and screen_protection.fallback_monitor:
                                 def handle_fallback_detection(method):
-                                    from PyQt5.QtWidgets import QMessageBox
-                                    from PyQt5.QtCore import QTimer
+                                    from PySide6.QtWidgets import QMessageBox
+                                    from PySide6.QtCore import QTimer
                                     
                                     # Create non-blocking message box
                                     msg_box = QMessageBox(dialog)
-                                    msg_box.setIcon(QMessageBox.Warning)
+                                    msg_box.setIcon(QMessageBox.Icon.Warning)
                                     msg_box.setWindowTitle("🚨 Screenshot Detected!")
                                     msg_box.setText(
                                         f"Screenshot attempt detected and blocked!\n\n"
                                         f"Detection method: {method}\n\n"
                                         f"This content is protected and screenshots are automatically cleared."
                                     )
-                                    msg_box.setStandardButtons(QMessageBox.Ok)
+                                    msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
                                     
                                     # Show message box non-blocking and auto-close after 3 seconds
                                     msg_box.show()
@@ -920,7 +920,7 @@ class MainWindow(QMainWindow):
         print(f"Dialog size: {dialog.size()}")
         print(f"FileViewer size: {file_viewer.size()}")
         
-        result = dialog.exec_()
+        result = dialog.exec()
         print(f"Dialog closed with result: {result}")
     
     def _close_content_dialog(self, dialog, screen_protection):
@@ -998,7 +998,7 @@ class MainWindow(QMainWindow):
         
         # Ask for password
         password, ok = QInputDialog.getText(
-            self, "Enter Password", "Enter the file password:", QLineEdit.Password)
+            self, "Enter Password", "Enter the file password:", QLineEdit.EchoMode.Password)
         
         if ok and password:
             try:
@@ -1032,7 +1032,7 @@ class MainWindow(QMainWindow):
                     msg_box.setText(f"The media file '{metadata['filename']}' is view-only and cannot be exported.")
                     msg_box.setInformativeText("Media files are protected by default to prevent unauthorized distribution.")
                     msg_box.setStandardButtons(QMessageBox.Ok)
-                    msg_box.exec_()
+                    msg_box.exec()
                 else:
                     QMessageBox.warning(self, "Export Restricted", 
                                       f"The file '{metadata['filename']}' has been marked as view-only and cannot be exported.")
@@ -1081,7 +1081,7 @@ class MainWindow(QMainWindow):
                     msg_box.setText(f"The media file '{filename}' is view-only and cannot be exported.")
                     msg_box.setInformativeText("Media files are protected by default to prevent unauthorized distribution.")
                     msg_box.setStandardButtons(QMessageBox.Ok)
-                    msg_box.exec_()
+                    msg_box.exec()
                 else:
                     QMessageBox.warning(self, "Export Restricted", 
                                       f"The file '{filename}' has been marked as view-only and cannot be exported.")
@@ -1140,7 +1140,7 @@ class MainWindow(QMainWindow):
             
             # Show file dialog for security settings
             file_dialog = FileDialog({}, self, filename=filename, file_content=file_content)
-            if file_dialog.exec_() == QDialog.Accepted:
+            if file_dialog.exec() == QDialog.DialogCode.Accepted:
                 security_settings = file_dialog.get_security_settings()
                 password = file_dialog.get_password()
                 
@@ -1164,7 +1164,7 @@ class MainWindow(QMainWindow):
         if import_path:
             # Ask for password
             password, ok = QInputDialog.getText(
-                self, "Enter Password", "Enter the file password:", QLineEdit.Password)
+                self, "Enter Password", "Enter the file password:", QLineEdit.EchoMode.Password)
             
             if ok and password:
                 try:
@@ -1194,7 +1194,7 @@ class MainWindow(QMainWindow):
         if import_path:
             # Ask for password
             password, ok = QInputDialog.getText(
-                self, "Enter Password", "Enter the file password:", QLineEdit.Password)
+                self, "Enter Password", "Enter the file password:", QLineEdit.EchoMode.Password)
             
             if ok and password:
                 try:
@@ -1263,7 +1263,7 @@ class MainWindow(QMainWindow):
         security_settings = {}
         
         if self.expiration_check.isChecked():
-            security_settings["expiration_time"] = self.expiration_datetime.dateTime().toString(Qt.ISODate)
+            security_settings["expiration_time"] = self.expiration_datetime.dateTime().toString(Qt.DateFormat.ISODate)
         else:
             security_settings["expiration_time"] = None
         
@@ -1292,21 +1292,21 @@ class MainWindow(QMainWindow):
         
         # Ask for current password
         current_password, ok = QInputDialog.getText(
-            self, "Current Master Password", "Enter your current master password:", QLineEdit.Password)
+            self, "Current Master Password", "Enter your current master password:", QLineEdit.EchoMode.Password)
         
         if not ok or not current_password:
             return
         
         # Ask for new password
         new_password, ok = QInputDialog.getText(
-            self, "New Master Password", "Enter your new master password:", QLineEdit.Password)
+            self, "New Master Password", "Enter your new master password:", QLineEdit.EchoMode.Password)
         
         if not ok or not new_password:
             return
         
         # Confirm new password
         confirm_password, ok = QInputDialog.getText(
-            self, "Confirm New Password", "Confirm your new master password:", QLineEdit.Password)
+            self, "Confirm New Password", "Confirm your new master password:", QLineEdit.EchoMode.Password)
         
         if not ok or not confirm_password:
             return
@@ -1489,7 +1489,7 @@ class MainWindow(QMainWindow):
             }
         """)
         
-        result = msg_box.exec_()
+        result = msg_box.exec()
         if result == QMessageBox.Yes:
             self.emergency.trigger_emergency_destruction(reason=f"User-initiated {level} wipe", level=level)
 
@@ -1602,7 +1602,7 @@ class MainWindow(QMainWindow):
             }
         """)
         
-        result = msg_box.exec_()
+        result = msg_box.exec()
         if result == QMessageBox.Yes:
             self.emergency.trigger_emergency_destruction(reason="USER PANIC WIPE ACTIVATED", level="scorched")
 
