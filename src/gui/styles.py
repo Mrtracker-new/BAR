@@ -1,6 +1,6 @@
-from PyQt5.QtGui import QColor, QPalette, QFont
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QApplication
+from PySide6.QtGui import QColor, QPalette, QFont
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication
 
 
 class StyleManager:
@@ -60,27 +60,27 @@ class StyleManager:
         
         # Create dark palette
         palette = QPalette()
-        palette.setColor(QPalette.Window, colors["background"])
-        palette.setColor(QPalette.WindowText, colors["text"])
-        palette.setColor(QPalette.Base, colors["surface"])
-        palette.setColor(QPalette.AlternateBase, colors["background"])
-        palette.setColor(QPalette.ToolTipBase, colors["surface"])
-        palette.setColor(QPalette.ToolTipText, colors["text"])
-        palette.setColor(QPalette.Text, colors["text"])
-        palette.setColor(QPalette.Button, colors["background"])
-        palette.setColor(QPalette.ButtonText, colors["text"])
-        palette.setColor(QPalette.BrightText, colors["accent"])
-        palette.setColor(QPalette.Link, colors["primary"])
-        palette.setColor(QPalette.Highlight, colors["primary"])
-        palette.setColor(QPalette.HighlightedText, colors["text"])
+        palette.setColor(QPalette.ColorRole.Window, colors["background"])
+        palette.setColor(QPalette.ColorRole.WindowText, colors["text"])
+        palette.setColor(QPalette.ColorRole.Base, colors["surface"])
+        palette.setColor(QPalette.ColorRole.AlternateBase, colors["background"])
+        palette.setColor(QPalette.ColorRole.ToolTipBase, colors["surface"])
+        palette.setColor(QPalette.ColorRole.ToolTipText, colors["text"])
+        palette.setColor(QPalette.ColorRole.Text, colors["text"])
+        palette.setColor(QPalette.ColorRole.Button, colors["background"])
+        palette.setColor(QPalette.ColorRole.ButtonText, colors["text"])
+        palette.setColor(QPalette.ColorRole.BrightText, colors["accent"])
+        palette.setColor(QPalette.ColorRole.Link, colors["primary"])
+        palette.setColor(QPalette.ColorRole.Highlight, colors["primary"])
+        palette.setColor(QPalette.ColorRole.HighlightedText, colors["text"])
         
         # Disabled colors
-        palette.setColor(QPalette.Disabled, QPalette.WindowText, colors["disabled"])
-        palette.setColor(QPalette.Disabled, QPalette.Text, colors["disabled"])
-        palette.setColor(QPalette.Disabled, QPalette.ButtonText, colors["disabled"])
+        palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText, colors["disabled"])
+        palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, colors["disabled"])
+        palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, colors["disabled"])
         
         # Ensure action buttons have visible text
-        palette.setColor(QPalette.ButtonText, QColor(255, 255, 255))
+        palette.setColor(QPalette.ColorRole.ButtonText, QColor(255, 255, 255))
         
         app = QApplication.instance()
         app.setPalette(palette)
@@ -689,8 +689,8 @@ class StyleManager:
         Returns:
             A configured QPushButton with proper styling
         """
-        from PyQt5.QtWidgets import QPushButton
-        from PyQt5.QtGui import QIcon, QFont
+        from PySide6.QtWidgets import QPushButton
+        from PySide6.QtGui import QIcon, QFont
         
         button = QPushButton(text)
         if icon:
@@ -707,7 +707,7 @@ class StyleManager:
         button.setProperty("displayText", True)
         
         # Set explicit font with good contrast
-        font = QFont("Segoe UI", 10, QFont.Bold)
+        font = QFont("Segoe UI", 10, QFont.Weight.Bold)
         button.setFont(font)
         
         # Force update to ensure text is displayed
