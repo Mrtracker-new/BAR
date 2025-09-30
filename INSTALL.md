@@ -1,8 +1,8 @@
 # BAR - Burn After Reading: Installation Guide
 
 **Author**: Rolan (RNR)  
-**Version**: 2.0.0+  
-**Last Updated**: January 2025
+**Version**: 2.0.0  
+**Last Updated**: September 2025
 
 This document provides comprehensive instructions for installing and running the BAR secure file management application with enhanced screenshot protection and advanced security features.
 
