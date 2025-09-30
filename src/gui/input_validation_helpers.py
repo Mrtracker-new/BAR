@@ -27,12 +27,12 @@ Last Updated: January 2025
 import re
 import logging
 from typing import Any, Optional, Callable, Dict, Tuple
-from PyQt5.QtWidgets import (
+from PySide6.QtWidgets import (
     QLineEdit, QTextEdit, QSpinBox, QDoubleSpinBox, 
     QComboBox, QLabel, QWidget, QToolTip
 )
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal
-from PyQt5.QtGui import QPalette, QColor
+from PySide6.QtCore import Qt, QTimer, Signal as pyqtSignal
+from PySide6.QtGui import QPalette, QColor
 
 # Import comprehensive input validation system
 from ..security.input_validator import (
@@ -629,7 +629,7 @@ def create_password_field(field_name: str = "password",
     """
     password_field = ValidatedLineEdit("password", field_name, ValidationLevel.STRICT)
     password_field.setPlaceholderText(placeholder)
-    password_field.setEchoMode(QLineEdit.Password)
+    password_field.setEchoMode(QLineEdit.EchoMode.Password)
     
     strength_label = None
     if show_strength:
