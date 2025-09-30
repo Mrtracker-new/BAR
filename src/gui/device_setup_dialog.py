@@ -1,13 +1,13 @@
 import sys
 from typing import Optional
 
-from PyQt5.QtWidgets import (
+from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
     QMessageBox, QFormLayout, QWidget, QCheckBox, QGroupBox, QTextEdit,
     QProgressBar, QFrame, QComboBox, QButtonGroup, QRadioButton, QScrollArea, QApplication
 )
-from PyQt5.QtCore import Qt, QThread, pyqtSignal
-from PyQt5.QtGui import QIcon, QPixmap, QFont, QPalette, QColor
+from PySide6.QtCore import Qt, QThread, Signal as pyqtSignal
+from PySide6.QtGui import QIcon, QPixmap, QFont, QPalette, QColor
 
 from .styles import StyleManager
 from src.security.device_auth_manager import SecurityLevel
@@ -204,7 +204,7 @@ class DeviceSetupDialog(QDialog):
         
         # Title section
         title_label = QLabel("🔒 BAR - Device Setup")
-        title_label.setAlignment(Qt.AlignCenter)
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title_font = QFont()
         title_font.setPointSize(16)  # Reduced from 18
         title_font.setBold(True)
@@ -214,7 +214,7 @@ class DeviceSetupDialog(QDialog):
         
         # Subtitle
         subtitle_label = QLabel("Secure Single-User Authentication")
-        subtitle_label.setAlignment(Qt.AlignCenter)
+        subtitle_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         subtitle_font = QFont()
         subtitle_font.setPointSize(10)  # Reduced from 12
         subtitle_label.setFont(subtitle_font)
@@ -261,7 +261,7 @@ class DeviceSetupDialog(QDialog):
         self.password_label = QLabel("Master Password:")
         self.password_edit = SecurePasswordLineEdit()
         self.password_edit.setPlaceholderText("Enter a strong master password")
-        self.password_edit.setEchoMode(QLineEdit.Password)
+        self.password_edit.setEchoMode(QLineEdit.EchoMode.Password)
         form_layout.addRow(self.password_label, self.password_edit)
         
         # Password requirements
@@ -276,7 +276,7 @@ class DeviceSetupDialog(QDialog):
         self.confirm_label = QLabel("Confirm Password:")
         self.confirm_edit = SecurePasswordLineEdit()
         self.confirm_edit.setPlaceholderText("Confirm your master password")
-        self.confirm_edit.setEchoMode(QLineEdit.Password)
+        self.confirm_edit.setEchoMode(QLineEdit.EchoMode.Password)
         form_layout.addRow(self.confirm_label, self.confirm_edit)
         
         # Show password checkbox
@@ -478,11 +478,11 @@ class DeviceSetupDialog(QDialog):
     def _toggle_password_visibility(self, checked):
         """Toggle password visibility."""
         if checked:
-            self.password_edit.setEchoMode(QLineEdit.Normal)
-            self.confirm_edit.setEchoMode(QLineEdit.Normal)
+            self.password_edit.setEchoMode(QLineEdit.EchoMode.Normal)
+            self.confirm_edit.setEchoMode(QLineEdit.EchoMode.Normal)
         else:
-            self.password_edit.setEchoMode(QLineEdit.Password)
-            self.confirm_edit.setEchoMode(QLineEdit.Password)
+            self.password_edit.setEchoMode(QLineEdit.EchoMode.Password)
+            self.confirm_edit.setEchoMode(QLineEdit.EchoMode.Password)
     
     def _check_form_valid(self, *args):
         """Check if the form is valid and enable/disable setup button.
