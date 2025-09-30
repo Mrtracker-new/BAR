@@ -99,6 +99,13 @@ NEW FLOW: Device Setup → Device Unlock → Main App ✅
 - **Hardware integration**: Config includes hardware fingerprinting
 - **Security-first**: All settings optimized for security over convenience
 
+### GUI Framework Migration (September 2025)
+- **PyQt6 → PySide6**: Migrated from PyQt6 to PySide6 for improved compatibility
+- **DLL Issues Fixed**: Resolved Windows DLL loading errors
+- **Screenshot Protection**: Fixed and enhanced view-only file protection
+- **API Updates**: Updated deprecated Qt API calls for PySide6 compatibility
+- **Zero Regression**: All features maintained with improved stability
+
 ### File Format Compatibility
 - **Backward compatible**: Existing .bar files remain accessible
 - **Version pattern updated**: Now supports semantic versioning (x.y.z)
@@ -180,6 +187,13 @@ NEW FLOW: Device Setup → Device Unlock → Main App ✅
 - **Single device**: No cross-device authentication
 - **No password recovery**: By design, not a bug
 - **Hardware dependency**: Authentication tied to specific hardware
+
+### Fixed Issues (September 2025)
+- ✅ **DLL Loading Error**: Fixed PyQt6 DLL import issues on Windows
+- ✅ **Screenshot Protection**: Corrected non-functional PyQt5 imports
+- ✅ **Font Metrics**: Updated deprecated QFontMetrics.width() calls
+- ✅ **Dialog Execution**: Fixed exec_() deprecation warnings
+- ✅ **API Compatibility**: Updated all Qt enums for PySide6
 
 ### Workarounds
 - **Device changes**: Export files before hardware upgrades
