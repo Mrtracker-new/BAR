@@ -1,7 +1,7 @@
 # BAR - Burn After Reading dependencies
 
 # GUI
-PyQt5==5.15.9
+PySide6==6.9.0
 
 # Cryptography
 cryptography==41.0.3
