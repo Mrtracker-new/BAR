@@ -6,14 +6,14 @@ import json
 from typing import Optional, Dict, Any, Callable
 from pathlib import Path
 
-from PyQt5.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, QScrollArea,
     QPushButton, QFileDialog, QMessageBox, QSizePolicy, QFrame, QProgressBar,
     QGroupBox, QFormLayout, QSplitter, QTreeWidget, QTreeWidgetItem, QTabWidget,
     QPlainTextEdit
 )
-from PyQt5.QtCore import Qt, QSize, pyqtSignal, QThread, pyqtSlot, QTimer, QPointF
-from PyQt5.QtGui import QPixmap, QImage, QFont, QPalette, QColor, QSyntaxHighlighter, QTextCharFormat, QPainter, QPen
+from PySide6.QtCore import Qt, QSize, Signal as pyqtSignal, QThread, Slot as pyqtSlot, QTimer, QPointF
+from PySide6.QtGui import QPixmap, QImage, QFont, QPalette, QColor, QSyntaxHighlighter, QTextCharFormat, QPainter, QPen
 
 # Using the ultimate consolidated screen protection system
 # All screenshot prevention features are now consolidated in this enhanced module
@@ -37,7 +37,7 @@ class SimpleWatermarker:
         watermark_footer = f"\n\n--- Protected content - Do not distribute ---"
         watermarked_text = watermark_header + current_text + watermark_footer
         text_edit.setPlainText(watermarked_text)
-        text_edit.setTextInteractionFlags(Qt.TextSelectableByKeyboard | Qt.TextSelectableByMouse)
+        text_edit.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByKeyboard | Qt.TextInteractionFlag.TextSelectableByMouse)
         text_edit.setStyleSheet(
             "background: repeating-linear-gradient(45deg, transparent, "
             "transparent 100px, rgba(200, 200, 200, 0.1) 100px, "
@@ -72,7 +72,8 @@ class SimpleWatermarker:
                 painter.save()
                 painter.translate(watermarked_pixmap.width() / 2, watermarked_pixmap.height() / 2)
                 painter.rotate(-45)
-                text_width = painter.fontMetrics().width(watermark_text)
+                # Use horizontalAdvance() instead of width() for PySide6 compatibility
+                text_width = painter.fontMetrics().horizontalAdvance(watermark_text)
                 painter.drawText(QPointF(-text_width / 2, 0), watermark_text)
                 painter.restore()
                 
@@ -100,7 +101,7 @@ class PythonSyntaxHighlighter(QSyntaxHighlighter):
         # Python keywords
         keyword_format = QTextCharFormat()
         keyword_format.setForeground(QColor("#569cd6"))
-        keyword_format.setFontWeight(QFont.Bold)
+        keyword_format.setFontWeight(QFont.Weight.Bold)
         keywords = [
             "and", "as", "assert", "break", "class", "continue", "def",
             "del", "elif", "else", "except", "exec", "finally", "for",
@@ -242,27 +243,27 @@ class FileViewer(QWidget):
         # Image content widget
         self.image_container = QWidget()
         self.image_layout = QVBoxLayout(self.image_container)
-        self.image_layout.setAlignment(Qt.AlignCenter)
+        self.image_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         self.image_label = QLabel()
-        self.image_label.setAlignment(Qt.AlignCenter)
+        self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.image_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.image_layout.addWidget(self.image_label)
         
         # Binary content widget (placeholder for unsupported content)
         self.binary_widget = QWidget()
         self.binary_layout = QVBoxLayout(self.binary_widget)
-        self.binary_layout.setAlignment(Qt.AlignCenter)
+        self.binary_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         self.binary_icon = QLabel("🔒")
         font = self.binary_icon.font()
         font.setPointSize(48)
         self.binary_icon.setFont(font)
-        self.binary_icon.setAlignment(Qt.AlignCenter)
+        self.binary_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.binary_layout.addWidget(self.binary_icon)
         
         self.binary_message = QLabel("This file cannot be displayed")
-        self.binary_message.setAlignment(Qt.AlignCenter)
+        self.binary_message.setAlignment(Qt.AlignmentFlag.AlignCenter)
         font = self.binary_message.font()
         font.setBold(True)
         font.setPointSize(14)
@@ -270,7 +271,7 @@ class FileViewer(QWidget):
         self.binary_layout.addWidget(self.binary_message)
         
         self.binary_info = QLabel("The file format is not supported for direct viewing")
-        self.binary_info.setAlignment(Qt.AlignCenter)
+        self.binary_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.binary_info.setWordWrap(True)
         self.binary_layout.addWidget(self.binary_info)
         
@@ -535,19 +536,19 @@ class FileViewer(QWidget):
         # Create PDF info widget
         pdf_widget = QWidget()
         pdf_layout = QVBoxLayout(pdf_widget)
-        pdf_layout.setAlignment(Qt.AlignCenter)
+        pdf_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         # PDF icon
         pdf_icon = QLabel("📄")
         font = pdf_icon.font()
         font.setPointSize(48)
         pdf_icon.setFont(font)
-        pdf_icon.setAlignment(Qt.AlignCenter)
+        pdf_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         pdf_layout.addWidget(pdf_icon)
         
         # PDF message
         pdf_message = QLabel("PDF Document")
-        pdf_message.setAlignment(Qt.AlignCenter)
+        pdf_message.setAlignment(Qt.AlignmentFlag.AlignCenter)
         font = pdf_message.font()
         font.setBold(True)
         font.setPointSize(14)
@@ -561,7 +562,7 @@ class FileViewer(QWidget):
             info_text = "PDFs cannot be displayed directly in the application. Click 'Open Externally' to view it in your default PDF viewer, or 'Export' to save it."
         
         pdf_info = QLabel(info_text)
-        pdf_info.setAlignment(Qt.AlignCenter)
+        pdf_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
         pdf_info.setWordWrap(True)
         pdf_layout.addWidget(pdf_info)
         
@@ -595,7 +596,7 @@ class FileViewer(QWidget):
         # Add view-only notice if applicable
         if self.is_view_only:
             notice = QLabel("This file is marked as view-only and cannot be exported")
-            notice.setAlignment(Qt.AlignCenter)
+            notice.setAlignment(Qt.AlignmentFlag.AlignCenter)
             font = notice.font()
             font.setBold(True)
             notice.setFont(font)
@@ -608,17 +609,17 @@ class FileViewer(QWidget):
         """Display error message."""
         error_widget = QWidget()
         error_layout = QVBoxLayout(error_widget)
-        error_layout.setAlignment(Qt.AlignCenter)
+        error_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         error_icon = QLabel("❌")
         font = error_icon.font()
         font.setPointSize(48)
         error_icon.setFont(font)
-        error_icon.setAlignment(Qt.AlignCenter)
+        error_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         error_layout.addWidget(error_icon)
         
         error_label = QLabel("Error Displaying File")
-        error_label.setAlignment(Qt.AlignCenter)
+        error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         font = error_label.font()
         font.setBold(True)
         font.setPointSize(14)
@@ -626,7 +627,7 @@ class FileViewer(QWidget):
         error_layout.addWidget(error_label)
         
         error_details = QLabel(error_message)
-        error_details.setAlignment(Qt.AlignCenter)
+        error_details.setAlignment(Qt.AlignmentFlag.AlignCenter)
         error_details.setWordWrap(True)
         error_details.setStyleSheet("color: #e74c3c;")
         error_layout.addWidget(error_details)
@@ -850,7 +851,7 @@ class FileViewer(QWidget):
             # Add view-only notice if applicable
             if self.is_view_only:
                 notice = QLabel("This image is view-only and cannot be exported")
-                notice.setAlignment(Qt.AlignCenter)
+                notice.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 font = notice.font()
                 font.setBold(True)
                 notice.setFont(font)
