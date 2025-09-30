@@ -5,17 +5,17 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional, Callable, Union
 from dataclasses import dataclass
 
-from PyQt5.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QProgressBar, QTextEdit, QScrollArea, QFrame, QGroupBox,
     QDialog, QApplication, QMessageBox, QListWidget, QListWidgetItem,
     QSplitter, QTabWidget
 )
-from PyQt5.QtCore import (
-    QThread, pyqtSignal, QObject, QTimer, Qt, QMutex, QWaitCondition,
+from PySide6.QtCore import (
+    QThread, Signal as pyqtSignal, QObject, QTimer, Qt, QMutex, QWaitCondition,
     QRunnable, QThreadPool
 )
-from PyQt5.QtGui import QFont, QPalette, QColor
+from PySide6.QtGui import QFont, QPalette, QColor
 
 from ..file_manager.async_file_manager import (
     AsyncFileManager, FileOperationProgress, MemoryMonitor
@@ -149,7 +149,7 @@ class ProgressTracker(QWidget):
         
         # Header
         self.header_label = QLabel("Active Operations")
-        self.header_label.setFont(QFont("Arial", 12, QFont.Bold))
+        self.header_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
         self.header_label.setStyleSheet("color: #ffffff; margin-bottom: 10px;")
         self.layout.addWidget(self.header_label)
         
@@ -294,7 +294,7 @@ class OperationProgressWidget(QFrame):
         info_layout = QHBoxLayout()
         
         self.operation_label = QLabel(f"{self.operation_type.title()}")
-        self.operation_label.setFont(QFont("Arial", 10, QFont.Bold))
+        self.operation_label.setFont(QFont("Arial", 10, QFont.Weight.Bold))
         self.operation_label.setStyleSheet("color: #ffffff;")
         info_layout.addWidget(self.operation_label)
         
@@ -481,10 +481,10 @@ class PerformanceMonitorWidget(QWidget):
         """Set up the performance monitor UI."""
         layout = QVBoxLayout(self)
         
-        # Title
-        title = QLabel("Performance Monitor")
-        title.setFont(QFont("Arial", 12, QFont.Bold))
-        title.setStyleSheet("color: #ffffff; margin-bottom: 10px;")
+    # Title
+    title = QLabel("Performance Monitor")
+    title.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+    title.setStyleSheet("color: #ffffff; margin-bottom: 10px;")
         layout.addWidget(title)
         
         # Metrics display
@@ -785,13 +785,13 @@ def create_performance_dashboard(async_file_manager: AsyncFileManager,
     
     # Title
     title = QLabel("BAR Performance Dashboard")
-    title.setFont(QFont("Arial", 16, QFont.Bold))
+    title.setFont(QFont("Arial", 16, QFont.Weight.Bold))
     title.setStyleSheet("color: #ffffff; margin-bottom: 20px;")
-    title.setAlignment(Qt.AlignCenter)
+    title.setAlignment(Qt.AlignmentFlag.AlignCenter)
     layout.addWidget(title)
     
     # Create splitter for layout
-    splitter = QSplitter(Qt.Horizontal)
+    splitter = QSplitter(Qt.Orientation.Horizontal)
     
     # Progress tracker
     progress_tracker = ProgressTracker()
