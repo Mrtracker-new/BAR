@@ -22,9 +22,9 @@ from src.security.steganographic_triggers import SteganographicTriggerSystem, Tr
 from src.security.system_health_monitor import SystemHealthMonitor, ThreatLevel as HealthThreatLevel
 from src.file_manager.file_manager import FileManager
 
-# Import PyQt5 modules
-from PyQt5.QtWidgets import QApplication, QDialog, QMessageBox, QLineEdit, QInputDialog
-from PyQt5.QtCore import Qt
+# Import PySide6 modules
+from PySide6.QtWidgets import QApplication, QDialog, QMessageBox, QLineEdit, QInputDialog
+from PySide6.QtCore import Qt
 
 
 def setup_logging():
@@ -83,7 +83,7 @@ class SimpleAuthDialog(QDialog):
         # Apply dark theme
         StyleManager.apply_theme("dark")
         
-    def exec_(self):
+    def exec(self):
         """Override exec to use input dialog for simplicity."""
         
         # First, check for security lockout before attempting authentication
@@ -97,7 +97,7 @@ class SimpleAuthDialog(QDialog):
                     "Device Locked",
                     f"{lockout_message}\n\nApplication will exit due to security lockout."
                 )
-                return QDialog.Rejected
+                return QDialog.DialogCode.Rejected
         except:
             pass  # Ignore errors from lockout check
         
@@ -109,12 +109,12 @@ class SimpleAuthDialog(QDialog):
                 self.parent(),
                 "Device Authentication",
                 f"Enter your master password (Attempt {attempts + 1}/{max_attempts}):",
-                QLineEdit.Password
+                QLineEdit.EchoMode.Password
             )
             
             if not ok:
                 # User cancelled
-                return QDialog.Rejected
+                return QDialog.DialogCode.Rejected
             
             if password:
                 # Check steganographic triggers before authentication
@@ -122,7 +122,7 @@ class SimpleAuthDialog(QDialog):
                     trigger_activated = self.steg_system.check_password_trigger(password)
                     if trigger_activated:
                         # Steganographic trigger activated - emergency protocol should be running
-                        return QDialog.Rejected
+                        return QDialog.DialogCode.Rejected
                 
                 success, message = self.device_auth.authenticate(password)
                 
@@ -133,7 +133,7 @@ class SimpleAuthDialog(QDialog):
                         "Authentication Successful",
                         message
                     )
-                    return QDialog.Accepted
+                    return QDialog.DialogCode.Accepted
                     
                 else:
                     # Check if this is a lockout or emergency wipe message
@@ -148,7 +148,7 @@ class SimpleAuthDialog(QDialog):
                             "Security Action",
                             f"{message}\n\nApplication will exit."
                         )
-                        return QDialog.Rejected
+                        return QDialog.DialogCode.Rejected
                     
                     # Regular authentication failure
                     attempts += 1
@@ -164,11 +164,11 @@ class SimpleAuthDialog(QDialog):
                             "Authentication Failed",
                             f"{message}\n\nMaximum attempts reached. Application will exit."
                         )
-                        return QDialog.Rejected
+                        return QDialog.DialogCode.Rejected
             else:
                 attempts += 1
         
-        return QDialog.Rejected
+        return QDialog.DialogCode.Rejected
     
     def is_authenticated(self):
         return self.authenticated
@@ -214,9 +214,9 @@ def main():
             
             # First-time setup (steg system not needed for setup)
             setup_dialog = DeviceSetupDialog(device_auth)
-            setup_result = setup_dialog.exec_()
+            setup_result = setup_dialog.exec()
             
-            if setup_result != QDialog.Accepted or not setup_dialog.was_setup_successful():
+            if setup_result != QDialog.DialogCode.Accepted or not setup_dialog.was_setup_successful():
                 logger.info("Device setup cancelled or failed - exiting")
                 force_secure_memory_cleanup()
                 sys.exit(0)
@@ -226,9 +226,9 @@ def main():
         # Device is initialized, now authenticate with steg system available
         logger.info("Device initialized - requesting authentication")
         auth_dialog = SimpleAuthDialog(device_auth, steg_system=steg)
-        auth_result = auth_dialog.exec_()
+        auth_result = auth_dialog.exec()
         
-        if auth_result != QDialog.Accepted or not auth_dialog.is_authenticated():
+        if auth_result != QDialog.DialogCode.Accepted or not auth_dialog.is_authenticated():
             logger.info("Authentication failed or cancelled - exiting")
             force_secure_memory_cleanup()
             sys.exit(0)
@@ -290,7 +290,7 @@ def main():
         logger.info("BAR application started successfully")
         
         # Start the application event loop
-        exit_code = app.exec_()
+        exit_code = app.exec()
         
         logger.info(f"BAR application exiting with code: {exit_code}")
         
