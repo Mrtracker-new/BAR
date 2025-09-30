@@ -157,7 +157,7 @@ See the [full disclaimer](DISCLAIMER.md) for complete details on legal considera
 1. Ensure you have Python 3.8 or higher installed
 2. Clone or download the repository
 3. Install dependencies: `pip install -r requirements.txt`
-   - Required dependencies include PyQt5 (v5.15.9), cryptography (v41.0.3)
+   - Required dependencies include PySide6 (v6.9.0), cryptography (v41.0.3)
 4. Run the application: `python main.py`
 5. For development purposes, you can use the `--debug` flag: `python main.py --debug`
 </details>
