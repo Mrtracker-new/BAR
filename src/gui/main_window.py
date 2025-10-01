@@ -51,8 +51,8 @@ class MainWindow(QMainWindow):
         
         # Set up window properties
         self.setWindowTitle("BAR - Burn After Reading")
-        self.setMinimumSize(1100, 750)  # Much larger to properly accommodate health monitor
-        self.resize(1200, 800)  # Set default size even larger for better initial display
+        self.setMinimumSize(1280, 820)  # Increased size to prevent text cramping
+        self.resize(1350, 880)  # Larger default size for better readability
         
         # Initialize UI components
         self.current_user = "Device User"  # Single user system
@@ -227,11 +227,13 @@ class MainWindow(QMainWindow):
             # CPU section
             self.cpu_section = QHBoxLayout()
             cpu_label = QLabel("CPU:")
-            cpu_label.setMinimumWidth(70)  # Wider label
-            cpu_label.setMaximumWidth(70)
+            cpu_label.setMinimumWidth(80)  # Even wider label
+            cpu_label.setMaximumWidth(80)
+            cpu_label.setStyleSheet("font-size: 13px; font-weight: bold;")
             self.cpu_usage_label = QLabel("Loading...")
-            self.cpu_usage_label.setMinimumWidth(100)  # Wider value area
-            self.cpu_usage_label.setMinimumHeight(25)
+            self.cpu_usage_label.setMinimumWidth(150)  # Much wider value area
+            self.cpu_usage_label.setMinimumHeight(28)
+            self.cpu_usage_label.setStyleSheet("font-size: 13px;")
             self.cpu_section.addWidget(cpu_label)
             self.cpu_section.addWidget(self.cpu_usage_label)
             self.cpu_section.addStretch()
@@ -239,11 +241,13 @@ class MainWindow(QMainWindow):
             # Memory section
             self.mem_section = QHBoxLayout()
             mem_label = QLabel("Memory:")
-            mem_label.setMinimumWidth(70)
-            mem_label.setMaximumWidth(70)
+            mem_label.setMinimumWidth(80)
+            mem_label.setMaximumWidth(80)
+            mem_label.setStyleSheet("font-size: 13px; font-weight: bold;")
             self.memory_usage_label = QLabel("Loading...")
-            self.memory_usage_label.setMinimumWidth(100)
-            self.memory_usage_label.setMinimumHeight(25)
+            self.memory_usage_label.setMinimumWidth(200)  # Extra wide for "Not Available"
+            self.memory_usage_label.setMinimumHeight(28)
+            self.memory_usage_label.setStyleSheet("font-size: 13px;")
             self.mem_section.addWidget(mem_label)
             self.mem_section.addWidget(self.memory_usage_label)
             self.mem_section.addStretch()
@@ -259,11 +263,13 @@ class MainWindow(QMainWindow):
             # Disk section
             self.disk_section = QHBoxLayout()
             disk_label = QLabel("Disk:")
-            disk_label.setMinimumWidth(70)
-            disk_label.setMaximumWidth(70)
+            disk_label.setMinimumWidth(80)
+            disk_label.setMaximumWidth(80)
+            disk_label.setStyleSheet("font-size: 13px; font-weight: bold;")
             self.disk_usage_label = QLabel("Loading...")
-            self.disk_usage_label.setMinimumWidth(100)
-            self.disk_usage_label.setMinimumHeight(25)
+            self.disk_usage_label.setMinimumWidth(150)
+            self.disk_usage_label.setMinimumHeight(28)
+            self.disk_usage_label.setStyleSheet("font-size: 13px;")
             self.disk_section.addWidget(disk_label)
             self.disk_section.addWidget(self.disk_usage_label)
             self.disk_section.addStretch()
@@ -271,11 +277,13 @@ class MainWindow(QMainWindow):
             # Temperature section
             self.temp_section = QHBoxLayout()
             temp_label = QLabel("Temp:")
-            temp_label.setMinimumWidth(70)
-            temp_label.setMaximumWidth(70)
+            temp_label.setMinimumWidth(80)
+            temp_label.setMaximumWidth(80)
+            temp_label.setStyleSheet("font-size: 13px; font-weight: bold;")
             self.temperature_label = QLabel("Loading...")
-            self.temperature_label.setMinimumWidth(100)
-            self.temperature_label.setMinimumHeight(25)
+            self.temperature_label.setMinimumWidth(200)  # Extra wide for "Not Available"
+            self.temperature_label.setMinimumHeight(28)
+            self.temperature_label.setStyleSheet("font-size: 13px;")
             self.temp_section.addWidget(temp_label)
             self.temp_section.addWidget(self.temperature_label)
             self.temp_section.addStretch()
@@ -286,18 +294,20 @@ class MainWindow(QMainWindow):
             # Row 3: Threat Level (full width)
             self.threat_layout = QHBoxLayout()
             threat_label = QLabel("Status:")
-            threat_label.setMinimumWidth(70)
-            threat_label.setMaximumWidth(70)
+            threat_label.setMinimumWidth(80)
+            threat_label.setMaximumWidth(80)
+            threat_label.setStyleSheet("font-size: 13px; font-weight: bold;")
             self.threat_level_label = QLabel("Loading...")
-            self.threat_level_label.setMinimumHeight(25)
+            self.threat_level_label.setMinimumHeight(28)
+            self.threat_level_label.setStyleSheet("font-size: 13px;")
             self.threat_layout.addWidget(threat_label)
             self.threat_layout.addWidget(self.threat_level_label)
             self.health_metrics_layout.addLayout(self.threat_layout)
             
             # Active threats - full width compact display
             self.active_threats_label = QLabel("Loading...")
-            self.active_threats_label.setMinimumHeight(35)
-            self.active_threats_label.setMaximumHeight(80)  # More space for threats with larger window
+            self.active_threats_label.setMinimumHeight(40)
+            self.active_threats_label.setMaximumHeight(90)  # More space for threats with larger window
             self.active_threats_label.setWordWrap(True)
             self.active_threats_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
             self.active_threats_label.setStyleSheet("""
@@ -305,9 +315,10 @@ class MainWindow(QMainWindow):
                     background-color: #2a2a2a;
                     border: 1px solid #555;
                     border-radius: 3px;
-                    padding: 4px 6px;
+                    padding: 8px 10px;
                     margin: 1px;
-                    font-size: 11px;
+                    font-size: 13px;
+                    line-height: 1.4;
                 }
             """)
             self.health_metrics_layout.addWidget(self.active_threats_label)
