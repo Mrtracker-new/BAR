@@ -4,7 +4,7 @@
 
 **Your personal vault for files that are meant to disappear**
 
-<img src="resources/Bar_gif.gif" alt="BAR Logo" width="120" height="120">
+<img src="resources/Bar_gif.gif" alt="BAR Logo" width="200" height="200">
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Limited%20Linux%20%26%20macOS-lightgrey)]()
