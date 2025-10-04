@@ -2,7 +2,7 @@
 
 # 🔥 BAR - Burn After Reading 🔥
 
-**A secure, offline file management system with self-destruction capabilities and advanced security features**
+**Your personal vault for files that are meant to disappear**
 
 <img src="resources/BAR_logo.ico" alt="BAR Logo" width="120" height="120">
 
@@ -12,65 +12,71 @@
 
 </div>
 
-> **IMPORTANT**: Before using BAR, please read the [DISCLAIMER.md](DISCLAIMER.md) file for important legal and security information.
+> **Hey, quick heads up!** Before diving in, take a moment to read the [DISCLAIMER.md](DISCLAIMER.md) file. It's got some important stuff about security and legal considerations you should know about.
 
 ---
 
-## 📋 Overview
+## 📋 What's This All About?
 
-BAR (Burn After Reading) is a powerful desktop application designed for secure file management with advanced security features including self-destruction capabilities. Operating entirely offline with no server dependencies, BAR ensures your sensitive data never leaves your machine.
+Ever wished you could share a file with someone and have it automatically self-destruct after they read it? Like something out of a spy movie? Well, that's exactly what BAR does!
+
+BAR (Burn After Reading) is a desktop app that lets you store and share files with built-in self-destruction capabilities. Think of it as a digital secret agent for your sensitive documents. The best part? Everything happens completely offline on your own machine—no cloud, no servers, no data leaving your computer.
 
 <div align="center">
 <img src="resources/Social_preview.png" alt="BAR Preview" width="600">
 </div>
 
-The application combines strong encryption, customizable security settings, and comprehensive file scanning to provide a complete solution for protecting your most sensitive information.
+Whether you need files to vanish after being opened once, expire after a certain time, or even trigger a panic wipe in emergencies, BAR's got you covered with military-grade encryption and some pretty cool security features.
 
-### ⚠️ Important Security Notice
+### ⚠️ Real Talk: This App Can Permanently Delete Your Stuff
 
-BAR includes powerful security features that can result in **permanent data loss**. By using this application, you acknowledge that:
+Look, I need to be super clear about something: BAR is designed to make files disappear—like, really disappear. Once they're gone, they're gone forever. No "undo" button, no recovery software will save you.
 
-- Files deleted through BAR's security features **CANNOT be recovered**
-- You are responsible for ensuring your use complies with local laws and regulations
-- The security of your data depends on the strength of your passwords
-- No security measure is 100% foolproof
+Here's what you need to understand:
 
-See the [full disclaimer](DISCLAIMER.md) for complete details on legal considerations and proper usage.
+- When BAR deletes something, it's **PERMANENT**. We're talking gone-from-existence permanent.
+- You're responsible for making sure you're using this legally in your country (some places have rules about encryption software).
+- Your security is only as good as your passwords—so make them strong!
+- Nothing in cybersecurity is bulletproof, and that includes BAR.
 
----
-
-## ✨ Key Features
-
-### Core Security
-- **🔒 Completely Offline Operation**: Works without internet connection or server dependencies
-- **🛡️ Military-Grade Encryption**: AES-256 in GCM mode for authenticated encryption
-- **🔑 Secure Key Management**: PBKDF2 with high iteration counts and hardware binding options
-- **📸 Advanced Screenshot Protection**: Real-time blocking of screenshot attempts with multi-layer detection
-
-### Self-Destruction Mechanisms
-- **⏱️ Time-based Expiration**: Files automatically delete after a specified time
-- **🔢 Access Count Limits**: Files delete after being accessed a certain number of times
-- **⚰️ Deadman Switch**: Files delete after a period of inactivity
-- **🔨 Anti-Brute Force**: Files delete after multiple failed password attempts
-- **🚨 Panic Wipe System**: Complete application reset with 98%+ data destruction rate
-- **🔥 Emergency Protocol**: Three-tier destruction levels (Selective/Aggressive/Scorched Earth)
-
-### File Management
-- **📱 Advanced File Scanning**: Detect and validate .bar files across all connected devices
-- **🔍 Multi-threaded Scanning**: Fast scanning of all storage devices including removable media
-- **🔄 Secure File Sharing**: Export/import encrypted files with security constraints intact
-- **🗑️ Secure Deletion**: Multi-pass overwrite techniques to prevent data recovery
-- **👁️ View-Only Protection**: Enhanced security for view-only files with comprehensive anti-capture measures
-
-### User Experience
-- **🔐 Device Authentication**: Single-user device-bound authentication with hardware binding
-- **💻 Intuitive Interface**: Clean UI showing file security status and expiration details
-- **🎨 Dark Theme**: Professional dark theme optimized for security applications
-- **⚡ Fast Operation**: Streamlined authentication flow with direct access after device unlock
+Seriously, check out the [full disclaimer](DISCLAIMER.md) before you start using this. It's not just legal mumbo-jumbo—it's important stuff.
 
 ---
 
-## 🔐 Security Architecture
+## ✨ What Makes BAR Cool?
+
+### The Security Stuff (Don't Worry, It's Not Boring)
+- **🔒 Works Completely Offline**: No internet needed, no data sent anywhere. Your files stay on YOUR machine.
+- **🛡️ Military-Grade Encryption**: We use AES-256 encryption—the same stuff governments use to protect classified info.
+- **🔑 Smart Key Management**: Your encryption keys are generated using industry-standard methods and can be tied to your specific device.
+- **📸 Screenshot Blocker**: Tries to stop people from taking screenshots of your sensitive files (though phone cameras are still a thing, obviously).
+
+### The Self-Destruct Features (The Fun Part!)
+- **⏱️ Time Bombs**: Set files to automatically delete after a certain amount of time—like Snapchat, but for any file type.
+- **🔢 Read Limits**: Files can self-destruct after being opened a specific number of times. One-time secrets? You got it.
+- **⚰️ Deadman Switch**: If you don't check in for a while, your files assume something's wrong and delete themselves.
+- **🔨 Brute Force Protection**: Someone trying to guess your password? After too many failed attempts, the file destroys itself.
+- **🚨 Panic Button**: Oh no, someone's at the door! Hit the panic button and BAR can wipe everything in seconds.
+- **🔥 Choose Your Destruction Level**: From "just clear my session" to "burn everything to the ground," you pick how nuclear you want to go.
+
+### Managing Your Files
+- **📱 Smart Scanner**: BAR can scan all your drives (including USB sticks) to find your encrypted .bar files.
+- **🔍 Lightning Fast**: Multi-threaded scanning means you're not waiting around forever.
+- **🔄 Easy Sharing**: Export encrypted files to share with others—all the security settings stay intact.
+- **🗑️ Actually Secure Deletion**: When we delete something, we overwrite it multiple times so forensic tools can't recover it.
+- **👁️ View-Only Mode**: Show someone a file without letting them copy, save, or screenshot it (well, we try our best).
+
+### The Experience
+- **🔐 One Device, One Password**: Simple device-based authentication—no complicated account systems.
+- **💻 Clean Interface**: We made it look good and easy to use. No endless menus or confusing buttons.
+- **🎨 Easy on the Eyes**: Dark theme by default because we're not monsters.
+- **⚡ No Hassle**: Unlock once and you're in. No repeated logins or annoying prompts.
+
+---
+
+## 🔐 The Nerdy Security Stuff (For Those Who Care)
+
+Okay, if you're still reading, you probably want to know HOW all this security magic works. Here's the technical breakdown:
 
 <details>
 <summary><b>Encryption System</b></summary>
@@ -132,69 +138,75 @@ See the [full disclaimer](DISCLAIMER.md) for complete details on legal considera
 
 ---
 
-## 💿 Installation
+## 💿 Getting Started
 
-### System Requirements
-- **Operating System**: Windows 10/11 (primary support), limited support for Linux/macOS
-- **RAM**: 4GB minimum, 8GB recommended
-- **Storage**: 100MB for application, additional space for secure files
-- **No internet connection required** for operation
+### What You'll Need
+- **Computer**: Windows 10 or 11 works best. Linux and macOS work too, but with some limitations.
+- **RAM**: At least 4GB, though 8GB is better if you've got it.
+- **Storage**: About 100MB for BAR itself, plus whatever space your files need.
+- **Internet**: Literally don't need it. BAR works 100% offline once you've got it.
 
-### Installation Options
+### How to Install (Pick Your Flavor)
 
 <details>
-<summary><b>Option 1: Running the Executable (Recommended)</b></summary>
+<summary><b>Option 1: Just Download and Run (Easiest Way)</b></summary>
 
-1. Download the latest release of BAR.exe from the releases page
-2. No installation required - simply double-click the executable to run
-3. On first run, you'll need to initialize the device with a strong master password
-4. The application will automatically create the necessary directories and configuration files
+1. Grab the latest BAR.exe from the releases page
+2. That's it! No installer, no setup wizard—just double-click and go
+3. First time you run it, you'll create your master password (make it a good one!)
+4. BAR will set up all the folders and files it needs automatically
+
+*This is the easiest option for most people. Just download, run, and you're good to go.*
 </details>
 
 <details>
-<summary><b>Option 2: Running from Source</b></summary>
+<summary><b>Option 2: Run from Source Code (For Developers)</b></summary>
 
-1. Ensure you have Python 3.8 or higher installed
-2. Clone or download the repository
-3. Install dependencies: `pip install -r requirements.txt`
-   - Required dependencies include PySide6 (v6.9.0), cryptography (v41.0.3)
-4. Run the application: `python main.py`
-5. For development purposes, you can use the `--debug` flag: `python main.py --debug`
+1. Make sure you've got Python 3.8 or newer installed
+2. Clone this repo or download the source code
+3. Install the required packages: `pip install -r requirements.txt`
+   - You'll get PySide6, cryptography libraries, and everything else you need
+4. Fire it up: `python main.py`
+5. Want to see what's happening under the hood? Run it in debug mode: `python main.py --debug`
+
+*This option is great if you want to poke around the code or contribute to the project.*
 </details>
 
 <details>
-<summary><b>Option 3: Building Your Own Executable</b></summary>
+<summary><b>Option 3: Build Your Own Executable (Trust Issues? Respect.)</b></summary>
 
-1. Install dependencies: `pip install -r requirements.txt`
-   - Includes PyInstaller (v6.0.0) for building the executable
+1. Install the dependencies: `pip install -r requirements.txt`
+   - This includes PyInstaller which turns Python code into an .exe file
 2. Run the build script: `python build.py`
-3. Find the executable in the `dist` directory
-4. For a smaller executable size, use the `--onefile` option: `python build.py --onefile`
+3. Your shiny new BAR.exe will be in the `dist` folder
+4. Want a single-file version? Use: `python build.py --onefile`
+
+*If you don't trust pre-built executables (and honestly, that's a smart security posture), build it yourself!*
 </details>
 
 ---
 
-## 📱 Usage Guide
+## 📱 How to Use BAR
 
-### First-Time Setup
-Initialize your device with a strong master password (hardware-bound)
+### First Time Using It?
+When you first open BAR, you'll set up your device with a master password. This is important—it's the key to everything!
 
-- **Responsive Setup Dialog**: Automatically fits all screen sizes with improved layout
-- **Security Level Selection**: Choose from Standard, High, or Maximum security levels
-- **Hardware Binding**: Device-bound authentication prevents unauthorized access
-- **Complete Security**: Three-tier security configuration with data destruction options
+- **Setup Screen**: Clean, simple, and works on any screen size
+- **Pick Your Security Level**: Go with Standard (pretty secure), High (very secure), or Maximum (paranoid level—wrong password 3 times and everything gets nuked)
+- **Lock It to Your Device**: Optional hardware binding means your files only work on THIS computer
+- **Configure Destruction Settings**: Decide how aggressive you want BAR to be when things go wrong
    
-*Note: v2.0.0 uses single-user device authentication - no separate user accounts needed*
+*Quick note: Unlike some apps with complicated user accounts, BAR just uses one password per device. Simple as that.*
 
-### Device Authentication
-Unlock your secure file storage with your master password
+### Using It Day-to-Day
+Just unlock BAR with your master password and you're in. That's it—no multiple logins or authentication screens every five minutes.
 
-*Note: Device unlock is the only authentication step - no separate login required*
-
-### Main Interface
-Manage your secure files and access application features
+### The Main Screen
+This is where you'll spend most of your time—managing your secure files, checking expiration dates, and accessing all of BAR's features.
 
 [![App Interface](resources/app_interface.png)](resources/app_interface.png)
+
+*Everything you need is right here. We tried to keep it simple and intuitive.*
 
 ### File Operations
 
@@ -284,9 +296,9 @@ Configure application behavior, security parameters, and appearance
 
 ---
 
-## 🚀 Use Cases
+## 🚀 When Should You Use BAR?
 
-BAR is designed for scenarios where secure, temporary file storage and sharing are critical:
+Honestly? Anytime you need to share or store something sensitive that shouldn't stick around forever. Here are some ideas:
 
 | Scenario | Description |
 |----------|-------------|
@@ -301,62 +313,68 @@ BAR is designed for scenarios where secure, temporary file storage and sharing a
 
 ---
 
-## 📝 Best Practices
+## 📝 Tips to Keep You Out of Trouble
 
-- **Password Security**: Use strong, unique passwords with a mix of character types
-- **Security Parameters**: Set appropriate security constraints based on data sensitivity
-- **Backup Strategy**: Regularly back up non-sensitive data (remember that securely deleted files CANNOT be recovered)
-- **Deadman Switch**: Be cautious with this feature - files will be permanently deleted if not accessed within the specified period
-- **Device Scanning**: Scan removable devices before importing files to ensure integrity
-- **Logging**: Check the logs in `~/.bar/logs` directory for troubleshooting
-- **Hardware Binding**: Enable for critical files to prevent unauthorized access from different devices
-- **Security Levels**: Choose appropriate security level based on threat model:
-  - *Standard*: 5 failed attempts → temporary lockout
-  - *High*: 4 failed attempts → progressive lockouts (up to 24 hours)
-  - *Maximum*: 3 failed attempts → **PERMANENT DATA DESTRUCTION**
-- **Panic Wipe**: Emergency destruction available through UI or hotkeys
-- **Password Recovery**: **CRITICAL** - No password recovery exists. Forgotten password = complete data loss
-- **Complete Reset**: Panic wipe removes ALL traces, application starts fresh after system restart
+- **Use Strong Passwords**: Yeah, I know you've heard this a million times, but seriously—long passwords with numbers, symbols, and mixed case. Your cat's name isn't gonna cut it.
+- **Match Security to Importance**: Don't set Maximum security on your grocery list. Save the intense settings for actually sensitive stuff.
+- **Back Up Your Non-Secret Stuff**: Once BAR deletes something, it's GONE. If you might need it later, keep a backup somewhere else.
+- **Deadman Switch Warning**: This feature is cool but dangerous. If you forget to check in, your files delete themselves. Set realistic timeframes.
+- **Scan Before You Import**: When adding files from USB drives or other devices, let BAR scan them first to make sure they're legit.
+- **Check the Logs**: If something weird happens, check `~/.bar/logs` for details on what went wrong.
+- **Hardware Binding for Important Stuff**: For your most critical files, enable hardware binding so they only work on your device.
+- **Understand Security Levels**:
+  - *Standard*: 5 wrong password attempts and you get locked out temporarily (annoying but safe)
+  - *High*: 4 wrong attempts and lockouts get progressively longer (up to a full day)
+  - *Maximum*: 3 strikes and **EVERYTHING GETS DELETED**. Not kidding. Use this carefully.
+- **Know Your Panic Button**: In an emergency, you can wipe everything fast through the UI or hotkeys. Just remember where it is.
+- **NO PASSWORD RECOVERY**: This is SUPER important—if you forget your password, there's no "reset password" button. Your data is just... gone. Forever.
+- **Panic Wipe = Fresh Start**: If you trigger a panic wipe, BAR removes all traces of itself. When you restart it, it'll be like you're installing it for the first time.
 
 ---
 
-## 📜 Legal Considerations
+## 📜 The Legal Stuff (Please Don't Skip This)
 
-BAR is designed for legitimate security purposes. Please be aware of the following important legal considerations:
+Look, I have to say this clearly: BAR is made for legitimate, legal purposes. Here's what you need to know:
 
-- **Encryption Regulations**: The use of encryption software may be regulated or restricted in certain countries or jurisdictions. It is your responsibility to ensure your use of BAR complies with all applicable laws.
+- **Encryption Laws Vary**: Some countries restrict or regulate encryption software. It's on you to make sure using BAR is legal where you live. Seriously, check your local laws.
 
-- **Data Protection Laws**: When using BAR to store or process data subject to data protection regulations (such as GDPR, CCPA, HIPAA, etc.), ensure your usage complies with all relevant requirements.
+- **Data Protection Regulations**: If you're handling data that falls under GDPR, HIPAA, CCPA, or similar laws, make sure you're using BAR in compliance with those regulations. Don't use BAR to delete stuff you're legally required to keep.
 
-- **Legitimate Use**: BAR should only be used for lawful purposes. Do not use this application to circumvent legal data retention requirements or for any illegal activities.
+- **Use It Responsibly**: This should go without saying, but BAR is for legal use only. Don't use it for anything sketchy, illegal, or to hide evidence of wrongdoing.
 
-- **No Warranty**: BAR is provided "AS IS" without warranty of any kind. The developers are not liable for any damages or data loss resulting from the use of this application.
+- **No Guarantees**: BAR comes "as is." If something goes wrong and you lose data, that's on you. I'm not responsible for any damages, data loss, or issues that come from using this software.
 
-For complete legal information, please refer to the [DISCLAIMER.md](DISCLAIMER.md) file included with this application.
+I know legal disclaimers are boring, but there's more important info in the [DISCLAIMER.md](DISCLAIMER.md) file. Give it a read.
 
 ---
 
 ## 📄 License
 
-BAR is licensed under the GNU General Public License v3.0 (GPL-3.0).
+BAR is licensed under the GNU General Public License v3.0 (GPL-3.0). Here's what that means in plain English:
 
-- **Free Software**: You are free to use, modify, and distribute this software.
-- **Copyleft**: Any derivative works must also be distributed under the same license terms.
-- **Source Code**: If you distribute this software, you must make the source code available.
-- **No Warranty**: This software is provided without warranty of any kind.
+- **It's Free and Open**: You can use, modify, and share BAR however you want.
+- **Keep It Open**: If you make changes and share your version, you have to keep it open source under the same license. That's the "copyleft" thing.
+- **Share the Code**: If you distribute BAR (modified or not), you need to make the source code available too.
+- **No Guarantees**: I'm providing this software as-is. If it breaks, that's not on me.
 
-For the full license text, see the [LICENSE](LICENSE) file included with this application or visit the [GNU GPL v3.0 website](https://www.gnu.org/licenses/gpl-3.0.en.html).
+Want the full legal text? Check out the [LICENSE](LICENSE) file or visit the [GNU GPL v3.0 website](https://www.gnu.org/licenses/gpl-3.0.en.html).
 
 ---
 
-## 👨‍💻 About the Author
+## 👨‍💻 Who Made This?
 
-BAR was created by **Rolan (RNR)**, a passionate cybersecurity enthusiast and software developer dedicated to creating tools that enhance digital privacy and security. With extensive experience in security architecture and anti-forensics techniques, Rolan has designed BAR to provide military-grade protection for sensitive data while maintaining ease of use.
+Hey! I'm **Rolan (RNR)**, and I built BAR because I got tired of the lack of good tools for handling sensitive, temporary data. I'm really into cybersecurity and privacy, and I wanted to make something that's both seriously secure and actually usable by real humans.
+
+I've spent a lot of time learning about security architecture, encryption, and anti-forensics techniques, and I poured all of that into BAR. My goal was to create something that protects your data like it's classified intel, but doesn't require a PhD to use.
+
+If you've got questions, feedback, or just want to say hi, feel free to reach out. I'm always looking to improve BAR and make it more useful for people who care about their digital privacy.
 
 ---
 
 <div align="center">
 
 **BAR - Because some things are meant to be temporary.**
+
+*Stay safe out there.* 🔥
 
 </div>
