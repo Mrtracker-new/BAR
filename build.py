@@ -59,6 +59,8 @@ def build_executable():
         '--onefile',   # Single executable file
         '--icon=resources/BAR_logo.ico',  # Application icon
         '--add-data=LICENSE;.',  # Include license file (if available)
+        '--exclude-module=PyQt5',  # Exclude PyQt5 to avoid conflicts with PySide6
+        '--exclude-module=PyQt6',  # Exclude PyQt6 to avoid conflicts with PySide6
         '--clean',     # Clean PyInstaller cache
         'main.py'      # Main script
     ]

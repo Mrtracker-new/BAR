@@ -654,7 +654,7 @@ def create_password_field(field_name: str = "password",
 
 if __name__ == "__main__":
     # Basic testing
-    from PyQt5.QtWidgets import QApplication, QVBoxLayout, QWidget
+    from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
     import sys
     
     app = QApplication(sys.argv)

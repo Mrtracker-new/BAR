@@ -295,7 +295,7 @@ class DeviceAuthDialog(QDialog):
             return
         
         # Second confirmation with text input
-        from PyQt5.QtWidgets import QInputDialog
+        from PySide6.QtWidgets import QInputDialog
         confirm_text, ok = QInputDialog.getText(
             self,
             "Final Confirmation",
