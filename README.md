@@ -195,6 +195,12 @@ Okay, if you're still reading, you probably want to know HOW all this security m
 ### First Time Using It?
 When you first open BAR, you'll set up your device with a master password. This is important—it's the key to everything!
 
+<details>
+<summary><b>View First Time Setup Screen</b></summary>
+
+[![First Time Login](resources/First_time_Login_interface.png)](resources/First_time_Login_interface.png)
+</details>
+
 - **Setup Screen**: Clean, simple, and works on any screen size
 - **Pick Your Security Level**: Go with Standard (pretty secure), High (very secure), or Maximum (paranoid level—wrong password 3 times and everything gets nuked)
 - **Lock It to Your Device**: Optional hardware binding means your files only work on THIS computer
@@ -248,10 +254,6 @@ This is where you'll spend most of your time—managing your secure files, check
    - Portable encrypted file: Exports the .bar file with all security constraints intact
 3. Select destination location
 4. Share the exported file securely
-
-[![Export Original File](resources/Export_original_file.png)](resources/Export_original_file.png)
-
-[![Export Encrypted File](resources/Export_portable_encrypted_file.png)](resources/Export_portable_encrypted_file.png)
 </details>
 
 <details>
@@ -287,10 +289,6 @@ BAR includes comprehensive protection for view-only files to prevent unauthorize
 - Mobile phone cameras cannot be blocked (hardware limitation)
 - External screen capture devices are not detectable
 - Administrative/elevated screenshot tools may bypass some protections
-
-<div align="center">
-<img src="resources/Media_File_Restriction_Warning.png" alt="View-Only File Protection" width="500">
-</div>
 </details>
 
 ### Application Settings

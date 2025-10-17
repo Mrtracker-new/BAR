@@ -645,4 +645,10 @@ weights/
 *.wav
 # Only if they contain sensitive information or metadata
 
+# Allow resources folder images (documentation/UI assets)
+!resources/*.png
+!resources/*.jpg
+!resources/*.jpeg
+!resources/*.gif
+
 # End of .gitignore
