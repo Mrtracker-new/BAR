@@ -1,177 +1,247 @@
 ![BAR_logo](https://github.com/user-attachments/assets/2424e744-755d-4de2-9ce1-4362f7729521)
-# BAR - Burn After Reading v2.0.0+
 
-**Author**: Rolan (RNR)  
-**Release Date**: January 2025  
-**Status**: Enhanced Security Release
+# BAR v2.0.0 - Release Notes
 
-## 🔥 Secure File Management with Advanced Anti-Capture Protection 🔥
-
-### 🚀 Release Highlights
-
-We're excited to announce the enhanced release of BAR (Burn After Reading) - a standalone desktop application featuring revolutionary screenshot protection, streamlined authentication, and military-grade security for sensitive file management.
-
-### What is BAR?
-
-BAR is a completely offline file management system designed for users who need the highest level of security and privacy. It allows you to store sensitive files with customizable security parameters including time-based expiration, access count limits, and deadman switch functionality.
-
-### ✨ Key Features
-
-**🛡️ Enhanced Security Architecture**
-- **100% Offline Security**: Works without internet connection or server dependencies
-- **Military-Grade Encryption**: AES-256-GCM authenticated encryption protects all content
-- **Device-Bound Authentication**: Single-user device authentication with hardware binding
-- **Advanced Screenshot Protection**: Revolutionary multi-layer anti-capture system
-
-**🔥 Self-Destruction Mechanisms**
-- **Time-based Expiration**: Files delete after specified time periods
-- **Access Count Limits**: Files delete after being viewed a set number of times
-- **Deadman Switch**: Files delete after periods of inactivity
-- **Anti-Brute Force**: Files delete after multiple failed password attempts
-- **DoD-Compliant Deletion**: Multi-pass overwrite for unrecoverable destruction
-- **🚨 Panic Wipe System**: Complete application reset with 98%+ destruction rate
-- **Emergency Protocol**: Three-tier destruction levels (Selective/Aggressive/Scorched Earth)
-
-**📸 Revolutionary Screenshot Protection**
-- **Real-time Keyboard Blocking**: Intercepts Print Screen, Win+Shift+S, Alt+Print Screen
-- **Clipboard Monitoring**: Detects and clears screenshot images immediately
-- **Process Detection**: Monitors and terminates screenshot applications automatically
-- **Statistical Analysis**: Tracks suspicious behavior with automatic breach response
-- **Focus Change Monitoring**: Detects window switching and Alt+Tab attempts
-- **Multi-layer Defense**: Combines multiple protection methods for comprehensive coverage
-
-**📁 Advanced File Management**
-- **Multi-threaded Scanning**: Fast detection of .bar files across all connected devices
-- **Secure File Sharing**: Export/import encrypted files with security constraints intact
-- **View-Only Protection**: Enhanced security for files with export restrictions
-- **Comprehensive Logging**: Detailed audit trails for all security events
-
-### 🔧 Technical Specifications
-
-**Core Technologies:**
-- Built with Python 3.8+ and PyQt5 for cross-platform compatibility
-- Packaged as standalone Windows executable with no dependencies
-- AES-256-GCM mode for authenticated encryption with integrity verification
-- PBKDF2-HMAC-SHA256 key derivation with configurable iterations
-
-**Enhanced Security Implementation:**
-- Low-level Windows API integration for system-level hooks
-- Real-time keyboard hook interception using SetWindowsHookEx
-- Clipboard monitoring with image detection capabilities
-- Process enumeration and termination for screenshot applications
-- Hardware fingerprinting for device-bound authentication
-- Statistical behavior analysis with threat scoring
-
-**Performance Features:**
-- Multi-threaded scanning engine for improved performance
-- Support for all Windows drive types (Fixed, Removable, Network)
-- Memory-efficient handling of large files
-- Optimized encryption/decryption pipeline
-- Background monitoring with minimal system impact
-
-### Installation
-
-#### Option 1: Running the Executable
-1. Download BAR.exe from the release page
-2. No installation required - simply double-click to run
-
-#### Option 2: Building from Source
-1. Ensure Python 3.8+ is installed
-2. Clone the repository
-3. Install dependencies: pip install -r requirements.txt
-4. Run the build script: python build.py
-5. Find the executable in the dist directory
-
-### 🚀 First-Time Setup (v2.0.0+)
-
-**Device Initialization:**
-1. **Launch Application**: Run BAR.exe (no installation required)
-2. **Initialize Device**: Click "Initialize Device" on first startup
-3. **Set Master Password**: Create strong master password for device unlock
-4. **Hardware Binding**: Password automatically bound to current device
-5. **Start Securing**: Begin adding files with custom security settings
-
-**Simplified Authentication:**
-- **No User Accounts**: Single device authentication replaces user system
-- **One Password**: Master password unlocks all secure storage
-- **Session Persistence**: Stays unlocked during application session
-- **Device Portability**: Files remain locked to initialization device
-
-### 🔒 Security Notice
-
-**Critical Security Information:**
-- **Unrecoverable Deletion**: Files that self-destruct CANNOT be recovered by any means
-- **No Password Recovery**: Master password cannot be recovered - choose wisely
-- **Hardware Binding**: Password only works on device where it was created
-- **Complete Privacy**: All operations local - no data transmitted externally
-
-**Screenshot Protection Limitations:**
-- **Mobile Cameras**: Cannot block physical phone/camera screenshots
-- **External Capture**: Hardware capture devices may bypass protection
-- **Administrator Tools**: Some elevated screenshot tools may bypass protection
-- **Windows Only**: Full protection features require Windows 10/11
-
-**Recommended Security Practices:**
-- **Run as Administrator**: For maximum screenshot protection effectiveness
-- **Secure Environment**: Use in controlled physical environment
-- **Strong Passwords**: Use complex master password with mixed characters
-- **Regular Backups**: Backup non-sensitive data before applying security constraints
-
-### Use Cases
-
-- Secure sharing of confidential documents
-- Temporary storage of sensitive credentials
-- Compliance with data retention policies
-- Protection of intellectual property
-- Secure communication with built-in destruction capabilities
-
-### System Requirements
-
-- Windows 10/11 (64-bit)
-- 100MB free disk space
-- 4GB RAM recommended
-
-### 📈 Latest Updates
-
-#### Version 2.0.0+ (Current - January 2025)
-
-**🛡️ Enhanced Security Architecture:**
-- Revolutionary screenshot protection with real-time blocking
-- Integrated Windows keyboard hook system for hotkey interception
-- Advanced clipboard monitoring with image detection
-- Process monitoring and automatic termination of screenshot apps
-- Statistical behavior analysis with automatic breach response
-- **NEW**: Complete panic wipe system with 98%+ destruction rate
-- **NEW**: Three-tier emergency protocol (Selective/Aggressive/Scorched Earth)
-
-**🔧 System Improvements:**
-- Streamlined single-user device authentication
-- Enhanced hardware binding for device-specific security
-- Consolidated protection modules for better performance
-- Improved error handling and user feedback
-- Comprehensive security event logging
-- **FIXED**: Security configuration corruption errors on first run
-- **ENHANCED**: Complete application reset capability after panic wipe
-
-**📱 UI/UX Enhancements:**
-- **FIXED**: Device Setup Dialog layout issues and responsiveness
-- **IMPROVED**: Dialog automatically fits all screen sizes
-- **ENHANCED**: Better text wrapping and content organization
-- **ADDED**: Automatic screen size detection and adaptive layouts
-
-**📋 Project Organization:**
-- Cleaned up redundant test files and development artifacts
-- Reorganized documentation in proper docs/ structure
-- Enhanced .gitignore for better security protection
-- Professional project structure ready for production deployment
-
-**🔍 Technical Enhancements:**
-- Fixed keyboard hook integration for reliable screenshot blocking
-- Enhanced clipboard monitoring frequency (50ms) for faster detection
-- Added KBDLLHOOKSTRUCT definition for stable Windows operations
-- Improved memory management and resource cleanup
-- Better compatibility with Windows security features
+**Author**: [Rolan (RNR)](https://rolan-rnr.netlify.app/)  
+**Release Date**: October 17, 2025  
+**Status**: Stable Release
 
 ---
 
-*Remember*: Once a file is destroyed by BAR, it cannot be recovered. Use responsibly.
+## 🔥 What's New in v2.0.0
+
+This is a major release that makes BAR simpler, faster, and more secure!
+
+---
+
+## ✨ Key Features
+
+### 🛡️ Security
+- **100% Offline** - No internet needed, ever
+- **Military-Grade Encryption** - AES-256-GCM
+- **Device-Bound Authentication** - One device, one password
+- **Screenshot Protection** - Advanced anti-capture system
+- **Self-Destruct** - Files that really disappear
+
+### 🔥 Self-Destruction
+- **Time Bombs** - Delete after X hours/days
+- **Read Limits** - Delete after X views
+- **Deadman Switch** - Delete if you don't check in
+- **Anti-Brute Force** - Delete after wrong passwords
+- **Panic Wipe** - Nuclear option (98%+ destruction)
+
+### 📸 Screenshot Protection
+- Blocks Print Screen, Win+Shift+S, Alt+Print Screen
+- Monitors and clears clipboard automatically
+- Detects and terminates screenshot apps
+- Tracks suspicious behavior
+- Multi-layer defense system
+
+### 📁 File Management
+- Fast multi-threaded scanning
+- Secure file sharing
+- View-only mode
+- DoD-compliant deletion
+- Comprehensive logging
+
+---
+
+## 🚀 Installation
+
+### Option 1: Ready to Run
+1. Download BAR.exe
+2. Double-click and go
+3. No installation needed!
+
+### Option 2: From Source
+```bash
+pip install -r requirements.txt
+python main.py
+```
+
+### Option 3: Build It Yourself
+```bash
+pip install -r requirements.txt
+python build.py
+# Find BAR.exe in dist/
+```
+
+---
+
+## 📋 System Requirements
+
+- **OS**: Windows 10/11 (best), Limited Linux/macOS
+- **RAM**: 4GB min, 8GB recommended
+- **Storage**: 100MB + your files
+- **Internet**: Not required!
+
+---
+
+## 🎯 What's Different from Before
+
+### Simpler Authentication
+- **Before**: Device Setup → Unlock → Login → App
+- **Now**: Device Setup → Unlock → App ✅
+
+### Better Security
+- Enhanced screenshot protection
+- Panic wipe system (3 levels)
+- Improved hardware binding
+- Better encryption
+
+### Cleaner Code
+- Removed 500+ lines of old code
+- Fixed bugs and issues
+- Better performance
+- More stable
+
+---
+
+## ⚠️ Important Warnings
+
+### Data Loss is Permanent
+- Once deleted, files are **GONE FOREVER**
+- No undo, no recovery
+- DoD-compliant overwrite = unrecoverable
+
+### No Password Recovery
+- Forget your password = lose everything
+- Hardware-bound to your device
+- Choose wisely!
+
+### Screenshot Protection Limits
+- ✅ Blocks software screenshots
+- ❌ Can't block phone cameras
+- ❌ Can't block external capture devices
+- ❌ Some admin tools may bypass
+
+---
+
+## 🎯 Use Cases
+
+Perfect for:
+- Sensitive document sharing
+- Temporary credential storage
+- Compliance with data retention
+- Personal privacy protection
+- Secure communication
+- Corporate IP protection
+- Healthcare information
+- Financial documents
+
+---
+
+## 💡 Best Practices
+
+### Do:
+- ✅ Use strong passwords (12+ characters)
+- ✅ Match security to importance
+- ✅ Keep backups of important data
+- ✅ Test with non-critical files first
+- ✅ Read the documentation
+
+### Don't:
+- ❌ Forget your password
+- ❌ Use Maximum security casually
+- ❌ Skip the backups
+- ❌ Use for illegal purposes
+- ❌ Ignore the warnings
+
+---
+
+## 🔧 Technical Details
+
+**Core Technologies:**
+- Python 3.8+
+- PySide6 for GUI
+- AES-256-GCM encryption
+- PBKDF2-HMAC-SHA256 key derivation
+- DoD 5220.22-M deletion
+
+**Enhanced Features:**
+- Windows API integration
+- Real-time keyboard hooks
+- Clipboard monitoring
+- Process detection
+- Statistical analysis
+- Hardware fingerprinting
+
+**Performance:**
+- Multi-threaded scanning
+- Optimized encryption
+- Low memory footprint
+- Minimal CPU impact
+
+---
+
+## 📈 What Got Better
+
+### v2.0.0 Improvements:
+- ✅ Streamlined authentication
+- ✅ Enhanced screenshot protection
+- ✅ Panic wipe system added
+- ✅ Better hardware binding
+- ✅ Fixed security bugs
+- ✅ Cleaner codebase
+- ✅ Better performance
+- ✅ More stable
+
+---
+
+## 🐛 Known Issues
+
+### Limitations:
+- Windows 10/11 works best
+- Limited Linux/macOS support
+- Can't block phone cameras
+- Some admin tools may bypass protection
+- Performance impact on old hardware
+
+### Workarounds:
+- Use in controlled environments
+- Run as administrator for best protection
+- Keep software updated
+- Read the documentation
+
+---
+
+## 📞 Need Help?
+
+- **Docs**: Check `docs/` folder
+- **README**: Main overview
+- **INSTALL**: Setup guide
+- **DISCLAIMER**: Important warnings
+
+---
+
+## 📄 License
+
+BAR is GPL-3.0 licensed:
+- Free and open source
+- Modify and share freely
+- Keep it open source
+- No warranties
+
+See [LICENSE](LICENSE) for details.
+
+---
+
+## 👨‍💻 Who Made This?
+
+I'm **[Rolan (RNR)](https://rolan-rnr.netlify.app/)**, and I built BAR because I wanted better tools for secure, temporary file handling. I'm passionate about cybersecurity and privacy, and I wanted to make something that's both seriously secure and actually usable.
+
+Feel free to reach out with questions, feedback, or just to say hi!
+
+---
+
+<div align="center">
+
+**BAR v2.0.0 - Because some things are meant to be temporary.**
+
+*Stay safe out there.* 🔥
+
+</div>
+
+---
+
+*Remember: Once a file is destroyed by BAR, it cannot be recovered. Use responsibly.*

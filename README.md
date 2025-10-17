@@ -10,6 +10,10 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Limited%20Linux%20%26%20macOS-lightgrey)]()
 [![Status](https://img.shields.io/badge/status-active-success.svg)]()
 
+**Version**: 2.0.0  
+**Last Updated**: October 17, 2025  
+**Author**: [Rolan (RNR)](https://rolan-rnr.netlify.app/)
+
 </div>
 
 > **Hey, quick heads up!** Before diving in, take a moment to read the [DISCLAIMER.md](DISCLAIMER.md) file. It's got some important stuff about security and legal considerations you should know about.
@@ -34,7 +38,7 @@ Look, I need to be super clear about something: BAR is designed to make files di
 
 Here's what you need to understand:
 
-- When BAR deletes something, it's **PERMANENT**. We're talking gone-from-existence permanent.
+- When BAR deletes something, it's **PERMANENT**. I'm talking gone-from-existence permanent.
 - You're responsible for making sure you're using this legally in your country (some places have rules about encryption software).
 - Your security is only as good as your passwords—so make them strong!
 - Nothing in cybersecurity is bulletproof, and that includes BAR.
@@ -47,7 +51,7 @@ Seriously, check out the [full disclaimer](DISCLAIMER.md) before you start using
 
 ### The Security Stuff (Don't Worry, It's Not Boring)
 - **🔒 Works Completely Offline**: No internet needed, no data sent anywhere. Your files stay on YOUR machine.
-- **🛡️ Military-Grade Encryption**: We use AES-256 encryption—the same stuff governments use to protect classified info.
+- **🛡️ Military-Grade Encryption**: I use AES-256 encryption—the same stuff governments use to protect classified info.
 - **🔑 Smart Key Management**: Your encryption keys are generated using industry-standard methods and can be tied to your specific device.
 - **📸 Screenshot Blocker**: Tries to stop people from taking screenshots of your sensitive files (though phone cameras are still a thing, obviously).
 
@@ -63,13 +67,13 @@ Seriously, check out the [full disclaimer](DISCLAIMER.md) before you start using
 - **📱 Smart Scanner**: BAR can scan all your drives (including USB sticks) to find your encrypted .bar files.
 - **🔍 Lightning Fast**: Multi-threaded scanning means you're not waiting around forever.
 - **🔄 Easy Sharing**: Export encrypted files to share with others—all the security settings stay intact.
-- **🗑️ Actually Secure Deletion**: When we delete something, we overwrite it multiple times so forensic tools can't recover it.
-- **👁️ View-Only Mode**: Show someone a file without letting them copy, save, or screenshot it (well, we try our best).
+- **🗑️ Actually Secure Deletion**: When I delete something, I overwrite it multiple times so forensic tools can't recover it.
+- **👁️ View-Only Mode**: Show someone a file without letting them copy, save, or screenshot it (well, I try my best).
 
 ### The Experience
 - **🔐 One Device, One Password**: Simple device-based authentication—no complicated account systems.
-- **💻 Clean Interface**: We made it look good and easy to use. No endless menus or confusing buttons.
-- **🎨 Easy on the Eyes**: Dark theme by default because we're not monsters.
+- **💻 Clean Interface**: I made it look good and easy to use. No endless menus or confusing buttons.
+- **🎨 Easy on the Eyes**: Dark theme by default because I'm not a monster.
 - **⚡ No Hassle**: Unlock once and you're in. No repeated logins or annoying prompts.
 
 ---
@@ -206,7 +210,7 @@ This is where you'll spend most of your time—managing your secure files, check
 
 [![App Interface](resources/app_interface.png)](resources/app_interface.png)
 
-*Everything you need is right here. We tried to keep it simple and intuitive.*
+*Everything you need is right here. I tried to keep it simple and intuitive.*
 
 ### File Operations
 
@@ -363,7 +367,7 @@ Want the full legal text? Check out the [LICENSE](LICENSE) file or visit the [GN
 
 ## 👨‍💻 Who Made This?
 
-Hey! I'm **Rolan (RNR)**, and I built BAR because I got tired of the lack of good tools for handling sensitive, temporary data. I'm really into cybersecurity and privacy, and I wanted to make something that's both seriously secure and actually usable by real humans.
+Hey! I'm **[Rolan (RNR)](https://rolan-rnr.netlify.app/)**, and I built BAR because I got tired of the lack of good tools for handling sensitive, temporary data. I'm really into cybersecurity and privacy, and I wanted to make something that's both seriously secure and actually usable by real humans.
 
 I've spent a lot of time learning about security architecture, encryption, and anti-forensics techniques, and I poured all of that into BAR. My goal was to create something that protects your data like it's classified intel, but doesn't require a PhD to use.
 

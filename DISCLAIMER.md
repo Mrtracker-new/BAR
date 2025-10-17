@@ -1,172 +1,197 @@
-# BAR (Burn After Reading) - Legal Disclaimer
+# BAR - Important Legal & Security Info
 
-**Author**: Rolan (RNR)  
-**Version**: 2.0.0+  
-**Last Updated**: January 2025
-
-## ⚠️ Important Notice
-
-This disclaimer outlines critical legal, security, and operational considerations for users of the BAR (Burn After Reading) application with enhanced screenshot protection and advanced security features. By using this software, you acknowledge that you have read, understood, and agreed to all the following terms.
-
-## Legal Considerations
-
-### Encryption Regulations
-
-- The use of encryption software may be regulated or restricted in certain countries or jurisdictions.
-- It is your responsibility to ensure that your use of BAR complies with all applicable local, state, national, and international laws and regulations.
-- The developers of BAR are not responsible for any legal consequences resulting from illegal use of this software.
-
-### Data Protection
-
-- BAR is designed to protect your data through encryption, but no security measure is 100% foolproof.
-- The developers make no guarantees regarding the absolute security of your data when using this application.
-- You are responsible for maintaining the confidentiality of your passwords and encryption keys.
-
-## Security Warnings
-
-### Password Security & Device Authentication
-
-**Master Password Criticality:**
-- BAR v2.0.0+ uses single-user device authentication with hardware binding
-- The security of ALL your data depends on your master password strength
-- Your master password cannot be recovered - if forgotten, data is permanently lost
-- Hardware binding means your password only works on the device where it was created
-
-**Password Best Practices:**
-- Use strong, unique passwords with mixed character types (minimum 12 characters)
-- Never share your master password with anyone
-- Consider using a password manager for complex passwords
-- Avoid common words, personal information, or predictable patterns
-
-### Data Loss Risk & Self-Destruction
-
-**Critical Data Loss Warnings:**
-- BAR includes multiple self-destruction mechanisms (time-based, access-count, deadman switch)
-- **WARNING**: Once a file is securely deleted, it CANNOT be recovered by ANY means
-- DoD-compliant multi-pass overwrite ensures complete data destruction
-- Self-destruction can be triggered automatically without user intervention
-- Master password loss results in permanent inaccessibility to ALL encrypted data
-
-**Enhanced Security Risks:**
-- Screenshot protection may force-close applications on security breaches
-- View-only files automatically close when suspicious activity is detected
-- Security constraint violations result in immediate file destruction
-- Multiple failed authentication attempts trigger automatic file deletion
-
-**Developer Liability:**
-- Developers are NOT responsible for data loss from self-destruction features
-- No data recovery service can restore securely deleted BAR files
-- Users assume full responsibility for backup strategies
-
-### Brute Force Protection
-
-- BAR includes anti-brute force protection that may trigger file deletion after multiple failed password attempts.
-- Be extremely careful when entering passwords, as repeated failures may result in permanent data loss.
-
-## No Warranty
-
-- BAR is provided "AS IS" without warranty of any kind, either expressed or implied.
-- The developers disclaim all warranties, including but not limited to, the implied warranties of merchantability and fitness for a particular purpose.
-- The entire risk as to the quality and performance of the software remains with you.
-
-## Limitation of Liability
-
-- In no event shall the developers be liable for any damages whatsoever (including, without limitation, damages for loss of business profits, business interruption, loss of business information, or any other pecuniary loss) arising out of the use or inability to use this software.
-
-## Enhanced Security Features & Limitations
-
-### Screenshot Protection System
-
-**Windows-Specific Features:**
-- Real-time keyboard hook interception may require administrator privileges
-- Screenshot protection works only on Windows 10/11 systems
-- System-level hooks may conflict with security software or antivirus programs
-- Enhanced protection features impact system performance
-
-**Protection Limitations:**
-- **Mobile phone cameras**: Cannot be blocked or detected
-- **External hardware capture**: Screen capture devices bypass software protection
-- **Administrator tools**: Elevated screenshot applications may bypass protection
-- **Physical access**: Users with physical device access may circumvent protections
-- **Network capture**: Remote desktop or screen sharing may bypass local protection
-
-**System Integration Risks:**
-- Keyboard hooks operate at system level and may affect system stability
-- Process monitoring requires elevated permissions on some systems
-- Clipboard monitoring may interfere with other applications
-- Security features may be disabled by system administrators or group policies
-
-### Hardware Binding & Device Authentication
-
-**Device Limitation:**
-- Files encrypted on one device cannot be accessed from different hardware
-- Hardware changes (motherboard, CPU) may prevent data access
-- Device failures result in permanent data inaccessibility
-- No cross-device compatibility for encrypted files
-
-## Proper Usage
-
-**Legitimate Use Requirements:**
-- BAR is designed ONLY for legitimate security and privacy protection purposes
-- Do not use for illegal activities including unauthorized data access, illegal content distribution, or circumventing legal data retention requirements
-- Respect all applicable laws regarding encryption, data protection, and digital privacy
-- Do not use to hide evidence of criminal activity or obstruct legal investigations
-
-**Backup Responsibilities:**
-- Always maintain secure backups of important data OUTSIDE of BAR
-- Self-destruction features make data permanently irrecoverable
-- Consider the permanence of security constraints before implementation
-- Document security settings and access requirements for business continuity
-
-**Professional Use Considerations:**
-- Ensure compliance with organizational data retention policies
-- Consider legal discovery requirements in litigation contexts
-- Verify regulatory compliance for your industry (HIPAA, SOX, GDPR, etc.)
-- Implement appropriate data governance and access controls
-
-## Updates, Security, and System Requirements
-
-**Update Responsibilities:**
-- Keep BAR updated to the latest version for security improvements and bug fixes
-- Monitor project documentation for security advisories and updates
-- Test updates in non-production environments before deploying to critical systems
-- Regularly review and update security settings to meet evolving threats
-
-**System Security Requirements:**
-- Windows 10/11 required for full screenshot protection features
-- Administrator privileges may be required for enhanced security functions
-- Ensure Windows security updates are current for optimal compatibility
-- Consider impact of antivirus software on BAR's security features
-- Maintain physical security of devices containing BAR-encrypted data
-
-**Development and Testing:**
-- BAR includes development environment detection to reduce false security alerts
-- Test security features thoroughly before deploying in production environments
-- Consider performance impact of security features on system resources
-- Monitor security logs for unusual activities or potential security breaches
+**Author**: [Rolan (RNR)](https://rolan-rnr.netlify.app/)  
+**Version**: 2.0.0  
+**Last Updated**: October 17, 2025
 
 ---
 
-By using BAR, you acknowledge that you have read this disclaimer and agree to its terms. If you do not agree with these terms, do not use the BAR application.
+## ⚠️ Please Read This First!
+
+I need to be super clear about what BAR does and the risks involved. This isn't just legal mumbo-jumbo - it's important stuff that could save you from losing data or getting in trouble.
 
 ---
 
-## Acknowledgment of Terms
+## 🚨 The Big Warnings
 
-By downloading, installing, or using BAR, you acknowledge that you have:
+### Data Loss is PERMANENT
 
-✅ **Read and understood** all terms in this disclaimer  
-✅ **Accepted full responsibility** for data loss risks and security implications  
-✅ **Verified legal compliance** in your jurisdiction for encryption software use  
-✅ **Understood the permanence** of self-destruction and secure deletion features  
-✅ **Accepted the limitations** of screenshot protection and security measures  
-✅ **Agreed to legitimate use** requirements and professional responsibilities  
+When BAR deletes something, it's **GONE FOREVER**. Seriously:
 
-**If you do not agree with these terms, do not install or use the BAR application.**
+- ❌ **No "undo" button**
+- ❌ **No recovery software will work**
+- ❌ **No password recovery**
+- ❌ **If you forget your password, your data is lost**
+- ❌ **Self-destruct features trigger automatically**
+
+I use DoD-compliant multi-pass overwrite. That means even the NSA couldn't recover your files (probably).
+
+### No Guarantees
+
+BAR comes "as is." If something goes wrong:
+
+- I'm not responsible for lost data
+- I'm not responsible for any damages
+- I'm not liable for security breaches
+- You use this software at your own risk
+
+This is free, open-source software. There's no warranty, customer support team, or money-back guarantee.
 
 ---
 
-*Document Version: 2.0.0+*  
-*Last Updated: January 2025*  
-*Author: Rolan (RNR)*  
-*Applicable to: BAR v2.0.0 and higher*
+## 📜 Legal Stuff You Need to Know
+
+### Encryption Laws
+
+Some countries restrict encryption software. **It's YOUR job** to:
+
+- ✅ Check if using encryption is legal where you live
+- ✅ Understand your local laws about data protection
+- ✅ Make sure you're complying with regulations
+
+I built BAR for legitimate use. Don't use it:
+
+- ❌ To hide illegal activity
+- ❌ To obstruct legal investigations  
+- ❌ To delete legally required records
+- ❌ For anything sketchy or illegal
+
+### Data Protection Rules
+
+If you handle data covered by GDPR, HIPAA, CCPA, or similar:
+
+- Check that using BAR complies with your requirements
+- Don't use it to delete stuff you're legally required to keep
+- Understand your data retention obligations
+- Keep proper records if needed for compliance
+
+---
+
+## 🔐 Security Warnings
+
+### Password Security
+
+**Your password is EVERYTHING:**
+
+- Use a strong, unique password (12+ characters, mix of types)
+- Never share your password with anyone
+- NO PASSWORD RECOVERY exists - forget it and data is lost
+- Hardware binding means it only works on your device
+
+**Security Levels:**
+
+- **Standard**: 5 wrong attempts = lockout
+- **High**: 4 wrong attempts = longer lockouts
+- **Maximum**: 3 wrong attempts = EVERYTHING DELETES
+
+Choose wisely!
+
+### Screenshot Protection Limitations
+
+My screenshot protection is pretty good, but it's not perfect:
+
+**Can Block:**
+- ✅ Print Screen key
+- ✅ Windows Snipping Tool (Win+Shift+S)
+- ✅ Clipboard screenshots
+- ✅ Many screenshot apps
+
+**Can't Block:**
+- ❌ Phone cameras (hardware limitation)
+- ❌ External capture devices
+- ❌ Some admin-level tools
+- ❌ Remote desktop captures
+
+Don't rely on it as your only protection!
+
+### Hardware Binding
+
+If you enable hardware binding:
+
+- Files only work on the device where you encrypted them
+- Hardware changes (new motherboard, etc.) = permanent data loss
+- Device failure = permanent data loss
+- No way to transfer to another computer
+
+---
+
+## 💻 System Requirements & Risks
+
+### Windows-Specific
+
+BAR works best on Windows 10/11:
+
+- Some features need admin rights
+- Keyboard hooks might conflict with antivirus
+- Uses system-level API calls
+- May impact system performance
+
+### What Can Go Wrong
+
+Honest list of things that might happen:
+
+- Self-destruct triggers when you don't expect it
+- Screenshot protection closes other apps
+- Security features might cause false alarms
+- Performance impact on older computers
+- Conflicts with security software
+
+---
+
+## 📝 Your Responsibilities
+
+### Before Using BAR
+
+- ✅ Read and understand this disclaimer
+- ✅ Check if it's legal in your country
+- ✅ Understand data will be permanently destroyed
+- ✅ Accept all risks involved
+- ✅ Make backups of important data
+- ✅ Test in non-critical scenarios first
+
+### Safe Usage
+
+- Keep BAR updated
+- Use strong passwords
+- Don't use for illegal purposes
+- Understand the features before enabling them
+- Keep backups of anything important
+- Test security features carefully
+
+---
+
+## 🎯 Bottom Line
+
+By using BAR, you agree that:
+
+1. **You've read this disclaimer** and understand it
+2. **You accept the risks** of permanent data loss
+3. **You're using it legally** in your jurisdiction  
+4. **You understand the limitations** of the protection
+5. **You won't hold me responsible** for any issues
+6. **You're using it for legitimate purposes** only
+
+**If you don't agree with these terms, don't use BAR.**
+
+---
+
+## 🤝 Fair Warning
+
+I built BAR to be as secure and safe as possible, but I'm also being honest with you:
+
+- Security isn't perfect
+- Software has bugs
+- Data loss can happen
+- You need to be careful
+
+Use BAR responsibly, keep backups of important stuff, and don't rely on it as your only security measure.
+
+---
+
+**Stay safe, be smart, and use BAR responsibly.**
+
+---
+
+*Last Updated: October 17, 2025*  
+*Author: [Rolan (RNR)](https://rolan-rnr.netlify.app/)*  
+*BAR v2.0.0+*

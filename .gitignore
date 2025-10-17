@@ -6,18 +6,7 @@
 # ================================================
 
 # Project-specific sensitive files
-PROJECT_RULES.md
-SECURITY_AUDIT.md
-test_crypto_fixes.py
-test_device_auth.py
-THREAT_MODEL.md
-SECURITY_REVIEW.md
-VULNERABILITY_ASSESSMENT.md
-PENETRATION_TEST_RESULTS.md
-SECURITY_ASSESSMENT.md
-COMPLIANCE_REPORT.md
-INTERNAL_SECURITY.md
-RELEASE_v2.0.0.md
+docs_ignore/
 
 # Cryptographic materials (comprehensive patterns)
 *.key
