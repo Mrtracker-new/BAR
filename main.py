@@ -297,6 +297,10 @@ def main():
         # Ensure secure cleanup on exit
         try:
             try:
+                file_manager.shutdown()
+            except Exception:
+                pass
+            try:
                 monitor.stop_monitoring()
             except Exception:
                 pass
