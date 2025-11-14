@@ -807,7 +807,7 @@ class FileManager:
         
         # Use the new secure portable format
         try:
-            from ..crypto.secure_portable_format import SecurePortableFormat
+            from src.crypto.secure_portable_format import SecurePortableFormat
             
             # Initialize secure portable format handler
             secure_format = SecurePortableFormat(self.logger)
@@ -854,7 +854,7 @@ class FileManager:
         """
         try:
             # Import secure portable files only - no legacy support for security
-            from ..crypto.secure_portable_format import SecurePortableFormat
+            from src.crypto.secure_portable_format import SecurePortableFormat
             
             secure_format = SecurePortableFormat(self.logger)
             
