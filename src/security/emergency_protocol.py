@@ -7,8 +7,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Callable
 
-from security.secure_file_ops import SecureFileOperations, SecureDeletionMethod
-from security.hardware_wipe import HardwareWipe
+from src.security.secure_file_ops import SecureFileOperations, SecureDeletionMethod
+from src.security.hardware_wipe import HardwareWipe
 
 
 class EmergencyProtocol:
