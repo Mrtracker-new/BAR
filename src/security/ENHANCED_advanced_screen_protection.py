@@ -37,7 +37,7 @@ from enum import Enum
 
 # Import security configuration
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from config.security_config import get_security_config, SecurityLevel
+from src.config.security_config import get_security_config, SecurityLevel
 
 # PySide6 imports for GUI integration
 from PySide6.QtWidgets import (
@@ -1357,11 +1357,18 @@ class ScreenCaptureBlocker:
                 logging.error(f"Error creating multi-monitor overlays: {e}")
             
             # Create a timer to periodically refresh the overlays
+            # Note: QTimer can only be used in Qt thread context. Since this may be called
+            # from a non-Qt thread, we skip the timer and rely on manual refresh calls.
+            # The overlays will still work without periodic refreshes in most cases.
             try:
-                if self.timer is None:
-                    self.timer = QTimer()
-                    self.timer.timeout.connect(self._refresh_overlays)
-                self.timer.start(500)  # Refresh every 500ms
+                # Check if we're in a Qt thread context by checking if QApplication exists
+                if QApplication.instance() is not None:
+                    if self.timer is None:
+                        self.timer = QTimer()
+                        self.timer.timeout.connect(self._refresh_overlays)
+                    self.timer.start(500)  # Refresh every 500ms
+                else:
+                    logging.debug("Skipping QTimer creation - not in Qt thread context")
             except Exception as e:
                 logging.error(f"Error starting overlay refresh timer: {e}")
             
@@ -1479,12 +1486,13 @@ class ScreenCaptureBlocker:
             WS_POPUP = 0x80000000
             
             # Create the overlay window
+            # Cast integers to ctypes to prevent overflow errors
             hwnd = self.user32.CreateWindowExW(
                 WS_EX_TRANSPARENT | WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
                 class_name,
                 "BAR Screen Protection",
                 WS_POPUP,
-                x, y, width, height,
+                ctypes.c_int(x), ctypes.c_int(y), ctypes.c_int(width), ctypes.c_int(height),
                 None,  # parent
                 None,  # menu
                 wndclass.hInstance,
