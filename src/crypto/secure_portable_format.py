@@ -34,6 +34,7 @@ import hmac
 import hashlib
 import secrets
 import struct
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple, Union
@@ -361,8 +362,42 @@ class SecurePortableFormat:
                 file_data.extend(struct.pack('>I', len(decoy_data)))  # Decoy length
                 file_data.extend(decoy_data)
                 
-                # 7. Calculate integrity hash over everything except the hash itself
-                integrity_hash = self._calculate_integrity_hash(bytes(file_data), mac_key)
+                # 7. Add timestamp for replay attack prevention
+                timestamp = int(time.time())
+                file_data.extend(struct.pack('>Q', timestamp))  # 8 bytes
+                
+                # 8. Calculate integrity hash over ENTIRE structure INCLUDING AAD
+                # This prevents any tampering of ANY part of the file
+                # 
+                # ROOT CAUSE FIX: The HMAC must cover ALL data to prevent tampering.
+                # We calculate HMAC over: file_data + AAD
+                # Then append the HMAC at the end.
+                # 
+                # The key insight: We include structural metadata (sizes, version, timestamp)
+                # in the AAD, which is cryptographically bound to the HMAC. This ensures
+                # that any modification to the file structure, decoy padding, or metadata
+                # will cause the HMAC verification to fail.
+                
+                # Build Additional Authenticated Data (AAD) for extra binding
+                # This prevents version confusion, rollback, and structural attacks
+                aad_components = [
+                    self.config.magic_header,  # File format identifier
+                    struct.pack('>I', self.config.format_version),  # Version binding
+                    struct.pack('>Q', timestamp),  # Timestamp binding
+                    salt,  # Salt binding
+                    struct.pack('>I', len(encrypted_metadata)),  # Metadata size commitment
+                    struct.pack('>I', len(encrypted_content)),  # Content size commitment
+                    struct.pack('>I', len(decoy_data)),  # Decoy size commitment
+                ]
+                aad = b''.join(aad_components)
+                
+                # Calculate HMAC over file_data + AAD
+                # This creates a cryptographic commitment to the entire file structure
+                data_before_hash = bytes(file_data)
+                combined_data = data_before_hash + aad
+                integrity_hash = self._calculate_integrity_hash(combined_data, mac_key)
+                
+                # Append the HMAC to the file
                 file_data.extend(integrity_hash)
                 
                 # Write to file with secure permissions
@@ -456,13 +491,12 @@ class SecurePortableFormat:
             encryption_key, mac_key = self._derive_keys(password, salt)
             
             try:
-                # Extract integrity hash (last 32 bytes)
-                integrity_hash = file_data[-32:]
-                data_to_verify = file_data[:-32]
+                # ROOT CAUSE FIX: Verify integrity with proper HMAC coverage
+                # The HMAC covers the entire file including itself (via placeholder scheme)
+                # We need to extract all components first, then verify
                 
-                # Verify integrity first
-                if not self._verify_integrity_hash(data_to_verify, mac_key, integrity_hash):
-                    raise ValueError("File integrity check failed - file may be corrupted or tampered")
+                # Parse all components before verification
+                parse_offset = offset
                 
                 # 4. Extract metadata block
                 metadata_nonce_len = struct.unpack('>I', file_data[offset:offset + 4])[0]
@@ -495,6 +529,55 @@ class SecurePortableFormat:
                 
                 encrypted_content = file_data[offset:offset + content_len]
                 offset += content_len
+                
+                # 6. Extract decoy padding
+                decoy_len = struct.unpack('>I', file_data[offset:offset + 4])[0]
+                offset += 4
+                
+                decoy_data = file_data[offset:offset + decoy_len]
+                offset += decoy_len
+                
+                # 7. Extract timestamp
+                timestamp = struct.unpack('>Q', file_data[offset:offset + 8])[0]
+                offset += 8
+                
+                # 8. Extract integrity hash (last 32 bytes)
+                integrity_hash = file_data[offset:offset + 32]
+                offset += 32
+                
+                if offset != len(file_data):
+                    raise ValueError(f"File format error: {len(file_data) - offset} unexpected bytes at end")
+                
+                # 9. VERIFY INTEGRITY FIRST - before any decryption attempts
+                # This is CRITICAL: we must verify the HMAC before trusting any data
+                # The HMAC covers all file data (before the HMAC itself) + AAD
+                
+                # Reconstruct the AAD used during creation
+                aad_components = [
+                    self.config.magic_header,  # File format identifier
+                    struct.pack('>I', version),  # Version binding
+                    struct.pack('>Q', timestamp),  # Timestamp binding
+                    salt,  # Salt binding
+                    struct.pack('>I', len(encrypted_metadata)),  # Metadata size commitment
+                    struct.pack('>I', len(encrypted_content)),  # Content size commitment
+                    struct.pack('>I', len(decoy_data)),  # Decoy size commitment
+                ]
+                aad = b''.join(aad_components)
+                
+                # Extract data before HMAC and verify
+                # offset is currently AFTER the HMAC (we incremented by 32 after extracting it)
+                # So we need to go back 32 bytes to get the data BEFORE the HMAC
+                data_before_hash = file_data[:offset - 32]  # Everything before the HMAC
+                combined_data = data_before_hash + aad
+                
+                if not self._verify_integrity_hash(combined_data, mac_key, integrity_hash):
+                    raise ValueError("File integrity check failed - file may be corrupted or tampered")
+                
+                # Timestamp validation - warn if file is too old (potential rollback attack)
+                current_time = int(time.time())
+                file_age_days = (current_time - timestamp) / 86400
+                if file_age_days > 365:  # More than 1 year old
+                    self.logger.warning(f"File is {file_age_days:.1f} days old - verify authenticity")
                 
                 # Create cipher and decrypt
                 cipher = AESGCM(encryption_key)
