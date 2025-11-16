@@ -75,6 +75,7 @@ class SimpleAuthDialog(QDialog):
         self.device_auth = device_auth
         self.steg_system = steg_system  # Steganographic trigger system
         self.authenticated = False
+        self.password = None  # Store password temporarily for metadata key derivation
         
         self.setWindowTitle("BAR - Device Authentication")
         self.setModal(True)
@@ -128,6 +129,9 @@ class SimpleAuthDialog(QDialog):
                 
                 if success:
                     self.authenticated = True
+                    # Store password temporarily for metadata key derivation
+                    # Security: Cleared after use by file_manager
+                    self.password = password
                     QMessageBox.information(
                         self.parent(),
                         "Authentication Successful",
@@ -234,6 +238,26 @@ def main():
             sys.exit(0)
         
         logger.info("Authentication successful - configuring security systems")
+        
+        # ⚠️ SECURITY: Initialize metadata encryption key (CRITICAL FIX)
+        # This MUST be done before any file operations to enable encrypted metadata storage
+        logger.info("Initializing encrypted metadata system...")
+        try:
+            # Get the authenticated password to derive metadata key
+            # Note: The password is only used during this session and cleared on logout
+            device_password = auth_dialog.password if hasattr(auth_dialog, 'password') else None
+            
+            if device_password:
+                file_manager.set_metadata_key(device_password)
+                logger.info("✓ Encrypted metadata system initialized successfully")
+                
+                # Securely clear password from auth dialog immediately after use
+                auth_dialog.password = None
+            else:
+                logger.warning("⚠️ Could not initialize metadata encryption - legacy mode")
+        except Exception as e:
+            logger.error(f"Failed to initialize metadata encryption: {e}")
+            # Continue with legacy plaintext metadata (backward compatible)
 
         # Register monitor threat callbacks
         def handle_high_threat(data):
