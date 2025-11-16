@@ -27,6 +27,11 @@ from src.security.input_validator import (
 class FileManager:
     """Manages secure file operations for the BAR application."""
     
+    # Metadata version for backward compatibility
+    METADATA_VERSION_PLAINTEXT = 1  # Legacy plaintext metadata
+    METADATA_VERSION_ENCRYPTED = 2  # Current encrypted metadata
+    CURRENT_METADATA_VERSION = METADATA_VERSION_ENCRYPTED
+    
     def __init__(self, base_directory: str, monitor=None):
         """Initialize the file manager.
         
@@ -65,6 +70,14 @@ class FileManager:
         # Initialize the file scanner
         self.file_scanner = FileScanner(self)
         
+        # Metadata encryption key (set by set_metadata_key() after device auth)
+        self._metadata_key = None
+        self._metadata_key_set = False
+        
+        # File-level locks for thread safety (prevents race conditions)
+        self._file_locks = {}
+        self._file_locks_lock = threading.RLock()
+        
         # Start the file monitoring thread AFTER all other initialization
         self.monitoring_active = True
         self.monitor_thread = threading.Thread(target=self._monitor_files, daemon=True)
@@ -87,6 +100,226 @@ class FileManager:
         )
         
         self.logger = logging.getLogger("FileManager")
+    
+    def set_metadata_key(self, device_password: str) -> None:
+        """Set the metadata encryption key derived from device password.
+        
+        This method MUST be called after device authentication and before
+        any file operations. The key is used to encrypt all metadata at rest.
+        
+        Args:
+            device_password: The authenticated device password
+            
+        Security Note:
+            The metadata key is derived using PBKDF2 with a fixed salt.
+            This ensures consistent key derivation across sessions while
+            maintaining security through the device password strength.
+        """
+        try:
+            # Use a fixed application salt for metadata key derivation
+            # This is safe because the device password itself is strong and hardware-bound
+            metadata_salt = b'BAR_METADATA_ENCRYPTION_V2_SALT_2025'
+            
+            # Derive 32-byte key for AES-256
+            self._metadata_key = self.encryption_manager.derive_key(
+                device_password, 
+                metadata_salt
+            )
+            
+            self._metadata_key_set = True
+            self.logger.info("Metadata encryption key initialized successfully")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to initialize metadata encryption key: {e}")
+            raise ValueError("Failed to initialize secure metadata system")
+    
+    def clear_metadata_key(self) -> None:
+        """Securely clear the metadata encryption key from memory.
+        
+        Should be called on logout or application exit.
+        """
+        if self._metadata_key:
+            # Securely zero out the key
+            if isinstance(self._metadata_key, bytearray):
+                for i in range(len(self._metadata_key)):
+                    self._metadata_key[i] = 0
+            self._metadata_key = None
+            self._metadata_key_set = False
+            self.logger.info("Metadata encryption key cleared")
+    
+    def _get_file_lock(self, file_id: str) -> threading.RLock:
+        """Get or create a thread lock for a specific file.
+        
+        Args:
+            file_id: The file ID to get a lock for
+            
+        Returns:
+            A reentrant lock for the specified file
+        """
+        with self._file_locks_lock:
+            if file_id not in self._file_locks:
+                self._file_locks[file_id] = threading.RLock()
+            return self._file_locks[file_id]
+    
+    def _save_metadata(self, file_id: str, metadata: Dict[str, Any]) -> None:
+        """Save metadata with encryption.
+        
+        Args:
+            file_id: The file ID
+            metadata: The metadata dictionary to save
+            
+        Raises:
+            ValueError: If metadata key is not set
+            
+        Security:
+            - All metadata is encrypted with AES-256-GCM
+            - Uses device-derived metadata key
+            - Includes version field for backward compatibility
+            - Thread-safe with file-level locking
+        """
+        if not self._metadata_key_set:
+            raise ValueError("Metadata encryption key not set. Call set_metadata_key() first.")
+        
+        metadata_path = self.metadata_directory / f"{file_id}.json"
+        
+        try:
+            # Add version to metadata
+            metadata['_version'] = self.CURRENT_METADATA_VERSION
+            
+            # Convert metadata to JSON
+            metadata_json = json.dumps(metadata, indent=2)
+            metadata_bytes = metadata_json.encode('utf-8')
+            
+            # Encrypt entire metadata
+            encrypted_data = self.encryption_manager.encrypt_data(
+                metadata_bytes,
+                self._metadata_key,
+                aad=file_id.encode('utf-8')  # Bind to file_id
+            )
+            
+            # Create encrypted metadata wrapper
+            encrypted_wrapper = {
+                'version': self.CURRENT_METADATA_VERSION,
+                'encrypted_metadata': {
+                    'ciphertext': base64.b64encode(encrypted_data['ciphertext']).decode('utf-8'),
+                    'nonce': base64.b64encode(encrypted_data['nonce']).decode('utf-8')
+                },
+                'file_id': file_id  # Store file_id for integrity
+            }
+            
+            # Write atomically with temp file
+            temp_path = metadata_path.with_suffix('.tmp')
+            try:
+                with open(temp_path, 'w') as f:
+                    json.dump(encrypted_wrapper, f, indent=2)
+                    f.flush()
+                    os.fsync(f.fileno())
+                
+                # Atomic rename
+                temp_path.replace(metadata_path)
+                
+                # Set restrictive permissions
+                if hasattr(os, 'chmod'):
+                    os.chmod(str(metadata_path), 0o600)
+                    
+            finally:
+                # Clean up temp file if it exists
+                if temp_path.exists():
+                    try:
+                        temp_path.unlink()
+                    except:
+                        pass
+                        
+        except Exception as e:
+            self.logger.error(f"Failed to save encrypted metadata for {file_id}: {e}")
+            raise
+    
+    def _load_metadata(self, file_id: str, migrate_legacy: bool = True) -> Dict[str, Any]:
+        """Load metadata with automatic decryption and legacy migration.
+        
+        Args:
+            file_id: The file ID
+            migrate_legacy: If True, automatically migrate legacy plaintext metadata
+            
+        Returns:
+            Decrypted metadata dictionary
+            
+        Raises:
+            FileNotFoundError: If metadata file doesn't exist
+            ValueError: If metadata key not set or decryption fails
+            
+        Security:
+            - Transparently handles both encrypted and legacy plaintext metadata
+            - Automatically migrates legacy metadata on first access
+            - Validates file_id binding
+        """
+        metadata_path = self.metadata_directory / f"{file_id}.json"
+        
+        if not metadata_path.exists():
+            raise FileNotFoundError(f"Metadata for file {file_id} not found")
+        
+        try:
+            with open(metadata_path, 'r') as f:
+                data = json.load(f)
+            
+            # Check version
+            version = data.get('version', self.METADATA_VERSION_PLAINTEXT)
+            
+            if version == self.METADATA_VERSION_ENCRYPTED:
+                # Decrypt encrypted metadata
+                if not self._metadata_key_set:
+                    raise ValueError("Metadata encryption key not set. Cannot decrypt metadata.")
+                
+                # Verify file_id binding
+                stored_file_id = data.get('file_id')
+                if stored_file_id != file_id:
+                    self.logger.warning(f"File ID mismatch in metadata: expected {file_id}, got {stored_file_id}")
+                    raise ValueError("Metadata integrity check failed")
+                
+                # Extract encrypted data
+                encrypted_metadata = data.get('encrypted_metadata', {})
+                ciphertext = base64.b64decode(encrypted_metadata['ciphertext'])
+                nonce = base64.b64decode(encrypted_metadata['nonce'])
+                
+                # Decrypt
+                encrypted_data = {
+                    'ciphertext': ciphertext,
+                    'nonce': nonce
+                }
+                
+                decrypted_bytes = self.encryption_manager.decrypt_data(
+                    encrypted_data,
+                    self._metadata_key,
+                    aad=file_id.encode('utf-8')
+                )
+                
+                # Parse JSON
+                metadata = json.loads(decrypted_bytes.decode('utf-8'))
+                
+                return metadata
+                
+            else:
+                # Legacy plaintext metadata
+                self.logger.warning(f"Loading legacy plaintext metadata for {file_id}")
+                
+                # The data IS the metadata (no encryption)
+                metadata = data
+                
+                # Migrate to encrypted format if requested
+                if migrate_legacy and self._metadata_key_set:
+                    self.logger.info(f"Migrating legacy metadata to encrypted format: {file_id}")
+                    try:
+                        self._save_metadata(file_id, metadata)
+                        self.logger.info(f"Successfully migrated metadata for {file_id}")
+                    except Exception as e:
+                        self.logger.error(f"Failed to migrate metadata for {file_id}: {e}")
+                        # Continue with plaintext - don't fail the operation
+                
+                return metadata
+                
+        except Exception as e:
+            self.logger.error(f"Failed to load metadata for {file_id}: {e}")
+            raise
     
     def _validate_base_directory(self, base_directory: Any) -> None:
         """Validate base directory parameter.
@@ -403,15 +636,16 @@ class FileManager:
                 "deadman_switch": validated_settings.get("deadman_switch"),  # in days
                 "disable_export": validated_settings.get("disable_export", False),  # prevents exporting of view-only files
             },
-            "encryption": encrypted_content
+            "encryption": encrypted_content,
+            "content_hash": self._hash_content(validated_content),  # Add content hash
+            "failed_password_attempts": 0
         }
         
-        # Save the file metadata
-        metadata_path = self.metadata_directory / f"{file_id}.json"
-        with open(metadata_path, "w") as f:
-            json.dump(metadata, f, indent=2)
+        # Save the file metadata with encryption
+        with self._get_file_lock(file_id):
+            self._save_metadata(file_id, metadata)
         
-        self.logger.info(f"Created secure file: {file_id} ({filename})")
+        self.logger.info(f"Created secure file with encrypted metadata: {file_id} ({validated_filename})")
         return file_id
     
     def access_file(self, file_id: str, password: str) -> Tuple[bytes, Dict[str, Any]]:
@@ -428,83 +662,100 @@ class FileManager:
             FileValidationError: If input validation fails
             FileNotFoundError: If the file doesn't exist
             ValueError: If the password is incorrect or the file has expired
+            
+        Security:
+            - Uses file-level locking to prevent race conditions
+            - Enforces access count limits atomically
+            - Securely deletes file immediately if max access reached
         """
         # Comprehensive input validation per BAR Rules R030
         validated_file_id = self._validate_file_id(file_id)
         validated_password = self._validate_password(password)
-        # Check if the validated file exists
-        metadata_path = self.metadata_directory / f"{validated_file_id}.json"
-        if not metadata_path.exists():
-            raise FileNotFoundError(f"File with ID {validated_file_id} not found")
         
-        # Load metadata
-        with open(metadata_path, "r") as f:
-            metadata = json.load(f)
-        
-        # Check security constraints
-        if not self._check_security_constraints(metadata):
-            # File has expired or reached max access count
-            self._secure_delete_file(file_id)
-            raise ValueError("File has expired or reached maximum access count")
-        
-        # Initialize failed attempts tracking if not present
-        if "failed_password_attempts" not in metadata:
-            metadata["failed_password_attempts"] = 0
+        # Use file-specific lock to prevent race conditions (CRITICAL FIX)
+        with self._get_file_lock(validated_file_id):
+            # Check if the validated file exists
+            metadata_path = self.metadata_directory / f"{validated_file_id}.json"
+            if not metadata_path.exists():
+                raise FileNotFoundError(f"File with ID {validated_file_id} not found")
             
-        # Define max failed attempts
-        max_failed_attempts = 3  # Maximum number of failed password attempts allowed
-        
-        # Decrypt the file content
-        try:
-            file_content = self.encryption_manager.decrypt_file_content(
-                metadata["encryption"], password)
-            # Reset failed attempts on successful decryption
-            metadata["failed_password_attempts"] = 0
-            # Record successful access if monitor is available
-            if self.monitor:
-                self.monitor.record_access_event(file_id, "decrypt", success=True)
-        except ValueError:
-            # Increment failed attempts
-            metadata["failed_password_attempts"] += 1
-            self.logger.warning(f"Failed decryption attempt for file: {file_id}. Attempt {metadata['failed_password_attempts']} of {max_failed_attempts}")
+            # Load metadata with decryption
+            metadata = self._load_metadata(validated_file_id)
             
-            # Record failed access if monitor is available
-            if self.monitor:
-                self.monitor.record_access_event(file_id, "decrypt", success=False)
+            # Check security constraints
+            if not self._check_security_constraints(metadata):
+                # File has expired or reached max access count
+                self._secure_delete_file(validated_file_id)
+                raise ValueError("File has expired or reached maximum access count")
             
-            # Save updated metadata with failed attempts count
-            with open(metadata_path, "w") as f:
-                json.dump(metadata, f, indent=2)
+            # Initialize failed attempts tracking if not present
+            if "failed_password_attempts" not in metadata:
+                metadata["failed_password_attempts"] = 0
                 
-            # Check if max failed attempts reached
-            if metadata["failed_password_attempts"] >= max_failed_attempts:
-                self.logger.warning(f"Maximum failed attempts reached for file: {file_id}. Permanently deleting file.")
-                self._secure_delete_file(file_id)
-                raise ValueError(f"File has been permanently deleted after {max_failed_attempts} failed password attempts")
+            # Define max failed attempts
+            max_failed_attempts = 3  # Maximum number of failed password attempts allowed
             
-            raise ValueError(f"Incorrect password. {max_failed_attempts - metadata['failed_password_attempts']} attempts remaining before permanent deletion")
-        
-        # Update access metadata
-        current_time = datetime.now()
-        metadata["last_accessed"] = current_time.isoformat()
-        metadata["access_count"] += 1
-        
-        # Save updated metadata
-        with open(metadata_path, "w") as f:
-            json.dump(metadata, f, indent=2)
-        
-        # Check if this access has triggered self-destruction
-        if metadata["security"]["max_access_count"] and \
-           metadata["access_count"] >= metadata["security"]["max_access_count"]:
-            # Schedule deletion after returning the content
-            threading.Thread(target=self._secure_delete_file, args=(file_id,), daemon=True).start()
-        
-        # Record successful access for monitoring
-        if self.monitor:
-            self.monitor.record_access_event(file_id, "access", success=True)
-        
-        self.logger.info(f"Accessed file: {file_id} ({metadata['filename']})")
-        return file_content, metadata
+            # Decrypt the file content
+            try:
+                file_content = self.encryption_manager.decrypt_file_content(
+                    metadata["encryption"], validated_password)
+                # Reset failed attempts on successful decryption
+                metadata["failed_password_attempts"] = 0
+                # Record successful access if monitor is available
+                if self.monitor:
+                    self.monitor.record_access_event(validated_file_id, "decrypt", success=True)
+            except ValueError:
+                # Increment failed attempts
+                metadata["failed_password_attempts"] += 1
+                self.logger.warning(f"Failed decryption attempt for file: {validated_file_id}. Attempt {metadata['failed_password_attempts']} of {max_failed_attempts}")
+                
+                # Record failed access if monitor is available
+                if self.monitor:
+                    self.monitor.record_access_event(validated_file_id, "decrypt", success=False)
+                
+                # Save updated metadata with failed attempts count
+                self._save_metadata(validated_file_id, metadata)
+                    
+                # Check if max failed attempts reached
+                if metadata["failed_password_attempts"] >= max_failed_attempts:
+                    self.logger.warning(f"Maximum failed attempts reached for file: {validated_file_id}. Permanently deleting file.")
+                    self._secure_delete_file(validated_file_id)
+                    raise ValueError(f"File has been permanently deleted after {max_failed_attempts} failed password attempts")
+                
+                # Generic error message - don't reveal remaining attempts (SECURITY FIX)
+                raise ValueError("Incorrect password. Multiple failed attempts will result in permanent file deletion.")
+            
+            # Update access metadata
+            current_time = datetime.now()
+            metadata["last_accessed"] = current_time.isoformat()
+            metadata["access_count"] += 1
+            
+            # Check if this access triggers self-destruction
+            max_access = metadata["security"].get("max_access_count")
+            should_delete = max_access and metadata["access_count"] >= max_access
+            
+            if should_delete:
+                # Mark for deletion
+                metadata["pending_deletion"] = True
+                self.logger.info(f"File {validated_file_id} reached max access count ({metadata['access_count']}/{max_access})")
+            
+            # Save updated metadata (last time before potential deletion)
+            self._save_metadata(validated_file_id, metadata)
+            
+            # Store return value before deletion
+            result = (file_content, metadata.copy())
+            
+            # Delete immediately if max access reached (while holding lock)
+            if should_delete:
+                self.logger.info(f"Deleting file {validated_file_id} after final access")
+                self._secure_delete_file(validated_file_id)
+            
+            # Record successful access for monitoring
+            if self.monitor:
+                self.monitor.record_access_event(validated_file_id, "access", success=True)
+            
+            self.logger.info(f"Accessed file: {validated_file_id} ({metadata['filename']})")
+            return result
     
     def list_files(self) -> List[Dict[str, Any]]:
         """List all available secure files with their metadata (excluding encryption details).
@@ -517,8 +768,15 @@ class FileManager:
         """
         files = []
         for metadata_file in self.metadata_directory.glob("*.json"):
-            with open(metadata_file, "r") as f:
-                metadata = json.load(f)
+            # Extract file_id from filename
+            file_id = metadata_file.stem
+            
+            try:
+                # Load metadata with decryption
+                metadata = self._load_metadata(file_id, migrate_legacy=True)
+            except Exception as e:
+                self.logger.error(f"Failed to load metadata for {file_id}: {e}")
+                continue
             
             # Remove sensitive encryption details
             if "encryption" in metadata:
@@ -607,7 +865,7 @@ class FileManager:
         Returns:
             True if the file was deleted, False if it doesn't exist
         """
-        from ..security.secure_file_ops import SecureFileOperations, SecureDeletionMethod
+        from src.security.secure_file_ops import SecureFileOperations, SecureDeletionMethod
         
         # Validate file_id
         if not file_id or not isinstance(file_id, str):
@@ -980,21 +1238,26 @@ class FileManager:
         if not metadata_path.exists():
             return False
         
-        # Load metadata
-        with open(metadata_path, "r") as f:
-            metadata = json.load(f)
-        
-        # Update security settings
-        for key, value in security_settings.items():
-            if key in metadata["security"]:
-                metadata["security"][key] = value
-        
-        # Save updated metadata
-        with open(metadata_path, "w") as f:
-            json.dump(metadata, f, indent=2)
-        
-        self.logger.info(f"Updated security settings for file: {file_id}")
-        return True
+        # Use file lock for thread safety
+        with self._get_file_lock(file_id):
+            try:
+                # Load metadata with decryption
+                metadata = self._load_metadata(file_id)
+                
+                # Update security settings
+                for key, value in security_settings.items():
+                    if key in metadata["security"]:
+                        metadata["security"][key] = value
+                
+                # Save updated metadata with encryption
+                self._save_metadata(file_id, metadata)
+                
+                self.logger.info(f"Updated security settings for file: {file_id}")
+                return True
+                
+            except Exception as e:
+                self.logger.error(f"Failed to update security settings for {file_id}: {e}")
+                return False
     
     def _check_security_constraints(self, metadata: Dict[str, Any]) -> bool:
         """Check if a file meets its security constraints.
@@ -1056,16 +1319,20 @@ class FileManager:
             try:
                 # Get all file metadata
                 for metadata_file in self.metadata_directory.glob("*.json"):
+                    file_id = metadata_file.stem
+                    
                     try:
-                        with open(metadata_file, "r") as f:
-                            metadata = json.load(f)
+                        # Load metadata with decryption
+                        metadata = self._load_metadata(file_id, migrate_legacy=False)
                         
                         # Check security constraints
                         if not self._check_security_constraints(metadata):
-                            file_id = metadata["file_id"]
                             self._secure_delete_file(file_id)
+                    except FileNotFoundError:
+                        # File was deleted, skip
+                        continue
                     except Exception as e:
-                        self.logger.error(f"Error monitoring file {metadata_file}: {str(e)}")
+                        self.logger.error(f"Error monitoring file {file_id}: {str(e)}")
                 
                 # Sleep for a while before checking again
                 time.sleep(60)  # Check every minute
@@ -1091,8 +1358,15 @@ class FileManager:
         # Stop any ongoing scans
         if hasattr(self, 'file_scanner') and self.file_scanner.scan_in_progress:
             self.file_scanner.stop_scan()
+        
+        # Securely clear metadata encryption key
+        self.clear_metadata_key()
+        
+        # Clear file locks
+        with self._file_locks_lock:
+            self._file_locks.clear()
             
-        self.logger.info("File manager shutdown")
+        self.logger.info("File manager shutdown - metadata key cleared")
     
     def scan_device_for_bar_files(self, device_path: str, recursive: bool = True, callback=None) -> Dict[str, Any]:
         """Scan a device for .bar files.
@@ -1274,7 +1548,7 @@ class FileManager:
                 self.logger.warning(f"Invalid content hash provided: {type(content_hash)}")
                 return 0
                 
-            from ..security.secure_file_ops import SecureFileOperations, SecureDeletionMethod
+            from src.security.secure_file_ops import SecureFileOperations, SecureDeletionMethod
             secure_file_ops = SecureFileOperations()
             deleted_count = 0
             
