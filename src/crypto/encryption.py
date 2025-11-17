@@ -45,12 +45,13 @@ class EncryptionManager:
         return os.urandom(EncryptionManager.NONCE_SIZE)
     
     @staticmethod
-    def derive_key(password: str, salt: bytes) -> bytes:
+    def derive_key(password: str, salt: bytes, skip_validation: bool = False) -> bytes:
         """Derive an encryption key from a password and salt using PBKDF2.
         
         Args:
             password: Password string to derive key from
             salt: Random salt bytes for key derivation
+            skip_validation: If True, skip password validation (for already-authenticated passwords)
             
         Returns:
             Derived key bytes
@@ -59,26 +60,39 @@ class EncryptionManager:
             CryptographicValidationError: If input validation fails
         
         Note:
-            This method uses secure memory handling to prevent password exposure
+            This method uses secure memory handling to prevent password exposure.
+            skip_validation should ONLY be True for passwords that have already been 
+            authenticated (e.g., for deriving metadata keys from master password).
         """
         # Comprehensive input validation per BAR Rules R030
         crypto_validator = get_crypto_validator()
         
-        # Validate password with strong security requirements
-        # SECURITY: Enforcing minimum 12 characters and complexity to prevent brute force
-        password_result = crypto_validator.validate_password(
-            password,
-            field_name="password",
-            min_length=12,  # Minimum 12 characters for security
-            max_length=1024,
-            require_complexity=True  # Enforce complexity and entropy requirements
-        )
-        if not password_result.is_valid:
-            raise CryptographicValidationError(
-                password_result.error_message,
+        # Validate password (unless skipped for already-authenticated passwords)
+        if not skip_validation:
+            # SECURITY: Enforcing minimum 12 characters and complexity to prevent brute force
+            password_result = crypto_validator.validate_password(
+                password,
                 field_name="password",
-                violation_type=password_result.violation_type
+                min_length=12,  # Minimum 12 characters for security
+                max_length=1024,
+                require_complexity=True  # Enforce complexity and entropy requirements
             )
+            if not password_result.is_valid:
+                raise CryptographicValidationError(
+                    password_result.error_message,
+                    field_name="password",
+                    violation_type=password_result.violation_type
+                )
+            password_str = password_result.sanitized_value
+        else:
+            # Trusted password - basic validation only
+            if not isinstance(password, str) or len(password) == 0:
+                raise CryptographicValidationError(
+                    "Password must be a non-empty string",
+                    field_name="password",
+                    violation_type="invalid_type"
+                )
+            password_str = password
         
         # Validate salt
         salt_result = crypto_validator.validate_salt(
@@ -93,7 +107,7 @@ class EncryptionManager:
                 violation_type=salt_result.violation_type
             )
         # Use secure memory for validated password handling
-        with SecureBytes(password_result.sanitized_value) as secure_password:
+        with SecureBytes(password_str) as secure_password:
             password_bytes = secure_password.get_bytes()
             
             kdf = PBKDF2HMAC(
@@ -524,7 +538,8 @@ class EncryptionManager:
         else:
             combined_password = password
         
-        key = EncryptionManager.derive_key(combined_password, salt)
+        # Skip validation - password has already been validated during setup/authentication
+        key = EncryptionManager.derive_key(combined_password, salt, skip_validation=True)
         
         result = {
             'hash': base64.b64encode(key).decode('utf-8'),
@@ -574,7 +589,8 @@ class EncryptionManager:
             combined_password = password
         
         # Derive the key from the provided password
-        derived_key = EncryptionManager.derive_key(combined_password, salt)
+        # Skip validation - this is for verification, not creating new passwords
+        derived_key = EncryptionManager.derive_key(combined_password, salt, skip_validation=True)
         
         # Compare in constant time to prevent timing attacks
         result = secure_compare(derived_key, stored_hash)

@@ -121,9 +121,13 @@ class FileManager:
             metadata_salt = b'BAR_METADATA_ENCRYPTION_V2_SALT_2025'
             
             # Derive 32-byte key for AES-256
+            # SECURITY NOTE: skip_validation=True because device_password has already been
+            # authenticated by DeviceAuthManager. Re-validating would reject old passwords
+            # that don't meet new password requirements but are still valid.
             self._metadata_key = self.encryption_manager.derive_key(
                 device_password, 
-                metadata_salt
+                metadata_salt,
+                skip_validation=True  # Already authenticated - don't re-validate
             )
             
             self._metadata_key_set = True
