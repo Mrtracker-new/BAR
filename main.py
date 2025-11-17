@@ -239,8 +239,11 @@ def main():
         
         logger.info("Authentication successful - configuring security systems")
         
+        # Create FileManager FIRST (before setting metadata key)
+        file_manager = FileManager(str(app_dir), monitor=monitor)
+        
         # ⚠️ SECURITY: Initialize metadata encryption key (CRITICAL FIX)
-        # This MUST be done before any file operations to enable encrypted metadata storage
+        # This MUST be done AFTER FileManager creation and before any file operations
         logger.info("Initializing encrypted metadata system...")
         try:
             # Get the authenticated password to derive metadata key
@@ -299,9 +302,7 @@ def main():
         for action in TriggerAction:
             steg.register_trigger_callback(action, steg_callback)
 
-        # Create FileManager with monitor
-        file_manager = FileManager(str(app_dir), monitor=monitor)
-
+        # FileManager already created above (before metadata key initialization)
         # Start systems
         monitor.start_monitoring()
         health_monitor.start_monitoring()
