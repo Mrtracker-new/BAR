@@ -486,7 +486,14 @@ class EncryptionManager:
             )
         
         # Derive the key and decrypt using validated data
-        key = EncryptionManager.derive_key(password_result.sanitized_value, salt_result.sanitized_value)
+        # SECURITY: Skip password validation during decryption to allow any password
+        # (even weak ones that wouldn't be accepted for new files) to decrypt existing files.
+        # This is safe because we're just checking if the password decrypts the file.
+        key = EncryptionManager.derive_key(
+            password_result.sanitized_value, 
+            salt_result.sanitized_value,
+            skip_validation=True  # Already validated above with require_complexity=False
+        )
         encrypted_data = {
             'ciphertext': ciphertext_result.sanitized_value,
             'nonce': nonce_result.sanitized_value
