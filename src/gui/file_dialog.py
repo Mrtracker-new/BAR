@@ -314,19 +314,45 @@ class FileDialog(QDialog):
             self.confirm_password_edit.setFocus()
             return
         
-        # Check password strength
-        if len(password) < 8:
-            result = QMessageBox.warning(
-                self, 
-                "Weak Password", 
-                "Your password is less than 8 characters, which is considered weak. "
-                "Are you sure you want to continue?",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No
+        # Check password strength using the actual validator
+        from src.security.password_strength import PasswordStrength
+        
+        strength_validator = PasswordStrength()
+        validation_result = strength_validator.validate_password(password)
+        
+        if not validation_result['is_valid']:
+            # Password doesn't meet security requirements - show detailed error
+            error_details = "\n".join(f"• {error}" for error in validation_result['errors'])
+            
+            QMessageBox.critical(
+                self,
+                "Password Too Weak",
+                f"Your password does not meet the security requirements:\n\n"
+                f"{error_details}\n\n"
+                f"Requirements:\n"
+                f"• Minimum 12 characters\n"
+                f"• At least one uppercase letter\n"
+                f"• At least one lowercase letter\n"
+                f"• At least one number\n"
+                f"• Sufficient entropy (no simple patterns)\n\n"
+                f"Password strength: {validation_result['strength'].upper()} "
+                f"(Score: {validation_result['score']}/100)"
             )
-            if result == QMessageBox.No:
-                self.password_edit.setFocus()
-                return
+            self.password_edit.setFocus()
+            self.password_edit.selectAll()
+            return
+        
+        # Optional: Show warning for passwords that are valid but could be stronger
+        elif validation_result['warnings']:
+            warning_details = "\n".join(f"• {warning}" for warning in validation_result['warnings'])
+            result = QMessageBox.information(
+                self,
+                "Password Accepted",
+                f"Password strength: {validation_result['strength'].upper()} "
+                f"(Score: {validation_result['score']}/100)\n\n"
+                f"Suggestions for improvement:\n{warning_details}",
+                QMessageBox.Ok
+            )
         
         # Show encryption progress if adding a file (not importing)
         if not self.file_content and self.file_path:
