@@ -50,7 +50,11 @@ class ConfigManager:
         
         # Initialize validators
         self.file_validator = get_file_validator()
-        self.general_validator = get_global_validator(ValidationConfig(level=ValidationLevel.STRICT))
+        # Create a dedicated strict validator for config instead of modifying the global one
+        # IMPORTANT: Don't use get_global_validator() with a config parameter as it modifies
+        # the global validator for everyone. Create our own instance instead.
+        from src.security.input_validator import InputValidator
+        self.general_validator = InputValidator(ValidationConfig(level=ValidationLevel.STRICT))
         
         # Setup logging
         self._setup_logging()
