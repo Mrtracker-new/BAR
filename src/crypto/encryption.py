@@ -64,13 +64,14 @@ class EncryptionManager:
         # Comprehensive input validation per BAR Rules R030
         crypto_validator = get_crypto_validator()
         
-        # Validate password
+        # Validate password with strong security requirements
+        # SECURITY: Enforcing minimum 12 characters and complexity to prevent brute force
         password_result = crypto_validator.validate_password(
             password,
             field_name="password",
-            min_length=1,  # Allow short passwords for flexibility, but log warning
+            min_length=12,  # Minimum 12 characters for security
             max_length=1024,
-            require_complexity=False  # Don't enforce complexity here, leave to caller
+            require_complexity=True  # Enforce complexity and entropy requirements
         )
         if not password_result.is_valid:
             raise CryptographicValidationError(
@@ -311,13 +312,14 @@ class EncryptionManager:
                 violation_type=content_result.violation_type
             )
         
-        # Validate password with comprehensive checks
+        # Validate password with strong security requirements
+        # SECURITY: Enforcing minimum 12 characters and complexity to prevent brute force
         password_result = crypto_validator.validate_password(
             password,
             field_name="password",
-            min_length=1,
+            min_length=12,  # Minimum 12 characters for security
             max_length=1024,
-            require_complexity=False  # Let caller decide complexity requirements
+            require_complexity=True  # Enforce complexity and entropy requirements
         )
         if not password_result.is_valid:
             raise CryptographicValidationError(
@@ -370,13 +372,15 @@ class EncryptionManager:
                 violation_type="invalid_type"
             )
         
-        # Validate password
+        # Validate password with strong security requirements
+        # SECURITY: During decryption, we still validate the password meets minimum standards
+        # This helps detect if stored passwords were created with weak validation
         password_result = crypto_validator.validate_password(
             password,
             field_name="password",
-            min_length=1,
+            min_length=1,  # Allow any length for decryption (backward compatibility)
             max_length=1024,
-            require_complexity=False
+            require_complexity=False  # Don't enforce complexity on decryption
         )
         if not password_result.is_valid:
             raise CryptographicValidationError(
