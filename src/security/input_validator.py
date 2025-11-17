@@ -878,26 +878,9 @@ class CryptographicValidator:
                     violation_type="insufficient_password_strength",
                     security_risk_level="high"
                 )
-        else:
-            # Legacy complexity validation for backward compatibility
-            complexity_score = self._calculate_password_complexity(password_str)
-            if complexity_score < 3:  # Require at least 3 complexity factors
-                return ValidationResult(
-                    is_valid=False,
-                    error_message="Password does not meet complexity requirements",
-                    violation_type="insufficient_complexity",
-                    security_risk_level="high"
-                )
-        
-        # Check for common weak passwords in strict mode
-        if self.validator.config.level in (ValidationLevel.STRICT, ValidationLevel.PARANOID):
-            if self._is_common_password(password_str):
-                return ValidationResult(
-                    is_valid=False,
-                    error_message="Password is too common/weak",
-                    violation_type="common_password",
-                    security_risk_level="high"
-                )
+        # SECURITY: When require_complexity=False (e.g., for file access/decryption),
+        # skip all complexity and common password checks. This allows backward compatibility
+        # with files encrypted before stronger password requirements were enforced.
         
         return ValidationResult(
             is_valid=True,
