@@ -462,7 +462,17 @@ class DeviceAuthManager:
                     self.logger.warning(f"Authentication failed (attempt {failed_attempts}) - legacy format")
                     return False, f"Authentication failed. Incorrect password. (Attempt {failed_attempts}/3 - Remaining: {remaining_attempts})"
             
-            # Successfully decrypted - now verify hardware binding as additional check
+            # Successfully decrypted - AES-256-GCM authenticated encryption proves
+            # both password and hardware ID are correct. Clear failed attempts immediately.
+            try:
+                failed_attempts_path = self._config_dir / ".auth_attempts"
+                if failed_attempts_path.exists():
+                    failed_attempts_path.unlink()
+                    self.logger.debug("Cleared failed attempts tracking after successful decryption")
+            except Exception as e:
+                self.logger.warning(f"Could not clear failed attempts tracking: {e}")
+            
+            # Verify hardware binding as additional check
             stored_hw_id = config_data.get("hardware_id", "")
             if not secure_compare(current_hw_id, stored_hw_id):
                 # This should not happen if decryption succeeded, but check anyway
@@ -475,7 +485,7 @@ class DeviceAuthManager:
             stored_hash = config_data.get("verification_hash", "")
             
             if not secure_compare(computed_hash, stored_hash):
-                self.logger.warning("Authentication failed - incorrect password")
+                self.logger.warning("Authentication failed - verification hash mismatch")
                 return False, "Authentication failed. Incorrect password."
             
             # Authentication successful - store session data securely
@@ -483,15 +493,6 @@ class DeviceAuthManager:
             self._hardware_fingerprint = secure_hw_id
             self._is_authenticated = True
             self._device_name = config_data.get("device_name", "Unknown Device")
-            
-            # Clear failed attempts tracking on successful authentication
-            try:
-                failed_attempts_path = self._config_dir / ".auth_attempts"
-                if failed_attempts_path.exists():
-                    failed_attempts_path.unlink()
-                    self.logger.debug("Cleared failed attempts tracking after successful authentication")
-            except Exception as e:
-                self.logger.warning(f"Could not clear failed attempts tracking: {e}")
             
             # Derive session key for secure operations
             salt = create_secure_bytes(
