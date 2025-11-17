@@ -588,7 +588,26 @@ class AsyncFileManager:
         """
         # Input validation
         validated_file_id = self._validate_file_id(file_id)
-        validated_password = self._validate_password(password)
+        # SECURITY: When accessing files, we don't re-validate password strength
+        # because we're just checking if it decrypts. The password was already
+        # validated when the file was created. This allows backward compatibility
+        # with files created before stronger password requirements.
+        from src.security.input_validator import get_crypto_validator
+        crypto_validator = get_crypto_validator()
+        password_result = crypto_validator.validate_password(
+            password,
+            field_name="password",
+            min_length=1,  # Accept any password length for decryption
+            max_length=1024,
+            require_complexity=False  # Skip complexity checks for decryption
+        )
+        if not password_result.is_valid:
+            raise FileValidationError(
+                password_result.error_message,
+                field_name="password",
+                violation_type=password_result.violation_type
+            )
+        validated_password = password_result.sanitized_value
         
         # Check if file exists
         file_path = self.files_directory / f"{validated_file_id}.bar"
