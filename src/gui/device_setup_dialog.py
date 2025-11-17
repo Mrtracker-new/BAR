@@ -525,16 +525,20 @@ class DeviceSetupDialog(QDialog):
             self.setup_button.setText("❌ Validation Error")
     
     def _validate_password_strength(self, password: str) -> bool:
-        """Validate password meets security requirements."""
-        if len(password) < 12:
-            return False
+        """Validate password meets security requirements using comprehensive validator."""
+        from src.security.password_strength import PasswordStrength
         
-        has_lower = any(c.islower() for c in password)
-        has_upper = any(c.isupper() for c in password)
-        has_digit = any(c.isdigit() for c in password)
-        has_special = any(c in "!@#$%^&*()_+-=[]{}|;:,.<>?" for c in password)
+        strength_validator = PasswordStrength(
+            min_length=12,
+            min_entropy_bits=50,
+            require_uppercase=True,
+            require_lowercase=True,
+            require_numbers=True,
+            require_special=True  # Master password should require special chars
+        )
         
-        return has_lower and has_upper and has_digit and has_special
+        validation_result = strength_validator.validate_password(password)
+        return validation_result['is_valid']
     
     def _get_selected_security_level(self) -> str:
         """Get the selected security level.
