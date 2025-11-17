@@ -166,8 +166,13 @@ class AsyncEncryptionManager:
         start_time = time.time()
         
         # Input validation (Rule R030)
+        # SECURITY: Enforce strong password requirements to prevent brute force
         password_result = self.crypto_validator.validate_password(
-            password, field_name="password", min_length=1, max_length=1024
+            password, 
+            field_name="password", 
+            min_length=12,  # Minimum 12 characters for security
+            max_length=1024,
+            require_complexity=True  # Enforce complexity and entropy requirements
         )
         if not password_result.is_valid:
             raise CryptographicValidationError(
