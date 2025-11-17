@@ -414,12 +414,13 @@ class FileManager:
         from src.security.input_validator import get_crypto_validator
         crypto_validator = get_crypto_validator()
         
+        # SECURITY: Enforce strong password requirements for file encryption
         password_result = crypto_validator.validate_password(
             password,
             field_name=field_name,
-            min_length=1,
+            min_length=12,  # Minimum 12 characters for security
             max_length=1024,
-            require_complexity=False
+            require_complexity=True  # Enforce complexity and entropy requirements
         )
         if not password_result.is_valid:
             raise FileValidationError(
