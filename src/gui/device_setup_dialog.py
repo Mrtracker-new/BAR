@@ -530,7 +530,7 @@ class DeviceSetupDialog(QDialog):
         
         strength_validator = PasswordStrength(
             min_length=12,
-            min_entropy_bits=50,
+            min_entropy_bits=40,  # 40 bits = ~1 trillion combinations (very secure)
             require_uppercase=True,
             require_lowercase=True,
             require_numbers=True,

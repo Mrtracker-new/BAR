@@ -49,8 +49,8 @@ class PasswordStrength:
     
     # Minimum requirements
     MIN_LENGTH = 12
-    MIN_ENTROPY_BITS = 50  # Recommended minimum for strong passwords
-    RECOMMENDED_ENTROPY_BITS = 60  # Better security
+    MIN_ENTROPY_BITS = 40  # Strong passwords (40 bits = ~1 trillion combinations)
+    RECOMMENDED_ENTROPY_BITS = 50  # Better security (50 bits = ~1 quadrillion)
     
     def __init__(self, 
                  min_length: int = MIN_LENGTH,

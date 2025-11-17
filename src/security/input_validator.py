@@ -832,7 +832,7 @@ class CryptographicValidator:
             min_length: Minimum password length
             max_length: Maximum password length
             require_complexity: Whether to require password complexity
-            min_entropy_bits: Minimum entropy in bits (default: 50 for complexity=True, None otherwise)
+            min_entropy_bits: Minimum entropy in bits (default: 40 for complexity=True, None otherwise)
             field_name: Name of the field for logging
             
         Returns:
