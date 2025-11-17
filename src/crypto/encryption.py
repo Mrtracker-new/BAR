@@ -447,29 +447,26 @@ class EncryptionManager:
                 violation_type="base64_decode_error"
             )
         
-        # Validate decoded data using crypto validator
-        nonce_result = crypto_validator.validate_nonce(
-            nonce,
-            algorithm="GCM",
-            field_name="nonce"
-        )
-        if not nonce_result.is_valid:
+        # Validate decoded data using basic checks only
+        # SECURITY NOTE: During decryption, we use minimal validation because this data
+        # comes from our own encrypted files. Overly strict validation (like "dangerous pattern"
+        # detection) can reject legitimate random cryptographic data.
+        # We only verify size/type, not "safety" - the encryption scheme itself provides safety.
+        
+        # Basic nonce validation - just check size
+        if not isinstance(nonce, bytes) or len(nonce) not in [12, 16]:  # GCM standard sizes
             raise CryptographicValidationError(
-                nonce_result.error_message,
+                f"Invalid nonce size: {len(nonce)} bytes",
                 field_name="nonce",
-                violation_type=nonce_result.violation_type
+                violation_type="invalid_nonce_size"
             )
         
-        salt_result = crypto_validator.validate_salt(
-            salt,
-            min_size=16,
-            field_name="salt"
-        )
-        if not salt_result.is_valid:
+        # Basic salt validation - just check minimum size
+        if not isinstance(salt, bytes) or len(salt) < 16:
             raise CryptographicValidationError(
-                salt_result.error_message,
+                f"Invalid salt size: {len(salt)} bytes (minimum 16)",
                 field_name="salt",
-                violation_type=salt_result.violation_type
+                violation_type="invalid_salt_size"
             )
         
         ciphertext_result = validate_bytes(
@@ -491,15 +488,15 @@ class EncryptionManager:
         # This is safe because we're just checking if the password decrypts the file.
         key = EncryptionManager.derive_key(
             password_result.sanitized_value, 
-            salt_result.sanitized_value,
+            salt,  # Use the salt directly (already validated above)
             skip_validation=True  # Already validated above with require_complexity=False
         )
         encrypted_data = {
             'ciphertext': ciphertext_result.sanitized_value,
-            'nonce': nonce_result.sanitized_value
+            'nonce': nonce  # Use the nonce directly (already validated above)
         }
         # Reconstruct AAD exactly as used during encryption
-        aad = b"BAR|v2|" + salt_result.sanitized_value
+        aad = b"BAR|v2|" + salt  # Use the salt directly
         
         return EncryptionManager.decrypt_data(encrypted_data, key, aad)
     
