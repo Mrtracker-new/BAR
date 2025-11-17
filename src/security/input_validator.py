@@ -823,14 +823,16 @@ class CryptographicValidator:
                          min_length: int = 8,
                          max_length: int = 1024,
                          require_complexity: bool = True,
+                         min_entropy_bits: Optional[float] = None,
                          field_name: Optional[str] = None) -> ValidationResult:
-        """Validate password with security requirements.
+        """Validate password with security requirements including entropy.
         
         Args:
             password: Password to validate
             min_length: Minimum password length
             max_length: Maximum password length
             require_complexity: Whether to require password complexity
+            min_entropy_bits: Minimum entropy in bits (default: 50 for complexity=True, None otherwise)
             field_name: Name of the field for logging
             
         Returns:
@@ -846,8 +848,38 @@ class CryptographicValidator:
         
         password_str = string_result.sanitized_value
         
-        # Complexity validation
+        # If require_complexity is True, use the enhanced password strength validation
         if require_complexity:
+            from src.security.password_strength import PasswordStrength
+            
+            # Set default entropy requirement if not specified
+            if min_entropy_bits is None:
+                min_entropy_bits = PasswordStrength.MIN_ENTROPY_BITS
+            
+            # Create password strength validator
+            strength_validator = PasswordStrength(
+                min_length=min_length,
+                min_entropy_bits=min_entropy_bits,
+                require_uppercase=True,
+                require_lowercase=True,
+                require_numbers=True,
+                require_special=False
+            )
+            
+            # Validate password strength
+            strength_result = strength_validator.validate_password(password_str)
+            
+            if not strength_result['is_valid']:
+                # Combine all errors into a single message
+                error_msg = "; ".join(strength_result['errors'])
+                return ValidationResult(
+                    is_valid=False,
+                    error_message=error_msg,
+                    violation_type="insufficient_password_strength",
+                    security_risk_level="high"
+                )
+        else:
+            # Legacy complexity validation for backward compatibility
             complexity_score = self._calculate_password_complexity(password_str)
             if complexity_score < 3:  # Require at least 3 complexity factors
                 return ValidationResult(
@@ -857,7 +889,7 @@ class CryptographicValidator:
                     security_risk_level="high"
                 )
         
-        # Check for common weak passwords
+        # Check for common weak passwords in strict mode
         if self.validator.config.level in (ValidationLevel.STRICT, ValidationLevel.PARANOID):
             if self._is_common_password(password_str):
                 return ValidationResult(
