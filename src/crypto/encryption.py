@@ -423,10 +423,12 @@ class EncryptionManager:
                 )
             
             # Validate base64 string format
+            # Base64 encoding increases size by ~33%, so for 1GB files we need ~1.4GB limit
+            # Using 2GB to be safe and support the full 1GB file limit
             field_result = validate_string(
                 encrypted_content[field],
                 field_name=field,
-                max_length=10 * 1024 * 1024,  # Reasonable limit for base64 data
+                max_length=2 * 1024 * 1024 * 1024,  # 2GB limit for base64 data (supports 1GB files)
                 require_ascii=True
             )
             if not field_result.is_valid:
