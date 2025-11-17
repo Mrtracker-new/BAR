@@ -263,12 +263,18 @@ def main():
             # Continue with legacy plaintext metadata (backward compatible)
 
         # Register monitor threat callbacks
+        # HIGH threats log warnings but don't trigger emergency wipe (too aggressive)
         def handle_high_threat(data):
             reason = f"High threat detected: {data.get('type', 'unknown')}"
-            emergency.trigger_emergency_destruction(reason=reason, level="aggressive")
+            logger.warning(f"⚠️ HIGH THREAT DETECTED: {reason} - Enhanced monitoring active")
+            # Don't trigger emergency wipe for HIGH threats - false positives are common
+        
+        # Only CRITICAL threats trigger emergency wipe
         def handle_critical_threat(data):
             reason = f"Critical threat detected: {data.get('type', 'unknown')}"
-            emergency.trigger_emergency_destruction(reason=reason, level="scorched")
+            logger.critical(f"🚨 CRITICAL THREAT DETECTED: {reason} - Triggering emergency wipe")
+            emergency.trigger_emergency_destruction(reason=reason, level="aggressive")
+        
         monitor.register_threat_callback(ThreatLevel.HIGH, handle_high_threat)
         monitor.register_threat_callback(ThreatLevel.CRITICAL, handle_critical_threat)
 

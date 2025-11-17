@@ -108,7 +108,7 @@ class IntelligentFileMonitor:
         # Configuration
         self._learning_period_days = 7  # Days to learn baseline behavior
         self._analysis_window_hours = 24  # Hours to analyze for patterns
-        self._failure_threshold = 5  # Failed attempts before alert
+        self._failure_threshold = 10  # Failed attempts before alert (increased from 5 to reduce false positives)
         
         # Process monitoring (Windows-specific, graceful fallback)
         self._monitored_processes: Set[str] = set()
