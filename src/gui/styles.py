@@ -40,7 +40,7 @@ class StyleManager:
         """Apply the selected theme to the application.
         
         Args:
-            theme_name: The name of the theme to apply ("dark", "light", or "system")
+            theme_name: The name of the theme to apply ("dark" or "light")
         """
         theme_name = theme_name.lower()
         
@@ -48,10 +48,6 @@ class StyleManager:
             StyleManager._apply_dark_theme()
         elif theme_name == "light":
             StyleManager._apply_light_theme()
-        else:
-            # System theme
-            app = QApplication.instance()
-            app.setPalette(app.style().standardPalette())
     
     @staticmethod
     def _apply_dark_theme():
