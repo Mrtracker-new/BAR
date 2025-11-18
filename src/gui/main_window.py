@@ -122,7 +122,7 @@ class MainWindow(QMainWindow):
         # Theme selection
         self.theme_label = QLabel("Theme:")
         self.theme_combo = QComboBox()
-        self.theme_combo.addItems(["Dark", "Light", "System"])
+        self.theme_combo.addItems(["Dark", "Light"])
         self.theme_combo.currentTextChanged.connect(self._change_theme)
         self.settings_form.addRow(self.theme_label, self.theme_combo)
         
