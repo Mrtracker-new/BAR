@@ -16,7 +16,7 @@ class ConfigManager:
     
     # Default configuration
     DEFAULT_CONFIG = {
-        "theme": "dark",  # dark, light, system
+        "theme": "dark",  # dark, light
         "default_security": {
             "expiration_time": None,  # ISO format datetime string
             "max_access_count": None,  # Integer
@@ -154,7 +154,7 @@ class ConfigManager:
                     violation_type="invalid_type"
                 )
             
-            allowed_themes = ["dark", "light", "system"]
+            allowed_themes = ["dark", "light"]
             if value not in allowed_themes:
                 raise ConfigValidationError(
                     f"Theme must be one of: {', '.join(allowed_themes)}",
@@ -562,10 +562,6 @@ class ConfigManager:
                 "danger_color": "#e74c3c",
                 "success_color": "#2ecc71",
                 "warning_color": "#f39c12",
-            },
-            "system": {
-                "name": "System",
-                "description": "Follows system theme (dark/light)"
             }
         }
     
@@ -577,10 +573,5 @@ class ConfigManager:
         """
         theme_name = self.config.get("theme", "dark")
         themes = self.get_themes()
-        
-        if theme_name == "system":
-            # For system theme, default to dark for now
-            # In a real implementation, this would check the system theme
-            theme_name = "dark"
         
         return themes.get(theme_name, themes["dark"])
