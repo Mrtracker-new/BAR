@@ -6,8 +6,8 @@ from pathlib import Path
 
 # Import comprehensive input validation system
 from src.security.input_validator import (
-    get_file_validator, get_global_validator, ConfigValidationError,
-    validate_string, validate_integer, ValidationLevel, ValidationConfig
+    get_file_validator, ConfigValidationError,
+    validate_string, validate_integer
 )
 
 
@@ -45,19 +45,14 @@ class ConfigManager:
         # Create base directory if it doesn't exist
         self.base_directory.mkdir(parents=True, exist_ok=True)
         
+        # Initialize file validator for path validation
+        self.file_validator = get_file_validator()
+        
+        # Setup logging first (needed before loading config)
+        self._setup_logging()
+        
         # Load or create configuration
         self.config = self._load_config()
-        
-        # Initialize validators
-        self.file_validator = get_file_validator()
-        # Create a dedicated strict validator for config instead of modifying the global one
-        # IMPORTANT: Don't use get_global_validator() with a config parameter as it modifies
-        # the global validator for everyone. Create our own instance instead.
-        from src.security.input_validator import InputValidator
-        self.general_validator = InputValidator(ValidationConfig(level=ValidationLevel.STRICT))
-        
-        # Setup logging
-        self._setup_logging()
     
     def _setup_logging(self):
         """Set up logging for the configuration manager."""
@@ -67,7 +62,7 @@ class ConfigManager:
         log_file = log_dir / "config.log"
         
         logging.basicConfig(
-            level=getattr(logging, self.config.get("logging_level", "INFO")),
+            level=logging.INFO,  # Default level, will be updated from config
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             handlers=[
                 logging.FileHandler(log_file),
@@ -86,7 +81,7 @@ class ConfigManager:
         Raises:
             ConfigValidationError: If validation fails
         """
-        # First, create a temporary file validator for this validation
+        # Create a temporary file validator for this validation
         temp_file_validator = get_file_validator()
         
         # Validate base directory path
@@ -387,7 +382,7 @@ class ConfigManager:
                 
                 return config
             except Exception as e:
-                print(f"Error loading configuration: {str(e)}")
+                self.logger.error(f"Error loading configuration: {str(e)}")
                 return self._create_default_config()
         else:
             return self._create_default_config()
@@ -418,16 +413,8 @@ class ConfigManager:
                 json.dump(config, f, indent=2)
             return True
         except Exception as e:
-            print(f"Error saving configuration: {str(e)}")
+            self.logger.error(f"Error saving configuration: {str(e)}")
             return False
-    
-    def get_config(self) -> Dict[str, Any]:
-        """Get the current configuration.
-        
-        Returns:
-            Dictionary containing configuration
-        """
-        return self.config.copy()
     
     def get_value(self, key: str, default: Any = None) -> Any:
         """Get a configuration value.
@@ -497,16 +484,6 @@ class ConfigManager:
             self.logger.info(f"Configuration updated with multiple values")
         
         return result
-    
-    def reset_to_defaults(self) -> bool:
-        """Reset configuration to defaults.
-        
-        Returns:
-            True if configuration was reset and saved successfully, False otherwise
-        """
-        self.config = self._create_default_config()
-        self.logger.info("Configuration reset to defaults")
-        return True
     
     def clear_all_cached_config(self) -> bool:
         """Clear all cached configuration data and reset to defaults.
