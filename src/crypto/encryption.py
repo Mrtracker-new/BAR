@@ -1,16 +1,12 @@
 import os
 import base64
-import json
-import time
 import hashlib
 from datetime import datetime
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional
 
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from cryptography.hazmat.primitives import hashes, hmac
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.hazmat.primitives.constant_time import bytes_eq
-from cryptography.fernet import Fernet
 import secrets
 
 from src.security.hardware_id import HardwareIdentifier
