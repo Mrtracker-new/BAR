@@ -13,9 +13,13 @@ from enum import Enum
 
 
 class SecurityLevel(Enum):
-    """Security level options."""
-    DEVELOPMENT = "development"
-    BASIC = "basic"
+    """Security level options.
+    
+    NOTE: DEVELOPMENT and BASIC are deprecated and unused.
+    Only STANDARD, HIGH, and MAXIMUM are actively used in the codebase.
+    """
+    DEVELOPMENT = "development"  # Deprecated - not used
+    BASIC = "basic"  # Deprecated - not used
     STANDARD = "standard"
     HIGH = "high"
     MAXIMUM = "maximum"
@@ -157,52 +161,6 @@ class SecurityConfig:
         # Default to standard for unknown environments
         return SecurityLevel.STANDARD
     
-    def get_available_levels(self) -> Dict[SecurityLevel, str]:
-        """Get all available security levels with descriptions.
-        
-        Returns:
-            Dictionary mapping security levels to descriptions
-        """
-        return {level: config["description"] for level, config in self.configs.items()}
-    
-    def validate_config(self, config: Dict[str, Any]) -> bool:
-        """Validate a security configuration.
-        
-        Args:
-            config: Configuration to validate
-            
-        Returns:
-            True if configuration is valid, False otherwise
-        """
-        required_keys = [
-            "max_suspicious_score",
-            "max_focus_loss_count",
-            "process_monitoring_enabled",
-            "clipboard_protection_enabled",
-            "watermark_enabled",
-            "focus_monitoring_enabled",
-            "screenshot_blocking_enabled"
-        ]
-        
-        return all(key in config for key in required_keys)
-    
-    def create_custom_config(self, base_level: SecurityLevel, overrides: Dict[str, Any]) -> Dict[str, Any]:
-        """Create custom configuration based on a security level with overrides.
-        
-        Args:
-            base_level: Base security level to start from
-            overrides: Configuration values to override
-            
-        Returns:
-            Custom configuration dictionary
-        """
-        config = self.get_config(base_level)
-        config.update(overrides)
-        
-        if not self.validate_config(config):
-            raise ValueError("Invalid configuration after applying overrides")
-        
-        return config
 
 
 # Global security configuration instance
@@ -221,19 +179,3 @@ def get_security_config(level: SecurityLevel = None) -> Dict[str, Any]:
     return security_config.get_config(level)
 
 
-def get_development_config() -> Dict[str, Any]:
-    """Get development-friendly security configuration.
-    
-    Returns:
-        Development security configuration
-    """
-    return security_config.get_config(SecurityLevel.DEVELOPMENT)
-
-
-def get_production_config() -> Dict[str, Any]:
-    """Get production security configuration.
-    
-    Returns:
-        Production security configuration
-    """
-    return security_config.get_config(SecurityLevel.HIGH)
