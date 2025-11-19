@@ -251,8 +251,8 @@ class AsyncEncryptionManager:
                     return iterations
                 
                 # Estimate iterations needed for target time
-                iterations = int(iterations * (target_time / duration))
-                iterations = min(iterations, iterations * 2)  # Don't jump too much
+                target_iterations = int(iterations * (target_time / duration))
+                iterations = min(target_iterations, iterations * 2)  # Don't jump too much
             
             return min(iterations, 1000000)  # Return capped value
         
