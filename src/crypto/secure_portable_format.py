@@ -30,19 +30,17 @@ Security Rules Compliance:
 
 import os
 import json
-import hmac
 import hashlib
 import secrets
 import struct
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional, Tuple, Union
+from typing import Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 
-from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.hmac import HMAC
 from cryptography.exceptions import InvalidSignature
@@ -100,6 +98,7 @@ class SecurePortableFormat:
         self.config = config or SecurePortableConfig()
         
         # Initialize memory manager if available (optional for enhanced security)
+        # NOTE: Currently initialized but not actively used - reserved for future memory protection features
         if SECURE_MEMORY_AVAILABLE and SecureMemoryManager:
             try:
                 self.memory_manager = SecureMemoryManager()
@@ -246,8 +245,12 @@ class SecurePortableFormat:
         """
         Securely clear bytes from memory using multiple overwrite passes.
         
+        LIMITATION: Python's immutable bytes objects cannot be cleared in-place.
+        This method only works effectively with bytearray objects.
+        For immutable bytes, only the reference is cleared (not the underlying memory).
+        
         Args:
-            data: Bytes data to clear securely
+            data: Bytes data to clear securely (bytearray recommended)
         """
         try:
             if data is None:
@@ -494,9 +497,6 @@ class SecurePortableFormat:
                 # ROOT CAUSE FIX: Verify integrity with proper HMAC coverage
                 # The HMAC covers the entire file including itself (via placeholder scheme)
                 # We need to extract all components first, then verify
-                
-                # Parse all components before verification
-                parse_offset = offset
                 
                 # 4. Extract metadata block
                 metadata_nonce_len = struct.unpack('>I', file_data[offset:offset + 4])[0]
