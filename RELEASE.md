@@ -1,247 +1,259 @@
 ![BAR_logo](https://github.com/user-attachments/assets/2424e744-755d-4de2-9ce1-4362f7729521)
 
-# BAR v2.0.0 - Release Notes
+# BAR v2.0.0 - The "Finally Fixed Everything" Release
 
 **Author**: [Rolan (RNR)](https://rolan-rnr.netlify.app/)  
 **Release Date**: October 17, 2025  
-**Status**: Stable Release
+**Status**: Stable (and actually stable this time!)
 
 ---
 
 ## 🔥 What's New in v2.0.0
 
-This is a major release that makes BAR simpler, faster, and more secure!
+Alright folks, this is the big one! v2.0.0 is a MASSIVE upgrade that makes BAR simpler, faster, and way more secure. I basically ripped out 500+ lines of old code that was making things complicated and replaced it with stuff that actually makes sense.
 
 ---
 
-## ✨ Key Features
+## ✨ The Cool Stuff You'll Actually Use
 
-### 🛡️ Security
-- **100% Offline** - No internet needed, ever
-- **Military-Grade Encryption** - AES-256-GCM
-- **Device-Bound Authentication** - One device, one password
-- **Screenshot Protection** - Advanced anti-capture system
-- **Self-Destruct** - Files that really disappear
+### 🛡️ Security (The Peace-of-Mind Features)
+- **100% Offline** - Literally zero internet required. Your files stay on YOUR machine
+- **Military-Grade Encryption** - AES-256-GCM (same tech the CIA probably uses)
+- **Device-Bound Authentication** - One device, one password. Simple as that
+- **Screenshot Protection** - Advanced system to stop people screenshotting your secrets
+- **Self-Destruct** - Files that actually VANISH when they're supposed to
 
-### 🔥 Self-Destruction
-- **Time Bombs** - Delete after X hours/days
-- **Read Limits** - Delete after X views
-- **Deadman Switch** - Delete if you don't check in
-- **Anti-Brute Force** - Delete after wrong passwords
-- **Panic Wipe** - Nuclear option (98%+ destruction)
+### 🔥 Self-Destruction Options (The Fun Part)
+- **Time Bombs** - "Delete this in 24 hours" — Snapchat vibes for any file
+- **Read Limits** - "Self-destruct after 3 views" — James Bond would be jealous
+- **Deadman Switch** - Don't check in for a week? Files auto-delete (great for... reasons)
+- **Anti-Brute Force** - Too many wrong passwords = file goes BOOM 💥
+- **Panic Wipe** - Nuclear option for emergencies (98%+ destruction in seconds)
 
-### 📸 Screenshot Protection
-- Blocks Print Screen, Win+Shift+S, Alt+Print Screen
-- Monitors and clears clipboard automatically
-- Detects and terminates screenshot apps
-- Tracks suspicious behavior
-- Multi-layer defense system
+### 📸 Screenshot Protection (The "Stop Snooping" System)
+- Blocks Print Screen, Win+Shift+S, Alt+Print Screen, and more
+- Automatically monitors and clears your clipboard
+- Detects screenshot apps and shuts them down
+- Tracks suspicious behavior patterns
+- Multi-layer defense (though phone cameras still work, can't fix physics)
 
-### 📁 File Management
-- Fast multi-threaded scanning
-- Secure file sharing
-- View-only mode
-- DoD-compliant deletion
-- Comprehensive logging
+### 📁 File Management (The Practical Stuff)
+- Fast multi-threaded scanning (finds your .bar files QUICK)
+- Secure file sharing without actually sharing the file
+- View-only mode (show but don't share)
+- DoD-compliant deletion (government-grade file destruction)
+- Comprehensive logging (so you can see what happened)
 
 ---
 
-## 🚀 Installation
+## 🚀 Installation (Super Easy)
 
-### Option 1: Ready to Run
-1. Download BAR.exe
-2. Double-click and go
-3. No installation needed!
+### Option 1: The "I Just Want It To Work" Method
+1. Download BAR.exe from releases
+2. Double-click it
+3. There is no step 3 🎉
 
-### Option 2: From Source
+### Option 2: The "I Like Python" Method
 ```bash
 pip install -r requirements.txt
 python main.py
 ```
 
-### Option 3: Build It Yourself
+### Option 3: The "I Don't Trust Your EXE" Method
 ```bash
 pip install -r requirements.txt
 python build.py
-# Find BAR.exe in dist/
+# Your freshly-built BAR.exe will be chilling in dist/
 ```
 
 ---
 
-## 📋 System Requirements
+## 📋 What You'll Need
 
-- **OS**: Windows 10/11 (best), Limited Linux/macOS
-- **RAM**: 4GB min, 8GB recommended
-- **Storage**: 100MB + your files
-- **Internet**: Not required!
-
----
-
-## 🎯 What's Different from Before
-
-### Simpler Authentication
-- **Before**: Device Setup → Unlock → Login → App
-- **Now**: Device Setup → Unlock → App ✅
-
-### Better Security
-- Enhanced screenshot protection
-- Panic wipe system (3 levels)
-- Improved hardware binding
-- Better encryption
-
-### Cleaner Code
-- Removed 500+ lines of old code
-- Fixed bugs and issues
-- Better performance
-- More stable
+- **OS**: Windows 10/11 (works like a charm), Linux/macOS (limited features, sorry)
+- **RAM**: 4GB minimum (but c'mon, it's 2025, get 8GB)
+- **Storage**: ~100MB for BAR + whatever files you're hiding
+- **Internet**: Nope! 100% offline baby 👍
 
 ---
 
-## ⚠️ Important Warnings
+## 🎯 What Changed (aka Why v2.0 is Way Better)
 
-### Data Loss is Permanent
-- Once deleted, files are **GONE FOREVER**
-- No undo, no recovery
-- DoD-compliant overwrite = unrecoverable
+### Authentication Got WAY Simpler
+- **Old way**: Device Setup → Unlock → Login → Finally the App (ugh)
+- **New way**: Device Setup → Unlock → App ✅
+- Translation: One less annoying screen to deal with!
 
-### No Password Recovery
-- Forget your password = lose everything
-- Hardware-bound to your device
-- Choose wisely!
+### Security Got an Upgrade
+- Screenshot protection actually works better now
+- Added panic wipe system with 3 destruction levels (mild, spicy, nuclear)
+- Hardware binding is more secure and reliable
+- Encryption improvements under the hood
 
-### Screenshot Protection Limits
-- ✅ Blocks software screenshots
-- ❌ Can't block phone cameras
-- ❌ Can't block external capture devices
-- ❌ Some admin tools may bypass
-
----
-
-## 🎯 Use Cases
-
-Perfect for:
-- Sensitive document sharing
-- Temporary credential storage
-- Compliance with data retention
-- Personal privacy protection
-- Secure communication
-- Corporate IP protection
-- Healthcare information
-- Financial documents
+### Code Got a Serious Makeover
+- Deleted 500+ lines of overcomplicated nonsense
+- Squashed bugs like they owed me money
+- Performance improvements (it's snappier, trust me)
+- Way more stable (fewer "why did it crash" moments)
 
 ---
 
-## 💡 Best Practices
+## ⚠️ Serious Talk Time (Actually Read This)
 
-### Do:
-- ✅ Use strong passwords (12+ characters)
-- ✅ Match security to importance
-- ✅ Keep backups of important data
-- ✅ Test with non-critical files first
-- ✅ Read the documentation
+### When BAR Deletes Something, It's REALLY Gone
+- Like, **CIA-level gone**. No "Oops" button, no recovery software, nada
+- DoD-compliant overwrite = even forensics experts can't save you
+- Translation: **BACKUP ANYTHING IMPORTANT** before putting it in BAR
 
-### Don't:
-- ❌ Forget your password
-- ❌ Use Maximum security casually
-- ❌ Skip the backups
-- ❌ Use for illegal purposes
-- ❌ Ignore the warnings
+### No Password Recovery (I Mean It)
+- Forget your password = wave goodbye to your files 👋
+- It's hardware-bound to your device, so even I can't help you
+- Seriously, write it down somewhere safe or use a password manager
+- "password123" is not a good choice (please don't)
 
----
-
-## 🔧 Technical Details
-
-**Core Technologies:**
-- Python 3.8+
-- PySide6 for GUI
-- AES-256-GCM encryption
-- PBKDF2-HMAC-SHA256 key derivation
-- DoD 5220.22-M deletion
-
-**Enhanced Features:**
-- Windows API integration
-- Real-time keyboard hooks
-- Clipboard monitoring
-- Process detection
-- Statistical analysis
-- Hardware fingerprinting
-
-**Performance:**
-- Multi-threaded scanning
-- Optimized encryption
-- Low memory footprint
-- Minimal CPU impact
+### Screenshot Protection Isn't Magic
+- ✅ Blocks software screenshots (Print Screen, Snipping Tool, etc.)
+- ❌ Can't stop someone from taking a photo with their phone
+- ❌ Can't block fancy external capture devices
+- ❌ Some admin-level tools might sneak past
+- Physics and hardware limitations are real, sorry!
 
 ---
 
-## 📈 What Got Better
+## 🎯 When Should You Use This Thing?
 
-### v2.0.0 Improvements:
-- ✅ Streamlined authentication
-- ✅ Enhanced screenshot protection
-- ✅ Panic wipe system added
-- ✅ Better hardware binding
-- ✅ Fixed security bugs
-- ✅ Cleaner codebase
-- ✅ Better performance
-- ✅ More stable
-
----
-
-## 🐛 Known Issues
-
-### Limitations:
-- Windows 10/11 works best
-- Limited Linux/macOS support
-- Can't block phone cameras
-- Some admin tools may bypass protection
-- Performance impact on old hardware
-
-### Workarounds:
-- Use in controlled environments
-- Run as administrator for best protection
-- Keep software updated
-- Read the documentation
+BAR is perfect for:
+- 💼 Sensitive work docs you need to share temporarily
+- 🔑 Storing API keys, passwords, or credentials short-term
+- 📄 Meeting data retention requirements (auto-delete old files)
+- 🔒 Keeping your personal stuff actually private
+- 💬 Secure temporary file exchanges
+- 🏭 Corporate secrets and IP that shouldn't stick around
+- 🏥 Healthcare records with expiration dates
+- 💰 Financial docs you don't want hanging around forever
 
 ---
 
-## 📞 Need Help?
+## 💡 Pro Tips (Learn from My Mistakes)
 
-- **Docs**: Check `docs/` folder
-- **README**: Main overview
-- **INSTALL**: Setup guide
-- **DISCLAIMER**: Important warnings
+### ✅ Things You Should Do:
+- Use STRONG passwords (12+ characters, mix it up)
+- Match your security level to what you're protecting (don't use Maximum for your grocery list)
+- Backup important stuff elsewhere first (seriously, DO THIS)
+- Test with throwaway files before trusting it with important stuff
+- Actually read the docs (I know, boring, but useful)
 
----
-
-## 📄 License
-
-BAR is GPL-3.0 licensed:
-- Free and open source
-- Modify and share freely
-- Keep it open source
-- No warranties
-
-See [LICENSE](LICENSE) for details.
+### ❌ Things That Will Bite You:
+- Forgetting your password (no recovery = you're screwed)
+- Casually using Maximum security (3 wrong attempts = everything's gone)
+- Skipping backups (then crying when files self-destruct)
+- Using this for sketchy/illegal stuff (don't be that person)
+- Ignoring warnings (they're there for a reason!)
 
 ---
 
-## 👨‍💻 Who Made This?
+## 🔧 For the Tech Nerds
 
-I'm **[Rolan (RNR)](https://rolan-rnr.netlify.app/)**, and I built BAR because I wanted better tools for secure, temporary file handling. I'm passionate about cybersecurity and privacy, and I wanted to make something that's both seriously secure and actually usable.
+**What's Under the Hood:**
+- Python 3.8+ (because it works and I like it)
+- PySide6 for the GUI (Qt is pretty solid)
+- AES-256-GCM encryption (military-grade, authenticated)
+- PBKDF2-HMAC-SHA256 key derivation (fancy way to say "secure password handling")
+- DoD 5220.22-M deletion standard (government-approved file destruction)
 
-Feel free to reach out with questions, feedback, or just to say hi!
+**Cool Advanced Stuff:**
+- Windows API integration (for the screenshot blocking magic)
+- Real-time keyboard hooks (catches Print Screen before it happens)
+- Clipboard monitoring (no sneaky copy-paste shenanigans)
+- Process detection (spots screenshot tools trying to be sneaky)
+- Statistical analysis (detects suspicious patterns)
+- Hardware fingerprinting (locks files to your specific machine)
+
+**Performance Geekery:**
+- Multi-threaded file scanning (fast AF)
+- Optimized encryption (quick but secure)
+- Low memory footprint (won't eat all your RAM)
+- Minimal CPU impact (your fan won't sound like a jet engine)
+
+---
+
+## 📈 The Upgrade Highlights
+
+### What I Fixed/Improved in v2.0.0:
+- ✅ Authentication is way simpler now (one less annoying screen)
+- ✅ Screenshot protection actually works better
+- ✅ Added the panic wipe system (3 levels of NOPE)
+- ✅ Hardware binding is more reliable
+- ✅ Squashed a bunch of security bugs
+- ✅ Code is cleaner and easier to maintain
+- ✅ Performance improvements across the board
+- ✅ Stability++ (way fewer random crashes)
+
+---
+
+## 🐛 Known Issues (aka Honesty Time)
+
+### Stuff I Can't Fix (Physics/Reality Limitations):
+- Windows 10/11 is where it shines brightest (Linux/macOS support is limited)
+- Can't block phone cameras pointed at your screen (not magic, sorry)
+- Some admin-level tools might bypass protections (they have special privileges)
+- Older/slower hardware might feel a performance hit
+- Cross-platform features are Windows-first (I develop on Windows)
+
+### How to Work Around Limitations:
+- Use BAR in a controlled environment when possible
+- Run as administrator for maximum protection features
+- Keep the software updated (I fix stuff regularly)
+- Check the docs if something seems weird
+
+---
+
+## 📞 Stuck? Need Help?
+
+If something's not working or you're confused:
+- **Docs folder** (`docs/`) has detailed guides
+- **README.md** has the main overview and quick start
+- **INSTALL.md** walks through setup step-by-step
+- **DISCLAIMER.md** has the legal/warning stuff (boring but important)
+
+---
+
+## 📄 License (The Legal Stuff)
+
+BAR is GPL-3.0 licensed, which means:
+- ✅ It's free and open source (always will be)
+- ✅ You can modify and share it however you want
+- ✅ Just keep it open source if you distribute it
+- ❌ No warranties (if it breaks, that's on you)
+
+Full boring legal text: [LICENSE](LICENSE)
+
+---
+
+## 👨‍💻 Who Built This Thing?
+
+Hey! I'm **[Rolan (RNR)](https://rolan-rnr.netlify.app/)**, and I created BAR because honestly, the existing self-destructing file tools either sucked or were sketchy as hell.
+
+I'm into cybersecurity and privacy, and I believe security software shouldn't require a PhD to use. BAR is my attempt at making something that's both properly secure AND doesn't make you want to throw your computer out the window.
+
+Got questions? Feedback? Just wanna chat? Hit me up! I actually respond to people.
 
 ---
 
 <div align="center">
 
-**BAR v2.0.0 - Because some things are meant to be temporary.**
+**🔥 BAR v2.0.0 - Because Some Things Should Just... Disappear 🔥**
 
-*Stay safe out there.* 🔥
+*Your files will self-destruct. Your privacy won't.*
+
+---
+
+**Stay safe, stay secure, and for the love of all that is holy, BACK UP YOUR IMPORTANT STUFF!**
+
+👋
 
 </div>
 
 ---
 
-*Remember: Once a file is destroyed by BAR, it cannot be recovered. Use responsibly.*
+*P.S. - Seriously though: Once BAR deletes something, it's gone forever. No take-backs. Use your brain. 🧠*
