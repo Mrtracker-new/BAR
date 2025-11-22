@@ -2,17 +2,21 @@ import asyncio
 import os
 import json
 import time
-import threading
 import logging
-import hashlib
 import gc
-import psutil
+try:
+    import psutil  # type: ignore
+    _HAS_PSUTIL = True
+except ImportError:  # Optional dependency
+    psutil = None  # type: ignore
+    _HAS_PSUTIL = False
+import uuid
+import base64
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Tuple, AsyncIterator, Union
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from contextlib import asynccontextmanager
 
 from src.crypto.async_encryption import AsyncEncryptionManager, StreamingConfig, PerformanceMetrics
 from src.crypto.encryption import EncryptionManager
@@ -21,8 +25,8 @@ from src.file_manager.format_detector import FileFormatDetector
 
 # Import comprehensive input validation system
 from src.security.input_validator import (
-    get_file_validator, get_global_validator, FileValidationError,
-    validate_string, validate_bytes, validate_integer
+    get_file_validator, get_global_validator, get_crypto_validator,
+    FileValidationError, validate_string, validate_bytes, validate_integer
 )
 
 
@@ -46,8 +50,13 @@ class MemoryMonitor:
     
     def __init__(self, max_memory_mb: int = 512):
         self.max_memory_bytes = max_memory_mb * 1024 * 1024
-        self.process = psutil.Process()
+        # Create process handle if psutil is available; else use fallback
+        if _HAS_PSUTIL:
+            self.process = psutil.Process()
+        else:
+            self.process = None  # Fallback: unavailable
         self.cleanup_callbacks = []
+        self.peak_memory = 0  # Track peak memory usage
     
     def add_cleanup_callback(self, callback):
         """Add a callback to be called when memory cleanup is needed."""
@@ -56,10 +65,18 @@ class MemoryMonitor:
     async def check_memory_usage(self):
         """Check current memory usage and trigger cleanup if needed."""
         try:
-            memory_info = self.process.memory_info()
-            current_memory = memory_info.rss  # Resident Set Size (physical memory)
+            if self.process is not None:
+                memory_info = self.process.memory_info()
+                current_memory = memory_info.rss  # Resident Set Size (physical memory)
+            else:
+                # Fallback: no psutil, approximate as 0
+                current_memory = 0
             
-            if current_memory > self.max_memory_bytes:
+            # Update peak memory
+            if current_memory > self.peak_memory:
+                self.peak_memory = current_memory
+            
+            if current_memory > self.max_memory_bytes and self.process is not None:
                 # Trigger cleanup callbacks
                 for callback in self.cleanup_callbacks:
                     try:
@@ -82,16 +99,29 @@ class MemoryMonitor:
     def get_memory_usage(self) -> Dict[str, int]:
         """Get current memory usage statistics."""
         try:
-            memory_info = self.process.memory_info()
+            if self.process is not None:
+                memory_info = self.process.memory_info()
+                percent = self.process.memory_percent()
+                rss = memory_info.rss
+                vms = memory_info.vms
+            else:
+                rss = 0
+                vms = 0
+                percent = 0.0
             return {
-                'rss': memory_info.rss,  # Physical memory
-                'vms': memory_info.vms,  # Virtual memory
-                'percent': self.process.memory_percent(),
-                'max_allowed': self.max_memory_bytes
+                'rss': rss,  # Physical memory
+                'vms': vms,  # Virtual memory
+                'percent': percent,
+                'max_allowed': self.max_memory_bytes,
+                'peak': self.peak_memory  # Peak memory usage
             }
         except Exception as e:
             logging.warning(f"Failed to get memory usage: {e}")
             return {'error': str(e)}
+    
+    def reset_peak_memory(self):
+        """Reset peak memory tracking."""
+        self.peak_memory = 0
 
 
 class AsyncFileManager:
@@ -161,7 +191,6 @@ class AsyncFileManager:
     
     def _validate_base_directory(self, base_directory: Any) -> None:
         """Validate base directory parameter per Rule R030."""
-        from src.security.input_validator import get_file_validator
         validator = get_file_validator()
         
         try:
@@ -171,30 +200,39 @@ class AsyncFileManager:
                 allow_absolute=True,
                 allow_parent_traversal=False
             )
-        except:
-            # For temporary directories in testing, create a simple validation result
-            class SimpleResult:
-                def __init__(self, value):
-                    self.is_valid = True
-                    self.sanitized_value = str(value)
-            path_result = SimpleResult(base_directory)
-        if not path_result.is_valid:
-            raise FileValidationError(
-                path_result.error_message,
-                field_name="base_directory",
-                violation_type=path_result.violation_type
-            )
-    
+            if not path_result.is_valid:
+                raise FileValidationError(
+                    path_result.error_message,
+                    field_name="base_directory",
+                    violation_type=path_result.violation_type
+                )
+        except (AttributeError, TypeError) as e:
+            # Handle cases where validation may not be fully configured (e.g., testing)
+            # Only allow this for development/testing - in production this should fail
+            if os.getenv('BAR_ENV') == 'production':
+                raise FileValidationError(
+                    f"Base directory validation failed: {e}",
+                    field_name="base_directory",
+                    violation_type="validation_error"
+                )
+            # For dev/test, do basic validation
+            if not base_directory or not isinstance(base_directory, (str, Path)):
+                raise FileValidationError(
+                    "Base directory must be a valid path string",
+                    field_name="base_directory",
+                    violation_type="invalid_type"
+                )
+
     def _setup_logging(self):
         """Set up logging for the async file manager."""
         log_dir = self.base_directory / "logs"
         log_dir.mkdir(exist_ok=True)
-        
+
         log_file = log_dir / "async_file_operations.log"
-        
+
         # Configure dedicated logger
         self.logger = logging.getLogger("AsyncFileManager")
-        
+
         if not self.logger.handlers:  # Avoid duplicate handlers
             handler = logging.FileHandler(log_file)
             formatter = logging.Formatter(
@@ -203,7 +241,7 @@ class AsyncFileManager:
             handler.setFormatter(formatter)
             self.logger.addHandler(handler)
             self.logger.setLevel(logging.INFO)
-    
+
     def _start_memory_monitoring(self):
         """Start background memory monitoring."""
         async def monitor_memory():
@@ -215,10 +253,10 @@ class AsyncFileManager:
                         self.logger.info("Memory cleanup triggered")
                 except Exception as e:
                     self.logger.warning(f"Memory monitoring error: {e}")
-        
+
         # Start monitoring task
         asyncio.create_task(monitor_memory())
-    
+
     async def _cleanup_temporary_files(self):
         """Clean up temporary files to free memory."""
         try:
@@ -233,40 +271,42 @@ class AsyncFileManager:
                     self.logger.warning(f"Failed to clean up {temp_file}: {e}")
         except Exception as e:
             self.logger.warning(f"Temporary file cleanup failed: {e}")
-    
+
     async def __aenter__(self):
         """Async context manager entry."""
         await self.async_encryption.__aenter__()
         return self
-    
+
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit with cleanup."""
         await self.cleanup()
-    
+
     async def cleanup(self):
         """Clean up resources."""
         # Cancel all active operations
         for operation_id in list(self.active_operations.keys()):
             await self.cancel_operation(operation_id)
-        
+
         # Cleanup encryption manager
         await self.async_encryption.cleanup()
-        
+
         # Shutdown thread pool
         self.executor.shutdown(wait=True)
-        
+
         # Clean up temporary files
         await self._cleanup_temporary_files()
-    
+
     def _generate_operation_id(self) -> str:
         """Generate a unique operation ID."""
-        import uuid
         return str(uuid.uuid4())
     
     async def _start_operation(self, operation_type: str, file_path: str, 
                               total_bytes: int = 0) -> str:
         """Start tracking a new operation."""
         operation_id = self._generate_operation_id()
+        
+        # Reset peak memory for this operation
+        self.memory_monitor.reset_peak_memory()
         
         async with self.operation_lock:
             progress = FileOperationProgress(
@@ -320,7 +360,7 @@ class AsyncFileManager:
                     data_size=progress.processed_bytes,
                     duration=duration,
                     throughput=progress.throughput,
-                    memory_peak=0,  # TODO: Track memory usage
+                    memory_peak=self.memory_monitor.peak_memory,  # now tracked
                     timestamp=datetime.now()
                 )
                 self.operation_metrics.append(metric)
@@ -343,6 +383,51 @@ class AsyncFileManager:
                 self.logger.info(f"Operation cancelled: {operation_id}")
                 return True
             return False
+    
+    def _serialize_encrypted_data(self, encrypted_data: Dict[str, bytes], salt: bytes) -> bytes:
+        """Safely serialize encrypted data using JSON + base64 instead of pickle.
+        
+        Args:
+            encrypted_data: Dictionary containing ciphertext and nonce
+            salt: The salt used for key derivation
+            
+        Returns:
+            JSON-serialized bytes
+        """
+        safe_data = {
+            'version': 2,  # Format version
+            'ciphertext': base64.b64encode(encrypted_data['ciphertext']).decode('ascii'),
+            'nonce': base64.b64encode(encrypted_data['nonce']).decode('ascii'),
+            'salt': base64.b64encode(salt).decode('ascii')
+        }
+        return json.dumps(safe_data).encode('utf-8')
+    
+    def _deserialize_encrypted_data(self, data: bytes) -> Tuple[Dict[str, bytes], bytes]:
+        """Safely deserialize encrypted data from JSON + base64.
+        
+        Args:
+            data: JSON-serialized bytes
+            
+        Returns:
+            Tuple of (encrypted_data dict, salt)
+        """
+        try:
+            safe_data = json.loads(data.decode('utf-8'))
+            
+            # Check version
+            if safe_data.get('version') != 2:
+                raise ValueError(f"Unsupported format version: {safe_data.get('version')}")
+            
+            encrypted_data = {
+                'ciphertext': base64.b64decode(safe_data['ciphertext']),
+                'nonce': base64.b64decode(safe_data['nonce'])
+            }
+            salt = base64.b64decode(safe_data['salt'])
+            
+            return encrypted_data, salt
+            
+        except (json.JSONDecodeError, KeyError, ValueError) as e:
+            raise ValueError(f"Failed to deserialize encrypted data: {e}")
     
     async def create_secure_file_async(self, content: bytes, filename: str, 
                                      password: str, security_settings: Dict[str, Any],
@@ -371,10 +456,9 @@ class AsyncFileManager:
         # Start operation tracking
         operation_id = await self._start_operation("encrypt", filename, len(validated_content))
         
+        temp_file = self.temp_directory / f"{file_id}_temp"
+        
         try:
-            # Create temporary file for processing
-            temp_file = self.temp_directory / f"{file_id}_temp"
-            
             async def progress_handler(progress_data):
                 await self._update_operation_progress(
                     operation_id, 
@@ -397,30 +481,53 @@ class AsyncFileManager:
                         chunk = validated_content[i:i+chunk_size]
                         yield chunk
                 
-                # Stream encrypt to temporary file
-                with open(temp_file, 'wb') as f:
-                    async for encrypted_chunk in self.async_encryption.encrypt_stream_async(
-                        content_stream(), validated_password, progress_callback=progress_handler
-                    ):
-                        import pickle
-                        chunk_data = pickle.dumps(encrypted_chunk)
-                        chunk_size_bytes = len(chunk_data).to_bytes(4, 'big')
-                        f.write(chunk_size_bytes + chunk_data)
+                # Stream encrypt to temporary file - using JSON serialization
+                chunks = []
+                salt_b64 = None
+                total_size = 0
+                async for item in self.async_encryption.encrypt_stream_async(
+                    content_stream(), validated_password, progress_callback=progress_handler
+                ):
+                    itype = item.get('type')
+                    if itype == 'metadata':
+                        salt_b64 = base64.b64encode(item['salt']).decode('ascii')
+                        continue
+                    if itype == 'chunk':
+                        total_size += item.get('size', 0)
+                        chunks.append({
+                            'index': item['index'],
+                            'ciphertext': base64.b64encode(item['ciphertext']).decode('ascii'),
+                            'nonce': base64.b64encode(item['nonce']).decode('ascii')
+                        })
+                    # final_metadata is ignored for storage; we compute totals ourselves
+                
+                if salt_b64 is None:
+                    raise ValueError('Streaming encryption missing salt metadata')
+                
+                # Write JSON structure
+                with open(temp_file, 'w') as f:
+                    json.dump({
+                        'version': 2,
+                        'streaming': True,
+                        'salt': salt_b64,
+                        'total_size': total_size,
+                        'chunks': chunks
+                    }, f)
             
             else:
                 # Use regular encryption for smaller files
                 def encrypt_small_file():
-                    return EncryptionManager.encrypt_data(validated_content, 
-                                                        EncryptionManager.derive_key(validated_password, 
-                                                                                   EncryptionManager.generate_salt()))
+                    salt = EncryptionManager.generate_salt()
+                    key = EncryptionManager.derive_key(validated_password, salt)
+                    encrypted_data = EncryptionManager.encrypt_data(validated_content, key)
+                    return encrypted_data, salt
                 
                 loop = asyncio.get_event_loop()
-                encrypted_data = await loop.run_in_executor(self.executor, encrypt_small_file)
+                encrypted_data, salt = await loop.run_in_executor(self.executor, encrypt_small_file)
                 
-                # Save encrypted data
+                # Save encrypted data with JSON serialization (safer than pickle)
                 with open(temp_file, 'wb') as f:
-                    import pickle
-                    pickle.dump(encrypted_data, f)
+                    f.write(self._serialize_encrypted_data(encrypted_data, salt))
             
             # Detect file format
             format_info = self.format_detector.detect_format(validated_filename, validated_content)
@@ -443,6 +550,7 @@ class AsyncFileManager:
                 "original_size": len(validated_content),
                 "encrypted_size": temp_file.stat().st_size,
                 "streaming_encrypted": len(validated_content) > StreamingConfig.MEDIUM_FILE_CHUNK_SIZE,
+                "serialization_format": "json_base64_v2",  # New safer format
                 "security": {
                     "expiration_time": validated_settings.get("expiration_time"),
                     "max_access_count": validated_settings.get("max_access_count"),
@@ -637,27 +745,46 @@ class AsyncFileManager:
             if metadata.get('streaming_encrypted', False):
                 self.logger.info(f"Using streaming decryption for file: {validated_file_id}")
                 
-                # Stream decrypt from file
-                async def encrypted_file_reader():
-                    with open(file_path, 'rb') as f:
-                        while True:
-                            size_bytes = f.read(4)
-                            if not size_bytes:
-                                break
-                            
-                            chunk_size = int.from_bytes(size_bytes, 'big')
-                            chunk_data = f.read(chunk_size)
-                            
-                            if len(chunk_data) != chunk_size:
-                                raise ValueError("Corrupted encrypted file")
-                            
-                            import pickle
-                            yield pickle.loads(chunk_data)
+                # Read streaming chunks
+                with open(file_path, 'r') as f:
+                    stream_obj = json.load(f)
+                
+                if stream_obj.get('version') != 2 or not stream_obj.get('streaming'):
+                    raise ValueError("Invalid streaming file format")
+                
+                # Create async iterator matching AsyncEncryptionManager's expected input
+                async def encrypted_chunk_reader():
+                    # initial metadata with salt
+                    yield {
+                        'type': 'metadata',
+                        'salt': base64.b64decode(stream_obj['salt']),
+                        'chunk_count': 0,
+                        'total_size': stream_obj.get('total_size', 0)
+                    }
+                    total = 0
+                    for chunk in stream_obj['chunks']:
+                        ct = base64.b64decode(chunk['ciphertext'])
+                        nonce = base64.b64decode(chunk['nonce'])
+                        idx = chunk['index']
+                        total += len(ct)
+                        yield {
+                            'type': 'chunk',
+                            'index': idx,
+                            'ciphertext': ct,
+                            'nonce': nonce,
+                            'size': len(ct)
+                        }
+                    # final metadata
+                    yield {
+                        'type': 'final_metadata',
+                        'total_chunks': len(stream_obj['chunks']),
+                        'total_size': total
+                    }
                 
                 # Decrypt using streaming
                 content_chunks = []
                 async for decrypted_chunk in self.async_encryption.decrypt_stream_async(
-                    encrypted_file_reader(), validated_password, progress_handler
+                    encrypted_chunk_reader(), validated_password, progress_handler
                 ):
                     content_chunks.append(decrypted_chunk)
                 
@@ -667,11 +794,11 @@ class AsyncFileManager:
                 # Use regular decryption for files encrypted with standard method
                 def decrypt_standard_file():
                     with open(file_path, 'rb') as f:
-                        import pickle
-                        encrypted_data = pickle.load(f)
+                        data = f.read()
                     
-                    # Extract salt and decrypt
-                    salt = EncryptionManager.generate_salt()  # TODO: Get from metadata
+                    # Deserialize safely
+                    encrypted_data, salt = self._deserialize_encrypted_data(data)
+                    
                     key = EncryptionManager.derive_key(validated_password, salt)
                     return EncryptionManager.decrypt_data(encrypted_data, key)
                 
@@ -731,11 +858,13 @@ class AsyncFileManager:
             total_bytes = sum(m.data_size for m in self.operation_metrics)
             total_time = sum(m.duration for m in self.operation_metrics)
             avg_throughput = sum(m.throughput for m in self.operation_metrics) / len(self.operation_metrics)
+            avg_memory_peak = sum(m.memory_peak for m in self.operation_metrics) / len(self.operation_metrics)
             
             metrics['file_operations'] = {
                 'total_bytes_processed': total_bytes,
                 'total_time': total_time,
                 'average_throughput': avg_throughput,
+                'average_memory_peak': avg_memory_peak,
                 'operations_count': len(self.operation_metrics)
             }
         

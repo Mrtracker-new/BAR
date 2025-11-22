@@ -347,8 +347,8 @@ class AsyncEncryptionManager:
                     gc.collect()
         
         finally:
-            # Secure cleanup of key material
-            if isinstance(key, (bytes, bytearray)):
+            # Secure cleanup of key material (only if mutable)
+            if isinstance(key, bytearray):
                 secure_zero_memory(key)
         
         # Yield final metadata
@@ -441,8 +441,8 @@ class AsyncEncryptionManager:
                     break
         
         finally:
-            # Secure cleanup
-            if isinstance(key, (bytes, bytearray)):
+            # Secure cleanup (only if mutable)
+            if isinstance(key, bytearray):
                 secure_zero_memory(key)
     
     async def encrypt_large_file_async(self, file_path: str, password: str,
