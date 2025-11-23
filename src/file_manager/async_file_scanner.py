@@ -5,14 +5,12 @@ import logging
 import platform
 import time
 import ctypes
-import aiofiles
-import concurrent.futures
+import uuid
 from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional, Tuple, AsyncIterator, Set
+from typing import Dict, List, Any, Optional, Set
 from pathlib import Path
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor
-import threading
 
 # Import comprehensive input validation system
 from ..security.input_validator import (
@@ -109,10 +107,6 @@ class AsyncFileScanner:
         self.found_bar_files: List[BarFileInfo] = []
         self.scan_lock = asyncio.Lock()
         
-        # Performance metrics
-        self.total_files_scanned = 0
-        self.total_scan_time = 0.0
-        self.scan_history = []
         
         # Setup logging
         self.logger = logging.getLogger("AsyncFileScanner")
@@ -142,7 +136,6 @@ class AsyncFileScanner:
     
     def _generate_scan_id(self) -> str:
         """Generate a unique scan ID."""
-        import uuid
         return str(uuid.uuid4())[:8]
     
     async def discover_devices_async(self) -> List[DeviceInfo]:
@@ -460,10 +453,7 @@ class AsyncFileScanner:
                     progress = self.active_scans[scan_id]
                     progress.status = 'completed'
                     progress.bar_files_found = len(bar_files_found)
-                    progress.total_files_found = sum(
-                        len(batch_results) for batch_results in batch_results
-                        if isinstance(batch_results, list)
-                    )
+                    progress.total_files_found = len(bar_files_found)
             
             self.logger.info(f"Scan {scan_id} completed: found {len(bar_files_found)} .bar files")
             
@@ -553,11 +543,11 @@ class AsyncFileScanner:
                 # Read file header to validate signature
                 try:
                     with open(file_path, 'rb') as f:
-                        # Read first chunk to check signature
+                    # Read first chunk to check signature
                         header = f.read(min(1024, stat.st_size))
                         
                     # Basic signature validation
-                    signature_valid = self.BAR_FILE_SIGNATURE.encode() in header
+                    signature_valid = self.BAR_SECURE_MAGIC_HEADER in header
                     
                     return BarFileInfo(
                         file_path=file_path,
@@ -706,7 +696,7 @@ class AsyncFileScanner:
                     header = f.read(min(4096, stat.st_size))
                 
                 # Check signature
-                signature_valid = self.BAR_FILE_SIGNATURE.encode() in header
+                signature_valid = self.BAR_SECURE_MAGIC_HEADER in header
                 
                 # Try to parse as JSON metadata (if it starts with JSON)
                 metadata_valid = False
@@ -717,7 +707,6 @@ class AsyncFileScanner:
                     header_str = header.decode('utf-8', errors='ignore')
                     if header_str.strip().startswith('{'):
                         # Try to parse as JSON
-                        import json
                         json_end = header_str.find('}') + 1
                         if json_end > 0:
                             metadata = json.loads(header_str[:json_end])
@@ -769,7 +758,6 @@ class AsyncFileScanner:
             'total_bar_files_found': total_bar_files,
             'discovered_devices': len(self.discovered_devices),
             'average_scan_speed': avg_speed,
-            'total_files_scanned': self.total_files_scanned,
             'max_concurrent_scans': self.max_concurrent_scans,
             'max_workers': self.max_workers
         }
