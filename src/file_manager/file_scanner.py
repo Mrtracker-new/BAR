@@ -1,19 +1,16 @@
 import os
-import json
 import logging
-import base64
 import platform
-import re
 import time
 from datetime import datetime
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional
 from pathlib import Path
 import threading
 import ctypes
 
 # Import comprehensive input validation system
 from ..security.input_validator import (
-    get_file_validator, FileValidationError, validate_string
+    get_file_validator, FileValidationError
 )
 
 class FileScanner:
@@ -118,13 +115,12 @@ class FileScanner:
                         # Get free space
                         free_bytes = ctypes.c_ulonglong(0)
                         total_bytes = ctypes.c_ulonglong(0)
-                        total_free_bytes = ctypes.c_ulonglong(0)
                         
                         result = ctypes.windll.kernel32.GetDiskFreeSpaceExW(
                             drive_letter,
                             ctypes.byref(free_bytes),
                             ctypes.byref(total_bytes),
-                            ctypes.byref(total_free_bytes)
+                            None
                         )
                         
                         # Add device to list
@@ -254,16 +250,7 @@ class FileScanner:
             }
             
             # Group files by integrity score
-            if self.scan_results["files"]:
-                integrity_groups = {}
-                for file_info in self.scan_results["files"]:
-                    score = file_info.get("integrity_score", 0)
-                    score_range = f"{(score // 10) * 10}-{((score // 10) * 10) + 9}"
-                    if score_range not in integrity_groups:
-                        integrity_groups[score_range] = 0
-                    integrity_groups[score_range] += 1
-                
-                self.scan_results["integrity_distribution"] = integrity_groups
+            self._add_integrity_distribution()
             
             self.logger.info(f"Scan completed: found {self.scan_progress['found_bar_files']} .bar files in {scan_duration:.2f} seconds")
         except Exception as e:
@@ -418,6 +405,19 @@ class FileScanner:
             self.scan_progress["invalid_bar_files"] += 1
             return None
     
+    def _add_integrity_distribution(self):
+        """Add integrity score distribution to scan results."""
+        if self.scan_results["files"]:
+            integrity_groups = {}
+            for file_info in self.scan_results["files"]:
+                score = file_info.get("integrity_score", 0)
+                score_range = f"{(score // 10) * 10}-{((score // 10) * 10) + 9}"
+                if score_range not in integrity_groups:
+                    integrity_groups[score_range] = 0
+                integrity_groups[score_range] += 1
+            
+            self.scan_results["integrity_distribution"] = integrity_groups
+    
     def get_scan_progress(self) -> Dict[str, Any]:
         """Get the current scan progress.
         
@@ -566,16 +566,7 @@ class FileScanner:
             }
             
             # Group files by integrity score
-            if self.scan_results["files"]:
-                integrity_groups = {}
-                for file_info in self.scan_results["files"]:
-                    score = file_info.get("integrity_score", 0)
-                    score_range = f"{(score // 10) * 10}-{((score // 10) * 10) + 9}"
-                    if score_range not in integrity_groups:
-                        integrity_groups[score_range] = 0
-                    integrity_groups[score_range] += 1
-                
-                self.scan_results["integrity_distribution"] = integrity_groups
+            self._add_integrity_distribution()
             
             self.logger.info(f"Multi-device scan completed: found {self.scan_progress['found_bar_files']} .bar files across {devices_scanned} devices in {scan_duration:.2f} seconds")
         except Exception as e:
