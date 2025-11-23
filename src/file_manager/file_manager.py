@@ -8,6 +8,7 @@ import logging
 import base64
 import hashlib
 import re
+import uuid
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Tuple
 from pathlib import Path
@@ -120,7 +121,6 @@ class FileManager:
             # Hash the constant to create a proper cryptographic salt that passes validation
             # This ensures the same salt is used across sessions (required for metadata decryption)
             # while still appearing as a strong random salt to validators
-            import hashlib
             salt_constant = b'BAR_METADATA_ENCRYPTION_V2_SALT_2025'
             metadata_salt = hashlib.sha256(salt_constant).digest()  # Creates 32-byte salt
             
@@ -616,9 +616,9 @@ class FileManager:
         is_media = format_info['type'] in ['image', 'audio', 'video']
         
         # Check if this is a media file and automatically set disable_export if not explicitly set
-        if is_media and "disable_export" not in security_settings:
+        if is_media and "disable_export" not in validated_settings:
             # Automatically make media files view-only unless explicitly overridden
-            security_settings["disable_export"] = True
+            validated_settings["disable_export"] = True
             self.logger.info(f"Automatically set view-only mode for {format_info['display_name']}: {filename}")
         
         # Encrypt the validated file content
@@ -868,9 +868,8 @@ class FileManager:
         
         # Get filename for logging
         try:
-            with open(metadata_path, "r") as f:
-                metadata = json.load(f)
-                filename = metadata.get("filename", "unknown")
+            metadata = self._load_metadata(file_id)
+            filename = metadata.get("filename", "unknown")
         except:
             filename = "unknown"
         
@@ -911,10 +910,9 @@ class FileManager:
         
         # Get filename for logging and check for any file paths
         try:
-            with open(metadata_path, "r") as f:
-                try:
-                    metadata = json.load(f)
-                    filename = metadata.get("filename", "unknown")
+            try:
+                metadata = self._load_metadata(file_id)
+                filename = metadata.get("filename", "unknown")
                     
                     # If blacklisting is enabled, add file information to blacklist
                     # Handle this in a separate try block to prevent it from affecting the rest of the deletion
@@ -961,8 +959,8 @@ class FileManager:
                                     secure_file_ops = SecureFileOperations()
                                     secure_file_ops.secure_delete_file(str(temp_file), SecureDeletionMethod.DOD_7_PASS)
                                     self.logger.info(f"Securely deleted temporary file: {temp_file}")
-                    except Exception as temp_error:
-                        self.logger.error(f"Error deleting temporary files: {str(temp_error)}")
+                        except Exception as temp_error:
+                            self.logger.error(f"Error deleting temporary files: {str(temp_error)}")
                     
                     # Check for any portable files that might be associated with this file_id
                     try:
@@ -992,8 +990,8 @@ class FileManager:
                                 # Don't wait for completion - let it run in background
                             except Exception as thread_error:
                                 self.logger.error(f"Error starting search thread: {str(thread_error)}")
-                except json.JSONDecodeError as json_error:
-                    self.logger.error(f"Error parsing metadata JSON: {str(json_error)}")
+            except Exception as metadata_error:
+                self.logger.error(f"Error loading metadata: {str(metadata_error)}")
         except Exception as e:
             self.logger.error(f"Error reading metadata during secure deletion: {str(e)}")
         
@@ -1033,9 +1031,12 @@ class FileManager:
         if not metadata_path.exists():
             return False
         
-        # Load metadata to check export restrictions
-        with open(metadata_path, "r") as f:
-            metadata = json.load(f)
+        # Load metadata with decryption to check export restrictions
+        try:
+            metadata = self._load_metadata(file_id)
+        except Exception as e:
+            self.logger.error(f"Failed to load metadata for export: {e}")
+            return False
         
         # Check if export is disabled for this file
         if metadata.get("security", {}).get("disable_export", False):
@@ -1075,9 +1076,12 @@ class FileManager:
         if not metadata_path.exists():
             raise FileNotFoundError(f"File with ID {file_id} not found")
         
-        # Load metadata
-        with open(metadata_path, "r") as f:
-            metadata = json.load(f)
+        # Load metadata with decryption
+        try:
+            metadata = self._load_metadata(file_id)
+        except Exception as e:
+            self.logger.error(f"Failed to load metadata for portable export: {e}")
+            raise FileNotFoundError(f"File with ID {file_id} not found")
         
         # Check if the file is marked as view-only before attempting decryption
         if metadata["security"].get("disable_export", False):
@@ -1177,10 +1181,8 @@ class FileManager:
                     "failed_password_attempts": 0  # Reset for new import
                 }
                 
-                # Save the metadata file
-                metadata_path = self.metadata_directory / f"{file_id}.json"
-                with open(metadata_path, "w") as f:
-                    json.dump(import_metadata, f, indent=2)
+                # Save the metadata file with encryption
+                self._save_metadata(file_id, import_metadata)
                 
                 self.logger.info(f"Successfully imported secure portable file: {file_id} ({metadata['filename']})")
                 self.logger.info(f"SECURITY: File imported with military-grade security - zero metadata exposure")
@@ -1209,7 +1211,7 @@ class FileManager:
         return base64.b64encode(content_hash).decode('utf-8')
     
     def import_file(self, import_path: str) -> str:
-        """Import a secure file.
+        """Import a secure file (supports both encrypted and legacy plaintext metadata).
         
         Args:
             import_path: The path of the file to import
@@ -1223,7 +1225,17 @@ class FileManager:
         try:
             # Load and validate the file
             with open(import_path, "r") as f:
-                metadata = json.load(f)
+                data = json.load(f)
+            
+            # Check if it's encrypted metadata or legacy plaintext
+            version = data.get('version', self.METADATA_VERSION_PLAINTEXT)
+            
+            if version == self.METADATA_VERSION_ENCRYPTED:
+                # Can't import encrypted metadata directly - must use portable format
+                raise ValueError("Encrypted metadata files cannot be imported directly. Use import_portable_file() for .bar files.")
+            
+            # Legacy plaintext format
+            metadata = data
             
             # Check if it's a valid BAR file
             if "file_id" not in metadata or "encryption" not in metadata:
@@ -1241,9 +1253,14 @@ class FileManager:
                 target_path = self.metadata_directory / f"{file_id}.json"
                 self.logger.info(f"Renamed imported file from {old_file_id} to {file_id}")
             
-            # Save the metadata file
-            with open(target_path, "w") as f:
-                json.dump(metadata, f, indent=2)
+            # Save with encryption if metadata key is set, otherwise plaintext
+            if self._metadata_key_set:
+                self._save_metadata(file_id, metadata)
+            else:
+                # Fallback to plaintext for legacy compatibility
+                with open(target_path, "w") as f:
+                    json.dump(metadata, f, indent=2)
+                self.logger.warning(f"Imported file without metadata encryption (key not set): {file_id}")
             
             self.logger.info(f"Imported file: {file_id} ({metadata.get('filename', 'unknown')})")
             return file_id
@@ -1375,7 +1392,6 @@ class FileManager:
         Returns:
             A unique file ID
         """
-        import uuid
         return str(uuid.uuid4())
     
     def shutdown(self):
