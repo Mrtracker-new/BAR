@@ -13,9 +13,7 @@ Project: BAR - Burn After Reading Security Suite
 
 import os
 import mimetypes
-import struct
-from typing import Dict, Any, Optional, Tuple, List
-from pathlib import Path
+from typing import Dict, Any, List
 import logging
 
 
