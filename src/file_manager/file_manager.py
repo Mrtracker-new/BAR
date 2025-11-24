@@ -910,90 +910,87 @@ class FileManager:
         
         # Get filename for logging and check for any file paths
         try:
+            metadata = self._load_metadata(file_id)
+            filename = metadata.get("filename", "unknown")
+            
+            # If blacklisting is enabled, add file information to blacklist
+            # Handle this in a separate try block to prevent it from affecting the rest of the deletion
+            if blacklist:
+                try:
+                    self._add_to_blacklist(metadata)
+                except Exception as blacklist_error:
+                    self.logger.error(f"Error adding file to blacklist: {str(blacklist_error)}")
+                    # Continue with deletion even if blacklisting fails
+            
+            # Process associated files in separate try blocks to ensure one failure doesn't stop others
+            
+            # If there's an actual file stored on disk (for BAR files), delete it too
+            if "file_path" in metadata:
+                try:
+                    file_path = Path(metadata["file_path"])
+                    if file_path.exists() and file_path.is_file():
+                        # Initialize secure delete
+                        secure_file_ops = SecureFileOperations()
+                        # Securely delete the actual file
+                        secure_file_ops.secure_delete_file(str(file_path), SecureDeletionMethod.DOD_7_PASS)
+                        self.logger.info(f"Securely deleted actual file at: {file_path}")
+                except Exception as file_error:
+                    self.logger.error(f"Error deleting associated file: {str(file_error)}")
+            
+            # Check for any exported files that might be associated with this file_id
             try:
-                metadata = self._load_metadata(file_id)
-                filename = metadata.get("filename", "unknown")
-                    
-                    # If blacklisting is enabled, add file information to blacklist
-                    # Handle this in a separate try block to prevent it from affecting the rest of the deletion
-                    if blacklist:
-                        try:
-                            self._add_to_blacklist(metadata)
-                        except Exception as blacklist_error:
-                            self.logger.error(f"Error adding file to blacklist: {str(blacklist_error)}")
-                            # Continue with deletion even if blacklisting fails
-                    
-                    # Process associated files in separate try blocks to ensure one failure doesn't stop others
-                    
-                    # If there's an actual file stored on disk (for BAR files), delete it too
-                    if "file_path" in metadata:
-                        try:
-                            file_path = Path(metadata["file_path"])
-                            if file_path.exists() and file_path.is_file():
-                                # Initialize secure delete
-                                secure_file_ops = SecureFileOperations()
-                                # Securely delete the actual file
-                                secure_file_ops.secure_delete_file(str(file_path), SecureDeletionMethod.DOD_7_PASS)
-                                self.logger.info(f"Securely deleted actual file at: {file_path}")
-                        except Exception as file_error:
-                            self.logger.error(f"Error deleting associated file: {str(file_error)}")
-                    
-                    # Check for any exported files that might be associated with this file_id
+                export_dir = self.base_directory / "exports"
+                if export_dir.exists() and export_dir.is_dir():
+                    for export_file in export_dir.glob(f"*{file_id}*"):
+                        if export_file.exists() and export_file.is_file():
+                            secure_file_ops = SecureFileOperations()
+                            secure_file_ops.secure_delete_file(str(export_file), SecureDeletionMethod.DOD_7_PASS)
+                            self.logger.info(f"Securely deleted exported file: {export_file}")
+            except Exception as export_error:
+                self.logger.error(f"Error deleting exported files: {str(export_error)}")
+            
+            # Check for any temporary files that might be associated with this file_id
+            try:
+                temp_dir = self.base_directory / "temp"
+                if temp_dir.exists() and temp_dir.is_dir():
+                    for temp_file in temp_dir.glob(f"*{file_id}*"):
+                        if temp_file.exists() and temp_file.is_file():
+                            secure_file_ops = SecureFileOperations()
+                            secure_file_ops.secure_delete_file(str(temp_file), SecureDeletionMethod.DOD_7_PASS)
+                            self.logger.info(f"Securely deleted temporary file: {temp_file}")
+            except Exception as temp_error:
+                self.logger.error(f"Error deleting temporary files: {str(temp_error)}")
+            
+            # Check for any portable files that might be associated with this file_id
+            try:
+                portable_dir = self.base_directory / "portable"
+                if portable_dir.exists() and portable_dir.is_dir():
+                    for portable_file in portable_dir.glob(f"*{file_id}*"):
+                        if portable_file.exists() and portable_file.is_file():
+                            secure_file_ops = SecureFileOperations()
+                            secure_file_ops.secure_delete_file(str(portable_file), SecureDeletionMethod.DOD_7_PASS)
+                            self.logger.info(f"Securely deleted portable file: {portable_file}")
+            except Exception as portable_error:
+                self.logger.error(f"Error deleting portable files: {str(portable_error)}")
+            
+            # Search for and delete any .bar files with matching content hash across the system
+            # Do this in a separate thread to prevent blocking and potential crashes
+            if "content_hash" in metadata:
+                content_hash = metadata.get("content_hash")
+                if content_hash:
                     try:
-                        export_dir = self.base_directory / "exports"
-                        if export_dir.exists() and export_dir.is_dir():
-                            for export_file in export_dir.glob(f"*{file_id}*"):
-                                if export_file.exists() and export_file.is_file():
-                                    secure_file_ops = SecureFileOperations()
-                                    secure_file_ops.secure_delete_file(str(export_file), SecureDeletionMethod.DOD_7_PASS)
-                                    self.logger.info(f"Securely deleted exported file: {export_file}")
-                    except Exception as export_error:
-                        self.logger.error(f"Error deleting exported files: {str(export_error)}")
-                    
-                    # Check for any temporary files that might be associated with this file_id
-                    try:
-                        temp_dir = self.base_directory / "temp"
-                        if temp_dir.exists() and temp_dir.is_dir():
-                            for temp_file in temp_dir.glob(f"*{file_id}*"):
-                                if temp_file.exists() and temp_file.is_file():
-                                    secure_file_ops = SecureFileOperations()
-                                    secure_file_ops.secure_delete_file(str(temp_file), SecureDeletionMethod.DOD_7_PASS)
-                                    self.logger.info(f"Securely deleted temporary file: {temp_file}")
-                        except Exception as temp_error:
-                            self.logger.error(f"Error deleting temporary files: {str(temp_error)}")
-                    
-                    # Check for any portable files that might be associated with this file_id
-                    try:
-                        portable_dir = self.base_directory / "portable"
-                        if portable_dir.exists() and portable_dir.is_dir():
-                            for portable_file in portable_dir.glob(f"*{file_id}*"):
-                                if portable_file.exists() and portable_file.is_file():
-                                    secure_file_ops = SecureFileOperations()
-                                    secure_file_ops.secure_delete_file(str(portable_file), SecureDeletionMethod.DOD_7_PASS)
-                                    self.logger.info(f"Securely deleted portable file: {portable_file}")
-                    except Exception as portable_error:
-                        self.logger.error(f"Error deleting portable files: {str(portable_error)}")
-                    
-                    # Search for and delete any .bar files with matching content hash across the system
-                    # Do this in a separate thread to prevent blocking and potential crashes
-                    if "content_hash" in metadata:
-                        content_hash = metadata.get("content_hash")
-                        if content_hash:
-                            try:
-                                # Use a thread with a timeout to prevent hanging
-                                search_thread = threading.Thread(
-                                    target=self._find_and_delete_matching_bar_files,
-                                    args=(content_hash,),
-                                    daemon=True
-                                )
-                                search_thread.start()
-                                # Don't wait for completion - let it run in background
-                            except Exception as thread_error:
-                                self.logger.error(f"Error starting search thread: {str(thread_error)}")
-            except Exception as metadata_error:
-                self.logger.error(f"Error loading metadata: {str(metadata_error)}")
-        except Exception as e:
-            self.logger.error(f"Error reading metadata during secure deletion: {str(e)}")
+                        # Use a thread with a timeout to prevent hanging
+                        search_thread = threading.Thread(
+                            target=self._find_and_delete_matching_bar_files,
+                            args=(content_hash,),
+                            daemon=True
+                        )
+                        search_thread.start()
+                        # Don't wait for completion - let it run in background
+                    except Exception as thread_error:
+                        self.logger.error(f"Error starting search thread: {str(thread_error)}")
+        except Exception as metadata_error:
+            self.logger.error(f"Error loading metadata: {str(metadata_error)}")
         
         # Initialize secure file operations
         secure_file_ops = SecureFileOperations()
