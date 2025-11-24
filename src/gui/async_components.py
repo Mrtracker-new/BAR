@@ -1,21 +1,18 @@
 import asyncio
-import sys
 import time
 from datetime import datetime
-from typing import Dict, List, Any, Optional, Callable, Union
+from typing import Dict, Any
 from dataclasses import dataclass
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QProgressBar, QTextEdit, QScrollArea, QFrame, QGroupBox,
-    QDialog, QApplication, QMessageBox, QListWidget, QListWidgetItem,
-    QSplitter, QTabWidget
+    QDialog, QSplitter, QTabWidget
 )
 from PySide6.QtCore import (
-    QThread, Signal as pyqtSignal, QObject, QTimer, Qt, QMutex, QWaitCondition,
-    QRunnable, QThreadPool
+    QThread, Signal as pyqtSignal, QObject, QTimer, Qt
 )
-from PySide6.QtGui import QFont, QPalette, QColor
+from PySide6.QtGui import QFont
 
 from ..file_manager.async_file_manager import (
     AsyncFileManager, FileOperationProgress, MemoryMonitor
@@ -229,7 +226,8 @@ class ProgressTracker(QWidget):
     
     def update_display(self):
         """Update the display with latest information."""
-        # This is called regularly to refresh the UI
+        # Timer callback - currently no refresh actions needed
+        # Individual operations update themselves via signals
         pass
     
     def update_summary(self):
@@ -253,7 +251,7 @@ class ProgressTracker(QWidget):
         return {
             'average_update_frequency': avg_frequency,
             'active_operations_count': len(self.active_operations),
-            'total_ui_updates': sum(len(self.ui_metrics), 0),
+            'total_ui_updates': len(self.ui_metrics),
             'metrics_collected': len(self.ui_metrics)
         }
 
@@ -481,10 +479,10 @@ class PerformanceMonitorWidget(QWidget):
         """Set up the performance monitor UI."""
         layout = QVBoxLayout(self)
         
-    # Title
-    title = QLabel("Performance Monitor")
-    title.setFont(QFont("Arial", 12, QFont.Weight.Bold))
-    title.setStyleSheet("color: #ffffff; margin-bottom: 10px;")
+        # Title
+        title = QLabel("Performance Monitor")
+        title.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        title.setStyleSheet("color: #ffffff; margin-bottom: 10px;")
         layout.addWidget(title)
         
         # Metrics display
@@ -771,8 +769,8 @@ def integrate_async_file_operations(main_window, async_file_manager: AsyncFileMa
         
         performance_action = async_menu.addAction("Performance Monitor")
         performance_action.triggered.connect(
-            lambda: main_window.async_dialog.show() and 
-                   main_window.async_dialog.tabs.setCurrentIndex(1)
+            lambda: (main_window.async_dialog.show(), 
+                   main_window.async_dialog.tabs.setCurrentIndex(1))
         )
 
 
