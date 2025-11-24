@@ -1,13 +1,13 @@
-import sys
-from typing import Optional
+import json
+from pathlib import Path
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QMessageBox, QFormLayout, QWidget, QCheckBox, QGroupBox, QTextEdit,
-    QProgressBar, QFrame
+    QMessageBox, QFormLayout, QCheckBox, QGroupBox, QTextEdit,
+    QProgressBar, QInputDialog
 )
 from PySide6.QtCore import Qt, QTimer, QThread, Signal as pyqtSignal
-from PySide6.QtGui import QIcon, QPixmap, QFont, QPalette, QColor
+from PySide6.QtGui import QFont
 
 from .styles import StyleManager
 from src.security.device_auth_manager import SecurityLevel
@@ -120,7 +120,7 @@ class DeviceAuthDialog(QDialog):
             device_info = device_auth.get_device_info()
             if device_info:
                 self.device_name_label.setText(f"Device: {device_info['device_name']}")
-        except:
+        except Exception:
             pass
             
         # Update security status display
@@ -295,7 +295,6 @@ class DeviceAuthDialog(QDialog):
             return
         
         # Second confirmation with text input
-        from PySide6.QtWidgets import QInputDialog
         confirm_text, ok = QInputDialog.getText(
             self,
             "Final Confirmation",
@@ -340,9 +339,6 @@ class DeviceAuthDialog(QDialog):
         """Update the security status display with current information."""
         try:
             # Try to load device configuration to get security level
-            import json
-            from pathlib import Path
-            
             device_config_path = self.device_auth.device_config_path
             if device_config_path.exists():
                 with open(device_config_path, 'r') as f:
@@ -359,7 +355,6 @@ class DeviceAuthDialog(QDialog):
                     data_corrupted = security_data.get("data_corrupted", False)
                     
                     # Get security configuration
-                    from src.security.device_auth_manager import SecurityLevel
                     security_config = self.device_auth.SECURITY_CONFIGS.get(
                         security_level, self.device_auth.SECURITY_CONFIGS[SecurityLevel.STANDARD]
                     )
@@ -448,158 +443,3 @@ class DeviceAuthDialog(QDialog):
             self.unlock_button.setEnabled(True)
             self.reset_button.setEnabled(True)
             self.exit_button.setEnabled(True)
-
-
-class DeviceResetDialog(QDialog):
-    """Dialog for confirming device reset operations."""
-    
-    def __init__(self, parent=None):
-        """Initialize the device reset confirmation dialog."""
-        super().__init__(parent)
-        
-        self.confirmed = False
-        
-        self.setWindowTitle("⚠️ Device Reset Confirmation")
-        self.setMinimumWidth(500)
-        self.setMinimumHeight(300)
-        self.setModal(True)
-        
-        # Apply dark theme with red accent for danger
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #2c2c2c;
-                color: #ffffff;
-                border: 2px solid #e74c3c;
-            }
-            QLabel {
-                color: #ffffff;
-            }
-            QGroupBox {
-                border: 1px solid #e74c3c;
-                border-radius: 4px;
-                margin-top: 20px;
-                padding-top: 24px;
-                color: #ffffff;
-            }
-            QGroupBox::title {
-                color: #e74c3c;
-                font-weight: bold;
-            }
-            QPushButton {
-                background-color: #3a3a3a;
-                color: #ffffff !important;
-                border: 1px solid #555;
-                border-radius: 4px;
-                padding: 8px 16px;
-                min-width: 80px;
-                font-weight: bold;
-                text-align: center;
-                font-size: 12px;
-            }
-            QPushButton:hover {
-                background-color: #4a4a4a;
-                border: 1px solid #666;
-                color: #ffffff !important;
-            }
-            QPushButton:pressed {
-                background-color: #2a2a2a;
-                color: #ffffff !important;
-            }
-            QPushButton:disabled {
-                background-color: #2a2a2a;
-                color: #888888 !important;
-                border: 1px solid #3a3a3a;
-            }
-        """)
-        
-        self._setup_ui()
-    
-    def _setup_ui(self):
-        """Set up the user interface."""
-        layout = QVBoxLayout(self)
-        
-        # Title
-        title_label = QLabel("🚨 EMERGENCY DEVICE RESET")
-        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title_font = QFont()
-        title_font.setPointSize(16)
-        title_font.setBold(True)
-        title_label.setFont(title_font)
-        title_label.setStyleSheet("color: #e74c3c; margin-bottom: 15px;")
-        layout.addWidget(title_label)
-        
-        # Warning group
-        warning_group = QGroupBox("⚠️ FINAL WARNING")
-        warning_layout = QVBoxLayout(warning_group)
-        layout.addWidget(warning_group)
-        
-        # Warning text
-        warning_text = QLabel(
-            "This action will:\n\n"
-            "• PERMANENTLY DELETE all encrypted files\n"
-            "• DESTROY all device configuration\n"
-            "• WIPE all authentication data\n"
-            "• RESET the device to factory state\n\n"
-            "THERE IS NO WAY TO RECOVER YOUR DATA!\n"
-            "This operation cannot be undone!"
-        )
-        warning_text.setStyleSheet("color: #ffffff; font-size: 11pt; line-height: 1.4;")
-        warning_text.setWordWrap(True)
-        warning_layout.addWidget(warning_text)
-        
-        # Confirmation input
-        confirm_group = QGroupBox("Confirmation Required")
-        confirm_layout = QVBoxLayout(confirm_group)
-        layout.addWidget(confirm_group)
-        
-        confirm_instruction = QLabel(
-            "To proceed, type exactly (case sensitive):\nDESTROY ALL DATA"
-        )
-        confirm_instruction.setStyleSheet("color: #f39c12; font-weight: bold;")
-        confirm_layout.addWidget(confirm_instruction)
-        
-        self.confirm_input = QLineEdit()
-        self.confirm_input.setPlaceholderText("Type the confirmation phrase here...")
-        self.confirm_input.textChanged.connect(self._check_confirmation)
-        confirm_layout.addWidget(self.confirm_input)
-        
-        # Buttons
-        button_layout = QHBoxLayout()
-        layout.addLayout(button_layout)
-        
-        self.cancel_button = QPushButton("Cancel")
-        self.cancel_button.clicked.connect(self.reject)
-        self.cancel_button.setStyleSheet(StyleManager.get_button_style("primary"))
-        button_layout.addWidget(self.cancel_button)
-        
-        button_layout.addStretch()
-        
-        self.confirm_button = QPushButton("🗑️ DESTROY ALL DATA")
-        self.confirm_button.clicked.connect(self._confirm_reset)
-        self.confirm_button.setStyleSheet(StyleManager.get_button_style("danger"))
-        self.confirm_button.setEnabled(False)
-        button_layout.addWidget(self.confirm_button)
-        
-        # Focus on input
-        self.confirm_input.setFocus()
-    
-    def _check_confirmation(self):
-        """Check if the confirmation phrase is correct."""
-        text = self.confirm_input.text()
-        correct = text == "DESTROY ALL DATA"
-        
-        self.confirm_button.setEnabled(correct)
-        
-        if correct:
-            self.confirm_button.setText("🗑️ DESTROY ALL DATA")
-        else:
-            self.confirm_button.setText("🗑️ Enter Confirmation")
-    
-    def _confirm_reset(self):
-        """Confirm the reset operation."""
-        self.confirmed = True
-        self.accept()
-    
-    def is_confirmed(self) -> bool:
-        """Check if reset was confirmed."""
-        return self.confirmed
