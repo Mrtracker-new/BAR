@@ -1,19 +1,18 @@
-import sys
 from typing import Optional
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
     QMessageBox, QFormLayout, QWidget, QCheckBox, QGroupBox, QTextEdit,
-    QProgressBar, QFrame, QComboBox, QButtonGroup, QRadioButton, QScrollArea, QApplication
+    QProgressBar, QButtonGroup, QRadioButton, QScrollArea, QApplication
 )
 from PySide6.QtCore import Qt, QThread, Signal as pyqtSignal
-from PySide6.QtGui import QIcon, QPixmap, QFont, QPalette, QColor
+from PySide6.QtGui import QFont
 
 from .styles import StyleManager
 from src.security.device_auth_manager import SecurityLevel
 from src.security.secure_memory import (
     SecureString, create_secure_string, secure_compare,
-    get_secure_memory_manager, MemoryProtectionLevel
+    get_secure_memory_manager
 )
 
 
