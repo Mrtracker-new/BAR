@@ -1,7 +1,7 @@
 import sys
 import os
-from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional
+from datetime import datetime
+from typing import Dict, Any, Optional
 
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -14,7 +14,6 @@ from PySide6.QtGui import QFont, QColor, QAction
 from PySide6.QtCore import Qt, QTimer, QDateTime
 
 from src.config.config_manager import ConfigManager
-from src.crypto.encryption import EncryptionManager
 from src.file_manager.file_manager import FileManager
 # Removed: UserManager and login dialogs (single-user device authentication)
 from .file_dialog import FileDialog
@@ -785,7 +784,6 @@ class MainWindow(QMainWindow):
         if disable_export and enable_protection:
             try:
                 from ..security.ENHANCED_advanced_screen_protection import AdvancedScreenProtectionManager
-                import threading
                 
                 # Create log directory for security events
                 log_dir = os.path.join(os.path.expanduser("~"), ".bar", "security_logs")
@@ -976,20 +974,6 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to export file: {str(e)}")
     
-    def _on_screenshot_detected(self, filename):
-        """Handle screenshot detection.
-        
-        Args:
-            filename: The name of the file being viewed
-        """
-        QMessageBox.warning(
-            self,
-            "Screenshot Detected",
-            f"A screenshot attempt was detected while viewing '{filename}'\n\n"
-            f"This file is marked as view-only and should not be captured.\n"
-            f"The screenshot contains watermarks identifying you as the viewer."
-        )
-    
     def _export_file(self):
         """Export a secure file."""
         if not self.current_user:
@@ -1117,24 +1101,6 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to export portable file: {str(e)}")
     
-    def _import_file(self):
-        """Import a file."""
-        if not self.current_user:
-            return
-        
-        # Ask for import type
-        import_options = ["Import Regular File", "Import Portable Encrypted File"]
-        import_type, ok = QInputDialog.getItem(
-            self, "Import Type", "Select import type:", import_options, 0, False)
-        
-        if not ok:
-            return
-        
-        if import_type == "Import Regular File":
-            self._import_regular_file()
-        else:  # Import Portable Encrypted File
-            self._import_portable_file()
-    
     def _import_regular_file(self):
         """Import a regular file and encrypt it."""
         # Ask for file to import
@@ -1191,47 +1157,6 @@ class MainWindow(QMainWindow):
                     self._refresh_files()
                 except Exception as e:
                     QMessageBox.critical(self, "Error", f"Failed to import portable file: {str(e)}")
-    
-    def _import_shared_file(self):
-        """Import an encrypted file shared from another device.
-        
-        This method specifically handles files created on different hardware,
-        ensuring proper decryption regardless of hardware binding differences.
-        """
-        # Ask for file to import
-        import_path, _ = QFileDialog.getOpenFileName(
-            self, "Import Shared File", "", "BAR Files (*.bar);;All Files (*)")
-        
-        if import_path:
-            # Ask for password
-            password, ok = QInputDialog.getText(
-                self, "Enter Password", "Enter the file password:", QLineEdit.EchoMode.Password)
-            
-            if ok and password:
-                try:
-                    # Import the shared file
-                    file_id = self.file_manager.import_portable_file(import_path, password)
-                    
-                    QMessageBox.information(
-                        self, 
-                        "Shared File Imported", 
-                        "The encrypted file shared from another device has been successfully imported."
-                    )
-                    
-                    self._refresh_files()
-                except ValueError as e:
-                    if "hardware binding" in str(e).lower():
-                        QMessageBox.critical(
-                            self, 
-                            "Hardware Binding Error", 
-                            "This file appears to be bound to different hardware. "
-                            "Please ensure you're using the correct password and that the file "
-                            "was properly exported for sharing between devices."
-                        )
-                    else:
-                        QMessageBox.critical(self, "Error", f"Failed to import shared file: {str(e)}")
-                except Exception as e:
-                    QMessageBox.critical(self, "Error", f"Failed to import shared file: {str(e)}")
     
     def _delete_file(self):
         """Delete a secure file."""
