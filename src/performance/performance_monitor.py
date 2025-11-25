@@ -6,11 +6,10 @@ import threading
 import json
 import os
 from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional, Callable, Union
+from typing import Dict, List, Any, Optional, Callable
 from dataclasses import dataclass, asdict
 from collections import defaultdict, deque
 from pathlib import Path
-import platform
 import gc
 
 # Performance-related imports
@@ -442,7 +441,7 @@ class PerformanceMonitor:
                 io_counters = self.process.io_counters()
                 disk_read = io_counters.read_bytes
                 disk_write = io_counters.write_bytes
-            except (AttributeError, AccessDenied):
+            except (AttributeError, psutil.AccessDenied):
                 disk_read = disk_write = 0
             
             # Network statistics (system-wide)
@@ -600,10 +599,10 @@ class PerformanceMonitor:
         cutoff_time = datetime.now() - self.history_retention
         
         # Clean up operation metrics
-        to_remove = []
-        for op_id, metrics in self.operation_metrics.items():
-            if metrics.start_time < cutoff_time:
-                to_remove.append(op_id)
+        to_remove = [
+            op_id for op_id, metrics in self.operation_metrics.items()
+            if metrics.start_time < cutoff_time
+        ]
         
         for op_id in to_remove:
             del self.operation_metrics[op_id]
@@ -669,7 +668,13 @@ class PerformanceMonitor:
         
         if completed_operations:
             avg_duration = sum(op.duration_seconds for op in completed_operations) / len(completed_operations)
-            avg_throughput = sum(op.throughput_bytes_per_second for op in completed_operations if op.throughput_bytes_per_second > 0) / max(1, len([op for op in completed_operations if op.throughput_bytes_per_second > 0]))
+            
+            ops_with_throughput = [op for op in completed_operations if op.throughput_bytes_per_second > 0]
+            avg_throughput = (
+                sum(op.throughput_bytes_per_second for op in ops_with_throughput) / len(ops_with_throughput)
+                if ops_with_throughput else 0
+            )
+            
             success_rate = len(successful_operations) / len(completed_operations)
         else:
             avg_duration = avg_throughput = success_rate = 0
