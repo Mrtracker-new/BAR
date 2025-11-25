@@ -2,18 +2,15 @@ import os
 import sys
 import subprocess
 import tempfile
-import json
 from typing import Optional, Dict, Any, Callable
-from pathlib import Path
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, QScrollArea,
-    QPushButton, QFileDialog, QMessageBox, QSizePolicy, QFrame, QProgressBar,
-    QGroupBox, QFormLayout, QSplitter, QTreeWidget, QTreeWidgetItem, QTabWidget,
-    QPlainTextEdit
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea,
+    QPushButton, QMessageBox, QSizePolicy, QFrame,
+    QFormLayout, QTabWidget, QPlainTextEdit
 )
-from PySide6.QtCore import Qt, QSize, Signal as pyqtSignal, QThread, Slot as pyqtSlot, QTimer, QPointF
-from PySide6.QtGui import QPixmap, QImage, QFont, QPalette, QColor, QSyntaxHighlighter, QTextCharFormat, QPainter, QPen
+from PySide6.QtCore import Qt, Signal as pyqtSignal, QThread, Slot as pyqtSlot, QPointF
+from PySide6.QtGui import QPixmap, QImage, QFont, QColor, QSyntaxHighlighter, QTextCharFormat, QPainter, QPen
 
 # Using the ultimate consolidated screen protection system
 # All screenshot prevention features are now consolidated in this enhanced module
@@ -645,10 +642,6 @@ class FileViewer(QWidget):
             return
         
         try:
-            # Create temporary file
-            import tempfile
-            import os
-            
             # Get appropriate file extension
             filename = self.current_metadata.get("filename", "temp_file")
             _, ext = os.path.splitext(filename)
