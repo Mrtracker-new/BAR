@@ -28,16 +28,14 @@ import re
 import logging
 from typing import Any, Optional, Callable, Dict, Tuple
 from PySide6.QtWidgets import (
-    QLineEdit, QTextEdit, QSpinBox, QDoubleSpinBox, 
-    QComboBox, QLabel, QWidget, QToolTip
+    QLineEdit, QTextEdit, QSpinBox, QLabel, QWidget
 )
 from PySide6.QtCore import Qt, QTimer, Signal as pyqtSignal
-from PySide6.QtGui import QPalette, QColor
 
 # Import comprehensive input validation system
 from ..security.input_validator import (
     get_global_validator, get_crypto_validator, get_file_validator,
-    ValidationResult, ValidationLevel, ValidationConfig, ValidationError,
+    ValidationResult, ValidationLevel, ValidationConfig,
     validate_string, validate_integer
 )
 
@@ -655,7 +653,6 @@ def create_password_field(field_name: str = "password",
 if __name__ == "__main__":
     # Basic testing
     from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
-    import sys
     
     app = QApplication(sys.argv)
     
