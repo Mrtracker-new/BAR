@@ -1,5 +1,4 @@
 from PySide6.QtGui import QColor, QPalette, QFont
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 
@@ -82,7 +81,6 @@ class StyleManager:
         app.setPalette(palette)
         
         # Apply stylesheet for additional customization
-        app = QApplication.instance()
         app.setStyleSheet("""
             QToolTip { 
                 color: #ffffff; 
@@ -295,33 +293,32 @@ class StyleManager:
         
         # Create light palette
         palette = QPalette()
-        palette.setColor(QPalette.Window, colors["background"])
-        palette.setColor(QPalette.WindowText, colors["text"])
-        palette.setColor(QPalette.Base, colors["surface"])
-        palette.setColor(QPalette.AlternateBase, colors["background"])
-        palette.setColor(QPalette.ToolTipBase, colors["surface"])
-        palette.setColor(QPalette.ToolTipText, colors["text"])
-        palette.setColor(QPalette.Text, colors["text"])
-        palette.setColor(QPalette.Button, colors["background"])
-        palette.setColor(QPalette.ButtonText, colors["text"])
-        palette.setColor(QPalette.BrightText, colors["accent"])
-        palette.setColor(QPalette.Link, colors["primary"])
-        palette.setColor(QPalette.Highlight, colors["primary"])
-        palette.setColor(QPalette.HighlightedText, colors["surface"])
+        palette.setColor(QPalette.ColorRole.Window, colors["background"])
+        palette.setColor(QPalette.ColorRole.WindowText, colors["text"])
+        palette.setColor(QPalette.ColorRole.Base, colors["surface"])
+        palette.setColor(QPalette.ColorRole.AlternateBase, colors["background"])
+        palette.setColor(QPalette.ColorRole.ToolTipBase, colors["surface"])
+        palette.setColor(QPalette.ColorRole.ToolTipText, colors["text"])
+        palette.setColor(QPalette.ColorRole.Text, colors["text"])
+        palette.setColor(QPalette.ColorRole.Button, colors["background"])
+        palette.setColor(QPalette.ColorRole.ButtonText, colors["text"])
+        palette.setColor(QPalette.ColorRole.BrightText, colors["accent"])
+        palette.setColor(QPalette.ColorRole.Link, colors["primary"])
+        palette.setColor(QPalette.ColorRole.Highlight, colors["primary"])
+        palette.setColor(QPalette.ColorRole.HighlightedText, colors["surface"])
         
         # Disabled colors
-        palette.setColor(QPalette.Disabled, QPalette.WindowText, colors["disabled"])
-        palette.setColor(QPalette.Disabled, QPalette.Text, colors["disabled"])
-        palette.setColor(QPalette.Disabled, QPalette.ButtonText, colors["disabled"])
+        palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText, colors["disabled"])
+        palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, colors["disabled"])
+        palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, colors["disabled"])
         
         # Ensure action buttons have visible text
-        palette.setColor(QPalette.ButtonText, QColor(44, 62, 80))
+        palette.setColor(QPalette.ColorRole.ButtonText, QColor(44, 62, 80))
         
         app = QApplication.instance()
         app.setPalette(palette)
         
         # Apply stylesheet for additional customization
-        app = QApplication.instance()
         app.setStyleSheet("""
             QToolTip { 
                 color: #31363b; 
@@ -543,40 +540,40 @@ class StyleManager:
         if button_type == "primary":
             return StyleManager.base_style + """
                 QPushButton {
-                    background-color: #2196F3; /* Modern blue */
-                    color: #ffffff !important; /* Force white text */
-                    border: 2px solid #1976D2; /* Border for depth instead of shadow */
-                    border-radius: 6px; /* Slightly more rounded */
-                    padding: 12px 24px; /* More padding for better touch targets */
-                    font-weight: 600; /* Semibold for better readability */
+                    background-color: #2196F3;
+                    color: #ffffff !important;
+                    border: 2px solid #1976D2;
+                    border-radius: 6px;
+                    padding: 12px 24px;
+                    font-weight: 600;
                     text-align: center;
-                    min-width: 110px; /* Wider for better proportions */
-                    min-height: 44px; /* Taller for better touch targets */
+                    min-width: 110px;
+                    min-height: 44px;
                     font-size: 14px;
                     letter-spacing: 0.5px;
                 }
                 QPushButton:hover {
-                    background-color: #42A5F5; /* Lighter blue on hover */
-                    border: 2px solid #2196F3; /* Lighter border on hover */
-                    color: #ffffff !important; /* Force white text on hover */
+                    background-color: #42A5F5;
+                    border: 2px solid #2196F3;
+                    color: #ffffff !important;
                 }
                 QPushButton:pressed {
-                    background-color: #1976D2; /* Darker blue when pressed */
-                    border: 2px solid #0D47A1; /* Darker border when pressed */
-                    color: #ffffff !important; /* Force white text when pressed */
+                    background-color: #1976D2;
+                    border: 2px solid #0D47A1;
+                    color: #ffffff !important;
                 }
                 QPushButton:disabled {
-                    background-color: #BBDEFB; /* Lighter, desaturated blue */
-                    color: #E3F2FD; /* Lighter text */
-                    border: 2px solid #BBDEFB; /* Same color as background */
+                    background-color: #BBDEFB;
+                    color: #E3F2FD;
+                    border: 2px solid #BBDEFB;
                 }
             """
         elif button_type == "danger":
             return StyleManager.base_style + """
                 QPushButton {
-                    background-color: #F44336; /* Modern red */
-                    color: #ffffff !important; /* Force white text */
-                    border: 2px solid #D32F2F; /* Border for depth instead of shadow */
+                    background-color: #F44336;
+                    color: #ffffff !important;
+                    border: 2px solid #D32F2F;
                     border-radius: 6px;
                     padding: 12px 24px;
                     font-weight: 600;
@@ -587,27 +584,27 @@ class StyleManager:
                     letter-spacing: 0.5px;
                 }
                 QPushButton:hover {
-                    background-color: #EF5350; /* Lighter red on hover */
-                    border: 2px solid #F44336; /* Lighter border on hover */
-                    color: #ffffff !important; /* Force white text on hover */
+                    background-color: #EF5350;
+                    border: 2px solid #F44336;
+                    color: #ffffff !important;
                 }
                 QPushButton:pressed {
-                    background-color: #D32F2F; /* Darker red when pressed */
-                    border: 2px solid #B71C1C; /* Darker border when pressed */
-                    color: #ffffff !important; /* Force white text when pressed */
+                    background-color: #D32F2F;
+                    border: 2px solid #B71C1C;
+                    color: #ffffff !important;
                 }
                 QPushButton:disabled {
-                    background-color: #FFCDD2; /* Lighter, desaturated red */
+                    background-color: #FFCDD2;
                     color: #FFEBEE;
-                    border: 2px solid #FFCDD2; /* Same color as background */
+                    border: 2px solid #FFCDD2;
                 }
             """
         elif button_type == "success":
             return StyleManager.base_style + """
                 QPushButton {
-                    background-color: #4CAF50; /* Modern green */
+                    background-color: #4CAF50;
                     color: white;
-                    border: 2px solid #388E3C; /* Border for depth instead of shadow */
+                    border: 2px solid #388E3C;
                     border-radius: 6px;
                     padding: 12px 24px;
                     font-weight: 600;
@@ -618,25 +615,25 @@ class StyleManager:
                     letter-spacing: 0.5px;
                 }
                 QPushButton:hover {
-                    background-color: #66BB6A; /* Lighter green on hover */
-                    border: 2px solid #4CAF50; /* Lighter border on hover */
+                    background-color: #66BB6A;
+                    border: 2px solid #4CAF50;
                 }
                 QPushButton:pressed {
-                    background-color: #388E3C; /* Darker green when pressed */
-                    border: 2px solid #1B5E20; /* Darker border when pressed */
+                    background-color: #388E3C;
+                    border: 2px solid #1B5E20;
                 }
                 QPushButton:disabled {
-                    background-color: #C8E6C9; /* Lighter, desaturated green */
+                    background-color: #C8E6C9;
                     color: #E8F5E9;
-                    border: 2px solid #C8E6C9; /* Same color as background */
+                    border: 2px solid #C8E6C9;
                 }
             """
         else:  # default
             return StyleManager.base_style + """
                 QPushButton {
-                    background-color: #78909C; /* Modern blue-grey */
-                    color: #ffffff !important; /* Force white text for better contrast */
-                    border: 2px solid #546E7A; /* Border for depth instead of shadow */
+                    background-color: #78909C;
+                    color: #ffffff !important;
+                    border: 2px solid #546E7A;
                     border-radius: 6px;
                     padding: 12px 24px;
                     font-weight: 600;
@@ -647,85 +644,36 @@ class StyleManager:
                     letter-spacing: 0.5px;
                 }
                 QPushButton:hover {
-                    background-color: #90A4AE; /* Lighter blue-grey on hover */
-                    border: 2px solid #78909C; /* Lighter border on hover */
-                    color: #ffffff !important; /* Force white text on hover */
+                    background-color: #90A4AE;
+                    border: 2px solid #78909C;
+                    color: #ffffff !important;
                 }
                 QPushButton:pressed {
-                    background-color: #546E7A; /* Darker blue-grey when pressed */
-                    border: 2px solid #37474F; /* Darker border when pressed */
-                    color: #ffffff !important; /* Force white text when pressed */
+                    background-color: #546E7A;
+                    border: 2px solid #37474F;
+                    color: #ffffff !important;
                 }
                 QPushButton:disabled {
-                    background-color: #CFD8DC; /* Lighter, desaturated blue-grey */
-                    color: #90A4AE !important; /* Darker text for better visibility */
-                    border: 2px solid #CFD8DC; /* Same color as background */
+                    background-color: #CFD8DC;
+                    color: #90A4AE !important;
+                    border: 2px solid #CFD8DC;
                 }
             """
     
-    @staticmethod
-    def get_file_icon_style():
-        """Get stylesheet for file icons in the file table."""
-        return """
-            QLabel {
-                padding: 2px;
-                border-radius: 4px;
-            }
-        """
-        
-    @staticmethod
-    def create_action_button(text, icon=None, button_type="default"):
-        """Create an action button with text and optional icon.
-        
-        Args:
-            text: The text to display on the button
-            icon: Optional icon to display on the button
-            button_type: The type of button ("default", "primary", "danger", "success")
-            
-        Returns:
-            A configured QPushButton with proper styling
-        """
-        from PySide6.QtWidgets import QPushButton
-        from PySide6.QtGui import QIcon, QFont
-        
-        button = QPushButton(text)
-        if icon:
-            button.setIcon(QIcon(icon))
-        
-        # Ensure text is visible
-        button.setText(text)  # Explicitly set text again
-        
-        # Apply the appropriate style
-        button.setStyleSheet(StyleManager.get_action_button_style(button_type))
-        
-        # Make sure text is not empty and visible
-        button.setProperty("text", text)
-        button.setProperty("displayText", True)
-        
-        # Set explicit font with good contrast
-        font = QFont("Segoe UI", 10, QFont.Weight.Bold)
-        button.setFont(font)
-        
-        # Force update to ensure text is displayed
-        button.update()
-        
-        return button
-        
     @staticmethod
     def get_action_button_style(button_type="default"):
         """Get style for action buttons in the file table.
         
         Args:
-            button_type: The type of button ("default", "primary", "danger", "success", "warning")
+            button_type: The type of button ("default", "primary", "danger", "success")
             
         Returns:
             The stylesheet for the action button
         """
-        # Common style to ensure text visibility for all action buttons
         action_base_style = """
             QPushButton {
-                color: #ffffff !important; /* Force white text for all action buttons */
-                font-weight: bold !important; /* Make text bold for better visibility */
+                color: #ffffff !important;
+                font-weight: bold !important;
                 text-align: center !important;
                 font-family: "Segoe UI", Arial, sans-serif !important;
                 outline: none;
@@ -735,8 +683,8 @@ class StyleManager:
         if button_type == "primary":
             return action_base_style + """
                 QPushButton {
-                    background-color: #2196F3; /* Modern blue */
-                    border: 2px solid #1976D2; /* Border for depth instead of shadow */
+                    background-color: #2196F3;
+                    border: 2px solid #1976D2;
                     border-radius: 6px;
                     padding: 8px 16px;
                     min-width: 90px;
@@ -747,26 +695,26 @@ class StyleManager:
                     margin: 4px;
                 }
                 QPushButton:hover {
-                    background-color: #42A5F5; /* Lighter blue on hover */
-                    border: 2px solid #2196F3; /* Lighter border on hover */
-                    color: #ffffff !important; /* Ensure white text on hover */
+                    background-color: #42A5F5;
+                    border: 2px solid #2196F3;
+                    color: #ffffff !important;
                 }
                 QPushButton:pressed {
-                    background-color: #1976D2; /* Darker blue when pressed */
-                    border: 2px solid #0D47A1; /* Darker border when pressed */
-                    color: #ffffff !important; /* Ensure white text when pressed */
+                    background-color: #1976D2;
+                    border: 2px solid #0D47A1;
+                    color: #ffffff !important;
                 }
                 QPushButton:disabled {
-                    background-color: #BBDEFB; /* Lighter, desaturated blue */
-                    color: #90A4AE !important; /* Darker text for better visibility */
-                    border: 2px solid #BBDEFB; /* Same color as background */
+                    background-color: #BBDEFB;
+                    color: #90A4AE !important;
+                    border: 2px solid #BBDEFB;
                 }
             """
         elif button_type == "danger":
             return action_base_style + """
                 QPushButton {
-                    background-color: #F44336; /* Modern red */
-                    border: 2px solid #D32F2F; /* Border for depth instead of shadow */
+                    background-color: #F44336;
+                    border: 2px solid #D32F2F;
                     border-radius: 6px;
                     padding: 8px 16px;
                     min-width: 90px;
@@ -777,26 +725,26 @@ class StyleManager:
                     margin: 4px;
                 }
                 QPushButton:hover {
-                    background-color: #EF5350; /* Lighter red on hover */
-                    border: 2px solid #F44336; /* Lighter border on hover */
-                    color: #ffffff !important; /* Ensure white text on hover */
+                    background-color: #EF5350;
+                    border: 2px solid #F44336;
+                    color: #ffffff !important;
                 }
                 QPushButton:pressed {
-                    background-color: #D32F2F; /* Darker red when pressed */
-                    border: 2px solid #B71C1C; /* Darker border when pressed */
-                    color: #ffffff !important; /* Ensure white text when pressed */
+                    background-color: #D32F2F;
+                    border: 2px solid #B71C1C;
+                    color: #ffffff !important;
                 }
                 QPushButton:disabled {
-                    background-color: #FFCDD2; /* Lighter, desaturated red */
-                    color: #90A4AE !important; /* Darker text for better visibility */
-                    border: 2px solid #FFCDD2; /* Same color as background */
+                    background-color: #FFCDD2;
+                    color: #90A4AE !important;
+                    border: 2px solid #FFCDD2;
                 }
             """
         elif button_type == "success":
             return action_base_style + """
                 QPushButton {
-                    background-color: #4CAF50; /* Modern green */
-                    border: 2px solid #388E3C; /* Border for depth instead of shadow */
+                    background-color: #4CAF50;
+                    border: 2px solid #388E3C;
                     border-radius: 6px;
                     padding: 8px 16px;
                     min-width: 90px;
@@ -807,26 +755,26 @@ class StyleManager:
                     margin: 4px;
                 }
                 QPushButton:hover {
-                    background-color: #66BB6A; /* Lighter green on hover */
-                    border: 2px solid #4CAF50; /* Lighter border on hover */
-                    color: #ffffff !important; /* Ensure white text on hover */
+                    background-color: #66BB6A;
+                    border: 2px solid #4CAF50;
+                    color: #ffffff !important;
                 }
                 QPushButton:pressed {
-                    background-color: #388E3C; /* Darker green when pressed */
-                    border: 2px solid #1B5E20; /* Darker border when pressed */
-                    color: #ffffff !important; /* Ensure white text when pressed */
+                    background-color: #388E3C;
+                    border: 2px solid #1B5E20;
+                    color: #ffffff !important;
                 }
                 QPushButton:disabled {
-                    background-color: #C8E6C9; /* Lighter, desaturated green */
-                    color: #90A4AE !important; /* Darker text for better visibility */
-                    border: 2px solid #C8E6C9; /* Same color as background */
+                    background-color: #C8E6C9;
+                    color: #90A4AE !important;
+                    border: 2px solid #C8E6C9;
                 }
             """
         else:  # default
             return action_base_style + """
                 QPushButton {
-                    background-color: #78909C; /* Modern blue-grey */
-                    border: 2px solid #546E7A; /* Border for depth instead of shadow */
+                    background-color: #78909C;
+                    border: 2px solid #546E7A;
                     border-radius: 6px;
                     padding: 8px 16px;
                     min-width: 90px;
@@ -837,19 +785,19 @@ class StyleManager:
                     margin: 4px;
                 }
                 QPushButton:hover {
-                    background-color: #90A4AE; /* Lighter blue-grey on hover */
-                    border: 2px solid #78909C; /* Lighter border on hover */
-                    color: #ffffff !important; /* Ensure white text on hover */
+                    background-color: #90A4AE;
+                    border: 2px solid #78909C;
+                    color: #ffffff !important;
                 }
                 QPushButton:pressed {
-                    background-color: #546E7A; /* Darker blue-grey when pressed */
-                    border: 2px solid #37474F; /* Darker border when pressed */
-                    color: #ffffff !important; /* Ensure white text when pressed */
+                    background-color: #546E7A;
+                    border: 2px solid #37474F;
+                    color: #ffffff !important;
                 }
                 QPushButton:disabled {
-                    background-color: #CFD8DC; /* Lighter, desaturated blue-grey */
-                    color: #90A4AE !important; /* Darker text for better visibility */
-                    border: 2px solid #CFD8DC; /* Same color as background */
+                    background-color: #CFD8DC;
+                    color: #90A4AE !important;
+                    border: 2px solid #CFD8DC;
                 }
             """
     
@@ -897,18 +845,6 @@ class StyleManager:
         """
     
     @staticmethod
-    def get_header_style():
-        """Get stylesheet for header labels."""
-        return """
-            QLabel {
-                font-size: 16pt;
-                font-weight: bold;
-                color: #3daee9;
-                padding: 10px 0;
-            }
-        """
-    
-    @staticmethod
     def get_form_container_style():
         """Get stylesheet for form containers."""
         return """
@@ -941,41 +877,3 @@ class StyleManager:
                 font-weight: bold;
             }
         """
-    
-    @staticmethod
-    def create_visible_button(text, button_type="default", parent=None):
-        """Create a button with guaranteed text visibility.
-        
-        Args:
-            text: The text to display on the button
-            button_type: The type of button ("default", "primary", "danger", "success")
-            parent: Parent widget
-            
-        Returns:
-            A configured QPushButton with guaranteed text visibility
-        """
-        from PySide6.QtWidgets import QPushButton
-        from PySide6.QtGui import QFont
-        from PySide6.QtCore import Qt
-        
-        button = QPushButton(text, parent)
-        
-        # Set explicit text
-        button.setText(text)
-        
-        # Apply the button style
-        button.setStyleSheet(StyleManager.get_button_style(button_type))
-        
-        # Ensure text is always visible with explicit font settings
-        font = QFont("Segoe UI", 10)
-        font.setBold(True)
-        button.setFont(font)
-        
-        # Force text alignment
-        button.setProperty("text", text)
-        
-        # Ensure button updates properly
-        button.update()
-        button.repaint()
-        
-        return button
