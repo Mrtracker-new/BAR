@@ -1,16 +1,14 @@
 import os
-import sys
-from datetime import datetime, timedelta
-from typing import Dict, Any, Optional, Tuple, List
+import time
+from typing import Dict, Any, Optional
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
     QMessageBox, QFormLayout, QWidget, QCheckBox, QSpinBox, QDateTimeEdit,
-    QFileDialog, QTabWidget, QTextEdit, QGroupBox, QProgressBar, QApplication
+    QFileDialog, QGroupBox, QProgressBar, QApplication
 )
 from PySide6.QtCore import Qt, QDateTime
-from PySide6.QtGui import QFont, QIcon
-import time
+from PySide6.QtGui import QFont
 from .styles import StyleManager
 
 
