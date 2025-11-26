@@ -98,8 +98,7 @@ class DeviceAuthManager:
         self._hardware_id = HardwareIdentifier()
         self._secure_file_ops = SecureFileOperations()
         
-        # Emergency wipe settings
-        self._emergency_contacts = []  # For future emergency notification features
+        # Panic state
         self._panic_triggered = False
         
         # Secure storage for sensitive data - all using maximum protection
@@ -273,8 +272,6 @@ class DeviceAuthManager:
                         attempt_data = json.loads(f.read())
                         locked_until = attempt_data.get("locked_until", 0)
                         security_level = attempt_data.get("security_level", "standard")
-                        failed_attempts = attempt_data.get("count", 0)
-                        lockout_hours = attempt_data.get("lockout_hours", 0)
                         
                         # Check if device is currently locked
                         if locked_until > 0 and time.time() < locked_until:
@@ -355,7 +352,6 @@ class DeviceAuthManager:
                 
                 # Track failed attempts in a separate unencrypted file for security enforcement
                 # This is necessary because we can't decrypt the main config without the correct password
-                failed_attempts_path = self._config_dir / ".auth_attempts"
                 failed_attempts = 0
                 security_level = "maximum"  # Assume maximum security by default for safety
                 
@@ -465,7 +461,6 @@ class DeviceAuthManager:
             # Successfully decrypted - AES-256-GCM authenticated encryption proves
             # both password and hardware ID are correct. Clear failed attempts immediately.
             try:
-                failed_attempts_path = self._config_dir / ".auth_attempts"
                 if failed_attempts_path.exists():
                     failed_attempts_path.unlink()
                     self.logger.debug("Cleared failed attempts tracking after successful decryption")
@@ -779,33 +774,6 @@ class DeviceAuthManager:
                 "panic_completed": False,
                 "timestamp": time.time()
             }
-    
-    def schedule_delayed_wipe(self, delay_seconds: int = 300) -> bool:
-        """Schedule a delayed emergency wipe (dead man's switch concept).
-        
-        Args:
-            delay_seconds: Seconds to wait before wiping (default 5 minutes)
-            
-        Returns:
-            True if scheduled successfully, False otherwise
-        """
-        try:
-            import threading
-            
-            def delayed_wipe():
-                time.sleep(delay_seconds)
-                self.logger.warning(f"Executing delayed emergency wipe after {delay_seconds}s")
-                self.emergency_wipe()
-            
-            wipe_thread = threading.Thread(target=delayed_wipe, daemon=True)
-            wipe_thread.start()
-            
-            self.logger.info(f"Delayed emergency wipe scheduled for {delay_seconds} seconds")
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"Failed to schedule delayed wipe: {e}")
-            return False
     
     def add_file_to_blacklist(self, file_path: Union[str, Path], reason: str) -> bool:
         """Add a file to the security blacklist for automatic secure deletion.
