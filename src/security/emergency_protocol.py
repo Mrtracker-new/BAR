@@ -1,11 +1,15 @@
 import os
 import sys
 import time
+import gc
+import json
 import threading
 import secrets
+import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Callable
+import logging
 
 from src.security.secure_file_ops import SecureFileOperations, SecureDeletionMethod
 from src.security.hardware_wipe import HardwareWipe
@@ -36,7 +40,6 @@ class EmergencyProtocol:
         self.hardware_wipe = HardwareWipe()
         
         # Initialize logger
-        import logging
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.INFO)
         
@@ -259,12 +262,11 @@ class EmergencyProtocol:
             
             # 2. Clear authentication tokens but keep user data
             if self.device_auth:
-                self.device_auth.clear_session_tokens()  # Only session data
+                self.device_auth.logout()  # Clear all session data
             
             # 3. Clear memory but don't scrub storage
             try:
                 # Force garbage collection of sensitive objects
-                import gc
                 gc.collect()
             except Exception:
                 pass
@@ -507,7 +509,7 @@ class EmergencyProtocol:
             
             for hkey, subkey_path in registry_cleanup_keys:
                 try:
-                    self._clean_registry_key_for_bar(hkey, subkey_path)
+                    self._clean_registry_key_for_bar(hkey, subkey_path, winreg)
                 except Exception as e:
                     self.logger.debug(f"Registry cleanup warning for {subkey_path}: {e}")
             
@@ -573,8 +575,14 @@ class EmergencyProtocol:
             except:
                 pass  # Even logging might fail
     
-    def _clean_registry_key_for_bar(self, hkey, subkey_path: str):
-        """Clean BAR-related entries from a specific registry key."""
+    def _clean_registry_key_for_bar(self, hkey, subkey_path: str, winreg):
+        """Clean BAR-related entries from a specific registry key.
+        
+        Args:
+            hkey: Registry hive key
+            subkey_path: Registry subkey path
+            winreg: winreg module (passed to avoid import issues)
+        """
         try:
             with winreg.OpenKey(hkey, subkey_path, 0, winreg.KEY_ALL_ACCESS) as key:
                 # Get all value names
@@ -589,7 +597,7 @@ class EmergencyProtocol:
                            (isinstance(value_data, str) and ("bar" in value_data.lower() or "BAR" in value_data)):
                             values_to_delete.append(value_name)
                         i += 1
-                    except WindowsError:
+                    except OSError:  # More portable than WindowsError
                         break  # No more values
                 
                 # Delete BAR-related values
@@ -698,7 +706,6 @@ class EmergencyProtocol:
                     del os.environ[var]
             
             # 4. Force memory cleanup to remove any traces
-            import gc
             for _ in range(10):
                 collected = gc.collect()
             
@@ -736,8 +743,6 @@ class EmergencyProtocol:
     def _attempt_binary_self_destruct(self):
         """Attempt to securely delete the BAR application binary itself."""
         try:
-            import sys
-            
             # Get the path to the current executable
             if getattr(sys, 'frozen', False):
                 # Running as compiled executable
@@ -754,7 +759,6 @@ class EmergencyProtocol:
                         f.write(f'del "{batch_script}"\n')
                     
                     # Execute batch script in background
-                    import subprocess
                     subprocess.Popen([str(batch_script)], 
                                    creationflags=subprocess.CREATE_NO_WINDOW)
                 else:
@@ -937,7 +941,6 @@ class EmergencyProtocol:
         """Load blacklist from file."""
         try:
             if self.blacklist_path.exists():
-                import json
                 with open(self.blacklist_path, "r") as f:
                     data = json.load(f)
                     self._blacklisted_files = set(data.get("files", []))
@@ -947,7 +950,6 @@ class EmergencyProtocol:
     def _save_blacklist(self):
         """Save blacklist to file."""
         try:
-            import json
             data = {
                 "files": list(self._blacklisted_files),
                 "updated": datetime.now().isoformat()
