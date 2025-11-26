@@ -3,7 +3,7 @@ import uuid
 import socket
 import hashlib
 import platform
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 
 class HardwareIdentifier:
@@ -16,7 +16,7 @@ class HardwareIdentifier:
     
     def __init__(self):
         """Initialize the hardware identifier manager."""
-        self.cache = {}
+        pass
     
     def get_hardware_id(self) -> str:
         """Generate a unique hardware identifier for the current device.
@@ -113,18 +113,3 @@ class HardwareIdentifier:
         """
         current_id = self.get_hardware_id()
         return current_id == stored_id
-    
-    def get_hardware_fingerprint(self) -> Dict[str, Any]:
-        """Get a detailed hardware fingerprint for the current device.
-        
-        Returns:
-            Dictionary containing detailed hardware information
-        """
-        hw_info = self._collect_hardware_info()
-        hw_id = self.get_hardware_id()
-        
-        return {
-            "hardware_id": hw_id,
-            "collected_at": platform.node(),
-            "details": hw_info
-        }
