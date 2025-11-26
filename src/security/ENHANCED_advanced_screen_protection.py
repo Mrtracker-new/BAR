@@ -28,7 +28,6 @@ import json
 import subprocess
 import ctypes
 import ctypes.wintypes
-from ctypes import wintypes
 import logging
 from datetime import datetime, timedelta
 from typing import Callable, Optional, Dict, List, Any, Tuple
@@ -116,10 +115,7 @@ class HardwareLevelScreenshotPrevention(QObject):
         # Multiple prevention layers
         self.prevention_methods = [
             self._prevent_gdi_capture,
-            self._prevent_directx_capture,
-            self._prevent_print_screen_buffer,
             self._prevent_window_capture,
-            self._prevent_desktop_duplication,
         ]
         
         # Statistics
@@ -204,11 +200,6 @@ class HardwareLevelScreenshotPrevention(QObject):
             self.blocked_attempts += 1
             self.screenshot_blocked.emit("window_capture", "Suspicious window operation")
             
-        # Method 3: Check graphics memory for capture attempts
-        if self._check_graphics_memory():
-            self.blocked_attempts += 1
-            self.screenshot_blocked.emit("graphics_memory", "Graphics memory access detected")
-            
     def _check_clipboard_capture(self):
         """Check if clipboard contains new screenshot data."""
         if not self.user32:
@@ -253,12 +244,6 @@ class HardwareLevelScreenshotPrevention(QObject):
             
         return False
         
-    def _check_graphics_memory(self):
-        """Check for unauthorized graphics memory access."""
-        # This is a simplified implementation
-        # Real implementation would involve graphics driver hooks
-        return False
-        
     def _prevent_gdi_capture(self):
         """Prevent GDI-based screen capture."""
         if not self.user32 or platform.system().lower() != 'windows':
@@ -275,26 +260,6 @@ class HardwareLevelScreenshotPrevention(QObject):
                 
         except Exception as e:
             logging.warning(f"GDI capture prevention failed: {e}")
-            
-    def _prevent_directx_capture(self):
-        """Prevent DirectX-based capture."""
-        try:
-            # Attempt to disable DirectX overlay capture
-            # This requires more complex implementation with DirectX hooks
-            pass
-            
-        except Exception as e:
-            logging.warning(f"DirectX capture prevention failed: {e}")
-            
-    def _prevent_print_screen_buffer(self):
-        """Prevent Print Screen from working by intercepting at driver level."""
-        try:
-            # This is a simplified approach - real implementation would need driver hooks
-            # For now, we'll clear any print screen buffer aggressively
-            pass
-            
-        except Exception as e:
-            logging.warning(f"Print screen buffer prevention failed: {e}")
             
     def _prevent_window_capture(self):
         """Prevent window-specific capture methods."""
@@ -313,84 +278,7 @@ class HardwareLevelScreenshotPrevention(QObject):
                 
         except Exception as e:
             logging.warning(f"Window capture prevention failed: {e}")
-            
-    def _prevent_desktop_duplication(self):
-        """Prevent desktop duplication API abuse."""
-        try:
-            # This would require more advanced implementation
-            # involving DXGI and desktop duplication APIs
-            pass
-            
-        except Exception as e:
-            logging.warning(f"Desktop duplication prevention failed: {e}")
 
-
-#-----------------------------------------------------------------------------
-# ADVANCED SCREEN OBFUSCATION
-#-----------------------------------------------------------------------------
-
-class AdvancedScreenObfuscator(QObject):
-    """Advanced screen obfuscation to make screenshots useless."""
-    
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.active = False
-        self.obfuscation_timer = QTimer()
-        self.obfuscation_timer.timeout.connect(self._apply_obfuscation)
-        
-        # Obfuscation methods
-        self.obfuscation_level = 0
-        
-    def start_obfuscation(self):
-        """Start screen obfuscation."""
-        if self.active:
-            return
-            
-        self.active = True
-        # Apply obfuscation every 16ms (60 FPS)
-        self.obfuscation_timer.start(16)
-        logging.info("Advanced screen obfuscation started")
-        
-    def stop_obfuscation(self):
-        """Stop screen obfuscation."""
-        if not self.active:
-            return
-            
-        self.active = False
-        self.obfuscation_timer.stop()
-        logging.info("Advanced screen obfuscation stopped")
-        
-    def _apply_obfuscation(self):
-        """Apply dynamic obfuscation to the screen."""
-        try:
-            # Cycle through different obfuscation levels
-            self.obfuscation_level = (self.obfuscation_level + 1) % 10
-            
-            # Apply different obfuscation techniques
-            if self.obfuscation_level < 3:
-                self._apply_noise_overlay()
-            elif self.obfuscation_level < 6:
-                self._apply_color_distortion()
-            else:
-                self._apply_geometric_distortion()
-                
-        except Exception as e:
-            logging.error(f"Obfuscation error: {e}")
-            
-    def _apply_noise_overlay(self):
-        """Apply random noise overlay."""
-        # This would add dynamic noise to protected areas
-        pass
-        
-    def _apply_color_distortion(self):
-        """Apply color distortion."""
-        # This would distort colors in protected areas
-        pass
-        
-    def _apply_geometric_distortion(self):
-        """Apply geometric distortion."""
-        # This would apply geometric transformations to protected areas
-        pass
 
 
 #-----------------------------------------------------------------------------
