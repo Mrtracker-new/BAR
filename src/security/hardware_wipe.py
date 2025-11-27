@@ -21,7 +21,7 @@ import time
 import shutil
 import secrets
 from pathlib import Path
-from typing import Optional, Union, Dict, Any
+from typing import Optional, Union, Dict, Any, Callable
 from enum import Enum
 import logging
 
@@ -83,7 +83,7 @@ class HardwareWipe:
         return capabilities
     
     def wipe_volume_free_space(self, path: Union[str, Path], max_bytes: Optional[int] = None,
-                              pattern: str = "random", progress_callback: Optional[callable] = None) -> Dict[str, Any]:
+                              pattern: str = "random", progress_callback: Optional[Callable] = None) -> Dict[str, Any]:
         """Wipe free space on the volume containing the given path.
         
         This performs a best-effort wipe of available free space on the same volume
