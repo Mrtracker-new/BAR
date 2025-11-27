@@ -9,7 +9,7 @@ This module provides comprehensive password strength validation including:
 
 import math
 import re
-from typing import Dict, Optional, Tuple
+from typing import Dict, Any, Tuple
 from collections import Counter
 
 
@@ -199,7 +199,7 @@ class PasswordStrength:
         
         return True, ""
     
-    def validate_password(self, password: str) -> Dict[str, any]:
+    def validate_password(self, password: str) -> Dict[str, Any]:
         """Perform comprehensive password validation.
         
         Args:
@@ -304,7 +304,7 @@ class PasswordStrength:
 def validate_password_strength(password: str,
                                min_length: int = PasswordStrength.MIN_LENGTH,
                                min_entropy_bits: float = PasswordStrength.MIN_ENTROPY_BITS,
-                               require_complexity: bool = True) -> Dict[str, any]:
+                               require_complexity: bool = True) -> Dict[str, Any]:
     """Convenience function to validate password strength.
     
     Args:
