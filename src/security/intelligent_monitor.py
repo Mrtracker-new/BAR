@@ -13,7 +13,6 @@ Per project security rules:
 import os
 import time
 import threading
-import hashlib
 import statistics
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -111,7 +110,6 @@ class IntelligentFileMonitor:
         self._failure_threshold = 10  # Failed attempts before alert (increased from 5 to reduce false positives)
         
         # Process monitoring (Windows-specific, graceful fallback)
-        self._monitored_processes: Set[str] = set()
         self._suspicious_processes: Set[str] = {
             "forensics", "recovery", "undelete", "disk", "hex", "binary",
             "wireshark", "tcpdump", "volatility", "binwalk", "strings"
