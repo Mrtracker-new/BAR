@@ -26,13 +26,10 @@ Last Updated: January 2025
 import os
 import re
 import sys
-import hmac
-import hashlib
-import secrets
 import logging
 import unicodedata
-from pathlib import Path, PurePath
-from typing import Any, Optional, Union, List, Dict, Callable, Tuple, TypeVar, Generic
+from pathlib import Path
+from typing import Any, Optional, Union, List, Dict, Callable, Tuple, TypeVar
 from enum import Enum
 from dataclasses import dataclass
 from contextlib import contextmanager
@@ -954,56 +951,6 @@ class CryptographicValidator:
             return True
         
         return False
-    
-    def _calculate_password_complexity(self, password: str) -> int:
-        """Calculate password complexity score.
-        
-        Args:
-            password: Password to analyze
-            
-        Returns:
-            Complexity score (0-6)
-        """
-        score = 0
-        
-        # Length bonus
-        if len(password) >= 12:
-            score += 1
-        
-        # Character class checks
-        if re.search(r'[a-z]', password):
-            score += 1
-        if re.search(r'[A-Z]', password):
-            score += 1
-        if re.search(r'[0-9]', password):
-            score += 1
-        if re.search(r'[!@#$%^&*()_+\-=\[\]{};\':"\\|,.<>/?]', password):
-            score += 1
-        
-        # Additional complexity
-        if len(set(password)) >= len(password) // 2:  # Good character diversity
-            score += 1
-        
-        return score
-    
-    def _is_common_password(self, password: str) -> bool:
-        """Check if password is a common weak password.
-        
-        Args:
-            password: Password to check
-            
-        Returns:
-            True if password is common/weak
-        """
-        # Simple check for very common passwords
-        common_passwords = {
-            'password', '123456', '123456789', 'qwerty', 'abc123',
-            'password123', 'admin', 'root', 'user', 'guest', 
-            'letmein', 'welcome', 'monkey', 'dragon', 'master',
-            '111111', '000000', '123123', '1234567890'
-        }
-        
-        return password.lower() in common_passwords
 
 
 class FileValidator:
