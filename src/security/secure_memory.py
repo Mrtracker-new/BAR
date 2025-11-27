@@ -6,9 +6,6 @@ import threading
 import weakref
 import gc
 import atexit
-import mmap
-import platform
-import struct
 import subprocess
 from typing import Any, Optional, Union, List, Dict, Callable
 
@@ -196,7 +193,7 @@ class SecureBytes:
             self._bind_to_hardware()
         
         # TPM sealing if available and requested
-        if self._use_tpm and hasattr(self, '_tpm_interface') and self._tpm_interface and self._tpm_interface.is_available():
+        if self._use_tpm and hasattr(self, '_tmp_interface') and self._tmp_interface and self._tmp_interface.is_available():
             self._seal_with_tpm()
         
         # Add canary values for corruption detection (MAXIMUM protection)
