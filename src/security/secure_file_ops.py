@@ -483,7 +483,7 @@ class SecureFileOperations:
     
     def _secure_delete_dod_3_pass(self, file_path: Path, file_size: int) -> bool:
         """DoD 5220.22-M 3-pass secure deletion."""
-        patterns = [0x00, 0xFF, secrets.randbits(8)]
+        patterns = [0x00, 0xFF, 'random']
         
         try:
             with open(file_path, 'r+b') as f:
@@ -491,7 +491,7 @@ class SecureFileOperations:
                     self.logger.debug(f"DoD 3-pass: Pass {i+1}/3")
                     f.seek(0)
                     
-                    if pattern == secrets.randbits(8):
+                    if pattern == 'random':
                         # Random pass
                         f.write(secrets.token_bytes(file_size))
                     else:
