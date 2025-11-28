@@ -15,7 +15,7 @@ from src.security.device_auth_manager import DeviceAuthManager
 from src.gui.main_window import MainWindow
 from src.gui.device_setup_dialog import DeviceSetupDialog
 from src.gui.styles import StyleManager
-from src.security.secure_memory import get_secure_memory_manager, force_secure_memory_cleanup
+from src.security.secure_memory import force_secure_memory_cleanup
 from src.security.emergency_protocol import EmergencyProtocol
 from src.security.intelligent_monitor import IntelligentFileMonitor, ThreatLevel
 from src.security.steganographic_triggers import SteganographicTriggerSystem, TriggerType, TriggerAction
@@ -24,7 +24,6 @@ from src.file_manager.file_manager import FileManager
 
 # Import PySide6 modules
 from PySide6.QtWidgets import QApplication, QDialog, QMessageBox, QLineEdit, QInputDialog
-from PySide6.QtCore import Qt
 
 
 def setup_logging():
@@ -99,7 +98,7 @@ class SimpleAuthDialog(QDialog):
                     f"{lockout_message}\n\nApplication will exit due to security lockout."
                 )
                 return QDialog.DialogCode.Rejected
-        except:
+        except Exception:
             pass  # Ignore errors from lockout check
         
         max_attempts = 3  # This is just for the dialog loop, actual security is handled by DeviceAuthManager
@@ -248,7 +247,7 @@ def main():
         try:
             # Get the authenticated password to derive metadata key
             # Note: The password is only used during this session and cleared on logout
-            device_password = auth_dialog.password if hasattr(auth_dialog, 'password') else None
+            device_password = auth_dialog.password
             
             if device_password:
                 file_manager.set_metadata_key(device_password)
