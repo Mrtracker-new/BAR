@@ -14,7 +14,7 @@ Last Updated: January 2025
 import time
 import psutil
 import threading
-from typing import Dict, List, Optional, Callable
+from typing import Dict, List, Optional, Callable, Tuple
 from dataclasses import dataclass
 from enum import Enum
 import logging
@@ -156,7 +156,7 @@ class SystemHealthMonitor:
             return None
     
     def _analyze_threats(self, cpu_percent: float, memory_percent: float, 
-                        temperature: Optional[float]) -> tuple[List[str], ThreatLevel]:
+                        temperature: Optional[float]) -> Tuple[List[str], ThreatLevel]:
         """
         Analyze system metrics for potential security threats
         
