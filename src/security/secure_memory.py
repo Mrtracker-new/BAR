@@ -65,11 +65,6 @@ class MemoryLockError(SecureMemoryError):
     pass
 
 
-class MemoryForensicsError(SecureMemoryError):
-    """Raised when memory forensics attempts are detected."""
-    pass
-
-
 class TPMError(SecureMemoryError):
     """Raised when TPM/secure enclave operations fail."""
     pass
@@ -1332,7 +1327,12 @@ class SecureMemoryManager:
                 active_bytes_allocated=self.stats.active_bytes_allocated,
                 lock_failures=self.stats.lock_failures,
                 corruption_detections=self.stats.corruption_detections,
-                cleanup_operations=self.stats.cleanup_operations
+                cleanup_operations=self.stats.cleanup_operations,
+                forensics_attempts=self.stats.forensics_attempts,
+                tpm_operations=self.stats.tpm_operations,
+                enclave_operations=self.stats.enclave_operations,
+                memory_monitoring_alerts=self.stats.memory_monitoring_alerts,
+                performance_violations=self.stats.performance_violations
             )
     
     def force_cleanup_and_gc(self):
@@ -1385,9 +1385,8 @@ def create_secure_string(value: str = "") -> SecureString:
     Returns:
         SecureString instance
     """
-    secure_str = SecureString(value)
-    _secure_memory_manager.register_secure_object(secure_str)
-    return secure_str
+    # Note: SecureString constructor already registers with global manager
+    return SecureString(value)
 
 
 def create_secure_bytes(value: Union[str, bytes, bytearray] = None, 
