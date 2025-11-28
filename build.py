@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+import re
 import sys
 import shutil
 import subprocess
@@ -51,36 +52,31 @@ def build_executable():
         print("Failed to build executable: PyInstaller is not installed.")
         return False
     
-    # PyInstaller command
+    # Determine platform-specific separator for --add-data
+    data_separator = ';' if os.name == 'nt' else ':'
+    
+    # Check if optional files exist
+    icon_path = 'resources/BAR_logo.ico'
+    has_icon = os.path.exists(icon_path)
+    has_license = os.path.exists('LICENSE')
+    
+    # Build PyInstaller command with conditional options
     cmd = [
         sys.executable, "-m", "PyInstaller",
         '--name=BAR',
-        '--windowed',  # No console window
-        '--onefile',   # Single executable file
-        '--icon=resources/BAR_logo.ico',  # Application icon
-        '--add-data=LICENSE;.',  # Include license file (if available)
-        '--exclude-module=PyQt5',  # Exclude PyQt5 to avoid conflicts with PySide6
-        '--exclude-module=PyQt6',  # Exclude PyQt6 to avoid conflicts with PySide6
-        '--clean',     # Clean PyInstaller cache
-        'main.py'      # Main script
+        '--windowed',
+        '--onefile',
+        '--exclude-module=PyQt5',
+        '--exclude-module=PyQt6',
+        '--clean',
+        'main.py'
     ]
     
-    # Check if icon exists, if not remove the option
-    icon_path = 'resources/BAR_logo.ico'
-    has_icon = os.path.exists(icon_path)
-    if not has_icon:
-        cmd.remove(f'--icon={icon_path}')
-    else:
-        # Ensure icon path is absolute to avoid path issues
-        abs_icon_path = os.path.abspath(icon_path)
-        # Update the command with absolute path
-        for i, arg in enumerate(cmd):
-            if arg.startswith('--icon='):
-                cmd[i] = f'--icon={abs_icon_path}'
+    if has_icon:
+        cmd.insert(-1, f'--icon={os.path.abspath(icon_path)}')
     
-    # Check if license exists, if not remove the option
-    if not os.path.exists('LICENSE'):
-        cmd.remove('--add-data=LICENSE;.')
+    if has_license:
+        cmd.insert(-1, f'--add-data=LICENSE{data_separator}.')
     
     # Run PyInstaller using subprocess instead of os.system
     try:
@@ -92,9 +88,6 @@ def build_executable():
             print("Fixing icon in spec file...")
             with open(spec_file, 'r') as f:
                 spec_content = f.read()
-            
-            # Import regex module for more robust pattern matching
-            import re
             
             # Check if icon is in list format (any path variation)
             if re.search(r"icon=\[.*?\]", spec_content):
