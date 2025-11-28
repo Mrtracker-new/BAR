@@ -1,6 +1,6 @@
 from setuptools import setup, Extension
+from setuptools.dist import Distribution
 from Cython.Build import cythonize
-import os
 import sys
 
 # Define the extension module
@@ -41,7 +41,6 @@ setup(
 # Function to build the extension in place
 def build_ext_inplace():
     """Build the extension modules in-place for development."""
-    from Cython.Build import build_ext
     from setuptools.command.build_ext import build_ext as _build_ext
     
     # Create a custom build_ext command
@@ -58,7 +57,6 @@ def build_ext_inplace():
 # If this script is run directly, build the extension in-place
 if __name__ == "__main__":
     try:
-        from setuptools.dist import Distribution
         build_ext_inplace()
         print("Successfully built Cython extension in-place.")
     except Exception as e:
