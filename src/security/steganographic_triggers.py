@@ -15,7 +15,6 @@ WARNING: This is a security-critical component. Use only for legitimate protecti
 
 import os
 import hashlib
-import secrets
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -120,7 +119,6 @@ class SteganographicTriggerSystem:
         # Pattern tracking for detection
         self._password_history: List[str] = []
         self._access_sequence: List[Tuple[str, datetime]] = []
-        self._behavior_patterns: Dict[str, Any] = {}
         
         # Security settings
         self._max_history_size = 100
@@ -437,11 +435,9 @@ class SteganographicTriggerSystem:
                 return current_date == target_date
             elif pattern.startswith("interval:"):
                 # Check intervals between events
-                parts = pattern.split(":")
-                if len(parts) >= 2:
-                    target_seconds = int(parts[1])
-                    # This would need more sophisticated timing tracking
-                    pass
+                # TODO: Implement interval-based timing trigger
+                # Requires tracking event timestamps and calculating intervals
+                pass
             
             return False
             
@@ -458,19 +454,20 @@ class SteganographicTriggerSystem:
                 target_bytes = bytes.fromhex(pattern[6:])
                 return target_bytes in content
             elif pattern.startswith("entropy:"):
-                # Check entropy level (simplified)
+                # Check entropy level (simplified Shannon entropy)
                 target_entropy = float(pattern[8:])
-                # Simplified entropy calculation
+                # Shannon entropy calculation
                 if len(content) > 0:
+                    import math
                     byte_counts = [0] * 256
                     for byte in content:
                         byte_counts[byte] += 1
                     
-                    entropy = 0
+                    entropy = 0.0
                     for count in byte_counts:
                         if count > 0:
                             p = count / len(content)
-                            entropy -= p * (p.bit_length() - 1)
+                            entropy -= p * math.log2(p)
                     
                     threshold = target_entropy * sensitivity
                     return entropy >= threshold
@@ -702,7 +699,6 @@ class SteganographicTriggerSystem:
             # Clear sensitive data from memory
             self._password_history.clear()
             self._access_sequence.clear()
-            self._behavior_patterns.clear()
             
             # Clear encoding key
             if hasattr(self, '_encoding_key'):
