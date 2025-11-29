@@ -24,16 +24,16 @@ from typing import Optional, Tuple, Dict, Any
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from security.secure_memory import (
+from src.security.secure_memory import (
     SecureBytes, SecureString, MemoryProtectionLevel,
     create_secure_bytes, create_secure_string,
     get_secure_memory_manager, secure_memory_context,
     TPMInterface, AntiForensicsMonitor
 )
-from security.device_auth_manager import DeviceAuthManager
-from security.hardware_id import HardwareIdentifier
-from config.config_manager import ConfigManager
-from crypto.encryption import EncryptionManager
+from src.security.device_auth_manager import DeviceAuthManager
+from src.security.hardware_id import HardwareIdentifier
+from src.config.config_manager import ConfigManager
+from src.crypto.encryption import EncryptionManager
 
 
 class SecureAuthenticationSession:
@@ -76,11 +76,7 @@ class SecureAuthenticationSession:
         try:
             # Store password in secure memory immediately
             with secure_memory_context():
-                self._session_password = create_secure_string(
-                    password,
-                    protection_level=MemoryProtectionLevel.MILITARY if self._tpm_interface.is_available() 
-                    else MemoryProtectionLevel.MAXIMUM
-                )
+                self._session_password = create_secure_string(password)
                 
                 # Collect hardware fingerprint securely
                 hw_fingerprint = self._hardware_id.get_hardware_id()
@@ -124,7 +120,7 @@ class SecureAuthenticationSession:
             self._session_key = create_secure_bytes(
                 key_material,
                 protection_level=MemoryProtectionLevel.MILITARY,
-                use_tmp=self._tmp_interface.is_available(),
+                use_tpm=self._tpm_interface.is_available(),
                 hardware_bound=True
             )
             
@@ -266,16 +262,17 @@ class SecureConfigurationManager:
         Args:
             key: Configuration key
             value: Configuration value (will be stored securely)
-            protection_level: Level of memory protection to apply
+            protection_level: Level of memory protection to apply (currently not used for strings)
         """
         try:
             # Store in secure memory
-            secure_value = create_secure_string(value, protection_level=protection_level)
+            secure_value = create_secure_string(value)
             self._secure_configs[key] = secure_value
             
             # Also store encrypted version in regular config for persistence
             encrypted_value = self._encrypt_config_value(value)
-            self._config_manager.set_value("secure_configs", key, encrypted_value)
+            config_key = f"secure_{key}"  # Prefix with 'secure_' to identify secure configs
+            self._config_manager.set_value(config_key, encrypted_value)
             
             self.logger.debug(f"Secure configuration set: {key}")
             
@@ -299,7 +296,8 @@ class SecureConfigurationManager:
                 return self._secure_configs[key].get_value()
             
             # If not in memory, try to load from encrypted storage
-            encrypted_value = self._config_manager.get_value("secure_configs", key)
+            config_key = f"secure_{key}"  # Prefix with 'secure_' to identify secure configs
+            encrypted_value = self._config_manager.get_value(config_key)
             if encrypted_value:
                 decrypted_value = self._decrypt_config_value(encrypted_value)
                 if decrypted_value:
@@ -322,15 +320,25 @@ class SecureConfigurationManager:
             # Create encryption manager
             encryption_manager = EncryptionManager()
             
-            # Encrypt with hardware binding
-            encrypted_data = encryption_manager.encrypt_file_content(
-                content=value.encode('utf-8'),
-                password=hw_id
+            # Derive key from hardware ID (skip validation for hardware ID)
+            salt = encryption_manager.generate_salt()
+            key = encryption_manager.derive_key(hw_id, salt, skip_validation=True)
+            
+            # Encrypt with derived key
+            encrypted_data = encryption_manager.encrypt_data(
+                data=value.encode('utf-8'),
+                key=key
             )
+            # Convert all bytes to hex for JSON serialization
+            json_safe_data = {
+                'ciphertext': encrypted_data['ciphertext'].hex(),
+                'nonce': encrypted_data['nonce'].hex(),
+                'salt': salt.hex()
+            }
             
             # Return as JSON string for storage
             import json
-            return json.dumps(encrypted_data)
+            return json.dumps(json_safe_data)
             
         except Exception as e:
             self.logger.error(f"Config encryption failed: {e}")
@@ -341,7 +349,7 @@ class SecureConfigurationManager:
         try:
             # Parse encrypted data
             import json
-            encrypted_data = json.loads(encrypted_value)
+            json_data = json.loads(encrypted_value)
             
             # Use hardware-bound decryption
             hw_id = self._hardware_id.get_hardware_id()
@@ -349,10 +357,20 @@ class SecureConfigurationManager:
             # Create encryption manager
             encryption_manager = EncryptionManager()
             
-            # Decrypt with hardware binding
-            decrypted_bytes = encryption_manager.decrypt_file_content(
-                encrypted_content=encrypted_data,
-                password=hw_id
+            # Recover salt and derive key (skip validation for hardware ID)
+            salt = bytes.fromhex(json_data['salt'])
+            key = encryption_manager.derive_key(hw_id, salt, skip_validation=True)
+            
+            # Convert hex strings back to bytes
+            encrypted_data = {
+                'ciphertext': bytes.fromhex(json_data['ciphertext']),
+                'nonce': bytes.fromhex(json_data['nonce'])
+            }
+            
+            # Decrypt with derived key
+            decrypted_bytes = encryption_manager.decrypt_data(
+                encrypted_data=encrypted_data,
+                key=key
             )
             
             return decrypted_bytes.decode('utf-8')
