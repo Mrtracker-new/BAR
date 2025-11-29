@@ -22,8 +22,27 @@ import time
 from pathlib import Path
 from datetime import datetime
 
-# Add src to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+# Ensure console can handle Unicode/emoji; fall back gracefully
+# Use ASCII-safe replacements for Windows console
+import platform
+USE_EMOJI = False  # Disable emoji on Windows by default
+if platform.system() != 'Windows':
+    try:
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+            USE_EMOJI = True
+    except Exception:
+        pass
+
+# Define emoji replacements for Windows
+def safe_emoji(emoji_char, fallback):
+    """Return emoji or ASCII fallback based on platform."""
+    return emoji_char if USE_EMOJI else fallback
+
+# Ensure project root is on sys.path so 'src.*' imports work when run from examples/
+project_root = Path(__file__).resolve().parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
 from src.crypto.async_encryption import AsyncEncryptionManager, StreamingConfig
 from src.file_manager.async_file_manager import AsyncFileManager
@@ -38,8 +57,8 @@ def setup_logging():
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.StreamHandler(),
-            logging.FileHandler('async_performance_demo.log')
+            logging.StreamHandler(sys.stdout),
+            logging.FileHandler('async_performance_demo.log', encoding='utf-8')
         ]
     )
     return logging.getLogger("AsyncPerformanceDemo")
@@ -48,7 +67,7 @@ def setup_logging():
 async def demo_async_encryption():
     """Demonstrate async encryption with streaming support."""
     logger = logging.getLogger("AsyncEncryption")
-    logger.info("🔐 Starting async encryption demonstration...")
+    logger.info(safe_emoji("🔐 Starting async encryption demonstration...", "[ENCRYPT] Starting async encryption demonstration..."))
     
     async with AsyncEncryptionManager(max_workers=4) as enc_manager:
         # Test data of various sizes
@@ -64,7 +83,8 @@ async def demo_async_encryption():
             logger.info(f"Processing {filename} ({len(content):,} bytes)")
             
             # Test streaming encryption vs regular encryption
-            password = "test_password_123"
+            # Use policy-compliant password for demo
+            password = "TestPassword_123!"
             
             start_time = time.time()
             
@@ -89,7 +109,8 @@ async def demo_async_encryption():
                     encrypted_chunks.append(encrypted_chunk)
                 
                 # For demo, we'd normally save these chunks
-                total_encrypted_size = sum(len(str(chunk)) for chunk in encrypted_chunks)
+                # Use byte length, not string length
+                total_encrypted_size = sum(len(chunk) for chunk in encrypted_chunks)
                 
             else:
                 # Use regular encryption for smaller files
@@ -117,13 +138,17 @@ async def demo_async_encryption():
             }
             results.append(result)
             
-            logger.info(f"✅ {filename}: {throughput/1024/1024:.2f} MB/s, "
-                       f"{duration:.2f}s, ratio: {result['compression_ratio']:.2f}")
+            logger.info(safe_emoji(
+                f"✅ {filename}: {throughput/1024/1024:.2f} MB/s, {duration:.2f}s, ratio: {result['compression_ratio']:.2f}",
+                f"[OK] {filename}: {throughput/1024/1024:.2f} MB/s, {duration:.2f}s, ratio: {result['compression_ratio']:.2f}"
+            ))
         
         # Display performance metrics
         perf_metrics = enc_manager.get_performance_metrics()
-        logger.info(f"📊 Encryption performance: {perf_metrics['total_operations']} operations, "
-                   f"avg {perf_metrics['overall_avg_throughput']/1024/1024:.2f} MB/s")
+        logger.info(safe_emoji(
+            f"📊 Encryption performance: {perf_metrics['total_operations']} operations, avg {perf_metrics['overall_avg_throughput']/1024/1024:.2f} MB/s",
+            f"[STATS] Encryption performance: {perf_metrics['total_operations']} operations, avg {perf_metrics['overall_avg_throughput']/1024/1024:.2f} MB/s"
+        ))
         
         return results
 
@@ -131,7 +156,7 @@ async def demo_async_encryption():
 async def demo_async_file_manager():
     """Demonstrate async file manager with progress tracking."""
     logger = logging.getLogger("AsyncFileManager")
-    logger.info("📁 Starting async file manager demonstration...")
+    logger.info(safe_emoji("📁 Starting async file manager demonstration...", "[FILES] Starting async file manager demonstration..."))
     
     # Create temporary directory for demo
     demo_dir = Path.cwd() / "demo_files"
@@ -148,7 +173,7 @@ async def demo_async_file_manager():
             {
                 'filename': 'confidential_doc.txt',
                 'content': b'Confidential document content' * 1000,
-                'password': 'secure_pass_123',
+                'password': 'Secure_Pass123!',
                 'security_settings': {
                     'max_access_count': 5,
                     'disable_export': True,
@@ -158,7 +183,7 @@ async def demo_async_file_manager():
             {
                 'filename': 'temporary_note.txt', 
                 'content': b'Temporary note that will expire' * 500,
-                'password': 'temp_pass_456',
+                'password': 'Temp_Pass456!',
                 'security_settings': {
                     'max_access_count': 3,
                     'expiration_time': (datetime.now().timestamp() + 3600),  # 1 hour
@@ -168,7 +193,7 @@ async def demo_async_file_manager():
             {
                 'filename': 'large_dataset.bin',
                 'content': os.urandom(5 * 1024 * 1024),  # 5MB random data
-                'password': 'data_pass_789',
+                'password': 'Data_Pass789!',
                 'security_settings': {
                     'max_access_count': 10,
                     'disable_export': False
@@ -202,10 +227,12 @@ async def demo_async_file_manager():
         
         for i, (file_id, operation_id) in enumerate(results):
             created_files.append((file_id, test_files[i]['filename']))
-            logger.info(f"✅ Created {test_files[i]['filename']} with ID: {file_id}")
+            logger.info(safe_emoji(f"✅ Created {test_files[i]['filename']} with ID: {file_id}", f"[OK] Created {test_files[i]['filename']} with ID: {file_id}"))
         
-        logger.info(f"📊 Created {len(created_files)} files in {duration:.2f}s "
-                   f"(avg {duration/len(created_files):.2f}s per file)")
+        logger.info(safe_emoji(
+            f"📊 Created {len(created_files)} files in {duration:.2f}s (avg {duration/len(created_files):.2f}s per file)",
+            f"[STATS] Created {len(created_files)} files in {duration:.2f}s (avg {duration/len(created_files):.2f}s per file)"
+        ))
         
         # Test concurrent file access
         logger.info("Testing concurrent file access...")
@@ -241,7 +268,7 @@ async def demo_async_file_manager():
 async def demo_async_file_scanner():
     """Demonstrate concurrent file scanning."""
     logger = logging.getLogger("AsyncFileScanner")
-    logger.info("🔍 Starting async file scanner demonstration...")
+    logger.info(safe_emoji("🔍 Starting async file scanner demonstration...", "[SCAN] Starting async file scanner demonstration..."))
     
     async with AsyncFileScanner(max_workers=6, max_concurrent_scans=3) as scanner:
         
@@ -285,43 +312,63 @@ async def demo_async_file_scanner():
         # Monitor scan progress
         logger.info(f"Monitoring {len(scan_ids)} concurrent scans...")
         
+        # Exit early if no scans were started
+        if not scan_ids:
+            logger.warning("No scans were started successfully")
+            return []
+        
         completed_scans = set()
         start_time = time.time()
+        max_timeout = 30  # Maximum 30 seconds for demo
         
         while len(completed_scans) < len(scan_ids):
+            # Check timeout first
+            elapsed = time.time() - start_time
+            if elapsed > max_timeout:
+                logger.warning(f"Demo timeout reached after {elapsed:.1f}s, cancelling remaining scans")
+                for scan_id in scan_ids:
+                    if scan_id not in completed_scans:
+                        try:
+                            await asyncio.wait_for(scanner.cancel_scan(scan_id), timeout=2.0)
+                        except asyncio.TimeoutError:
+                            logger.warning(f"Timeout cancelling scan {scan_id}")
+                        except Exception as e:
+                            logger.warning(f"Error cancelling scan {scan_id}: {e}")
+                break
+            
             await asyncio.sleep(1)  # Check every second
             
             for scan_id in scan_ids:
                 if scan_id in completed_scans:
                     continue
                 
-                progress = await scanner.get_scan_progress(scan_id)
-                if progress and progress.status in ['completed', 'failed', 'cancelled']:
-                    completed_scans.add(scan_id)
-                    logger.info(f"✅ Scan {scan_id} {progress.status}: "
-                               f"{progress.bar_files_found} .bar files found")
-            
-            # Timeout after 30 seconds for demo
-            if time.time() - start_time > 30:
-                logger.warning("Demo timeout reached, cancelling remaining scans")
-                for scan_id in scan_ids:
-                    if scan_id not in completed_scans:
-                        await scanner.cancel_scan(scan_id)
-                break
+                try:
+                    progress = await asyncio.wait_for(scanner.get_scan_progress(scan_id), timeout=2.0)
+                    if progress and progress.status in ['completed', 'failed', 'cancelled']:
+                        completed_scans.add(scan_id)
+                        logger.info(safe_emoji(
+                            f"✅ Scan {scan_id} {progress.status}: {progress.bar_files_found} .bar files found",
+                            f"[OK] Scan {scan_id} {progress.status}: {progress.bar_files_found} .bar files found"
+                        ))
+                except asyncio.TimeoutError:
+                    logger.warning(f"Timeout getting progress for scan {scan_id}")
+                except Exception as e:
+                    logger.warning(f"Error getting progress for scan {scan_id}: {e}")
+                    completed_scans.add(scan_id)  # Mark as completed to avoid infinite loop
         
         # Get discovered .bar files
         discovered_files = await scanner.get_discovered_bar_files()
         
-        logger.info(f"📊 Scan Summary:")
+        logger.info(safe_emoji("📊 Scan Summary:", "[STATS] Scan Summary:"))
         logger.info(f"   - Total .bar files found: {len(discovered_files)}")
         
         for bar_file in discovered_files[:5]:  # Show first 5
-            logger.info(f"   - {bar_file.file_path} ({bar_file.file_size:,} bytes) "
-                       f"{'✓' if bar_file.is_valid else '✗'}")
+            status_char = 'OK' if bar_file.is_valid else 'INVALID'
+            logger.info(f"   - {bar_file.file_path} ({bar_file.file_size:,} bytes) {status_char}")
         
         # Display scan statistics
         scan_stats = scanner.get_scan_statistics()
-        logger.info(f"📈 Scanner Performance:")
+        logger.info(safe_emoji("📈 Scanner Performance:", "[PERF] Scanner Performance:"))
         logger.info(f"   - Completed scans: {scan_stats['completed_scans']}")
         logger.info(f"   - Average scan speed: {scan_stats['average_scan_speed']:.1f} dirs/s")
         logger.info(f"   - Max concurrent scans: {scan_stats['max_concurrent_scans']}")
@@ -332,7 +379,7 @@ async def demo_async_file_scanner():
 async def demo_performance_monitoring():
     """Demonstrate comprehensive performance monitoring."""
     logger = logging.getLogger("PerformanceMonitoring")
-    logger.info("📊 Starting performance monitoring demonstration...")
+    logger.info(safe_emoji("📊 Starting performance monitoring demonstration...", "[PERF] Starting performance monitoring demonstration..."))
     
     # Create performance monitor
     perf_monitor = PerformanceMonitor(
@@ -342,8 +389,10 @@ async def demo_performance_monitoring():
     
     # Add alert callback
     async def alert_callback(alert_data):
-        logger.warning(f"🚨 PERFORMANCE ALERT: {alert_data['metric_name']} = "
-                      f"{alert_data['metric_value']:.2f} ({alert_data['alert_level']})")
+        logger.warning(safe_emoji(
+            f"🚨 PERFORMANCE ALERT: {alert_data['metric_name']} = {alert_data['metric_value']:.2f} ({alert_data['alert_level']})",
+            f"[ALERT] PERFORMANCE ALERT: {alert_data['metric_name']} = {alert_data['metric_value']:.2f} ({alert_data['alert_level']})"
+        ))
     
     perf_monitor.add_alert_callback(alert_callback)
     
@@ -364,7 +413,7 @@ async def demo_performance_monitoring():
         )
         
         # Simulate work with some CPU and memory usage
-        await asyncio.sleep(5)  # Let monitoring collect baseline
+        await asyncio.sleep(3)  # Let monitoring collect baseline
         
         # CPU-intensive task
         def cpu_intensive_task():
@@ -403,8 +452,8 @@ async def demo_performance_monitoring():
             memory_peak_bytes=50 * 1024 * 1024  # 50MB peak
         )
         
-        # Wait for metrics collection
-        await asyncio.sleep(10)
+        # Wait for metrics collection (with timeout)
+        await asyncio.sleep(5)  # Reduced from 10 to 5 seconds
         
         # Get comprehensive metrics
         metrics = perf_monitor.get_comprehensive_metrics()
@@ -440,7 +489,7 @@ async def demo_performance_monitoring():
 async def demo_integrated_performance():
     """Demonstrate all components working together with performance monitoring."""
     logger = logging.getLogger("IntegratedDemo")
-    logger.info("🚀 Starting integrated performance demonstration...")
+    logger.info(safe_emoji("🚀 Starting integrated performance demonstration...", "[INTEGRATED] Starting integrated performance demonstration..."))
     
     # Set up performance monitor
     perf_monitor = PerformanceMonitor(monitoring_interval=3)
@@ -473,13 +522,13 @@ async def demo_integrated_performance():
                 task = file_manager.create_secure_file_async(
                     content=content,
                     filename=f"demo_file_{i}.txt",
-                    password=f"password_{i}",
+                    password=f"Password_{i}A!",
                     security_settings={'max_access_count': 10}
                 )
                 file_tasks.append(task)
             
             created_files = await asyncio.gather(*file_tasks)
-            logger.info(f"✅ Created {len(created_files)} files concurrently")
+            logger.info(safe_emoji(f"✅ Created {len(created_files)} files concurrently", f"[OK] Created {len(created_files)} files concurrently"))
             
             # 2. Scan for files while accessing existing ones
             scan_task = asyncio.create_task(
@@ -489,22 +538,26 @@ async def demo_integrated_performance():
             # 3. Access files concurrently while scan is running  
             access_tasks = []
             for i, (file_id, _) in enumerate(created_files):
-                task = file_manager.access_file_async(file_id, f"password_{i}")
+                task = file_manager.access_file_async(file_id, f"Password_{i}A!")
                 access_tasks.append(task)
             
             access_results = await asyncio.gather(*access_tasks)
-            logger.info(f"✅ Accessed {len(access_results)} files concurrently")
+            logger.info(safe_emoji(f"✅ Accessed {len(access_results)} files concurrently", f"[OK] Accessed {len(access_results)} files concurrently"))
             
-            # Wait for scan to complete
-            scan_id = await scan_task
-            logger.info(f"✅ File scan completed: {scan_id}")
+            # Wait for scan to complete (with timeout)
+            try:
+                scan_id = await asyncio.wait_for(scan_task, timeout=30)
+                logger.info(safe_emoji(f"✅ File scan completed: {scan_id}", f"[OK] File scan completed: {scan_id}"))
+            except asyncio.TimeoutError:
+                logger.warning("⚠️ Scan timed out after 30s")
+                scan_id = None
             
             # 4. Get comprehensive performance metrics
-            await asyncio.sleep(5)  # Let metrics settle
+            await asyncio.sleep(3)  # Let metrics settle
             
             final_metrics = perf_monitor.get_comprehensive_metrics()
             
-            logger.info("🎯 Final Performance Summary:")
+            logger.info(safe_emoji("🎯 Final Performance Summary:", "[SUMMARY] Final Performance Summary:"))
             logger.info(f"System Health: {final_metrics['system_health']['score']}/100")
             logger.info(f"Total Operations: {final_metrics['operation_statistics']['overall']['operation_count']}")
             logger.info(f"Success Rate: {final_metrics['operation_statistics']['overall']['success_rate']*100:.1f}%")
@@ -512,7 +565,7 @@ async def demo_integrated_performance():
             # Export metrics for analysis
             metrics_file = demo_dir / "performance_metrics.json"
             perf_monitor.export_metrics(str(metrics_file))
-            logger.info(f"📄 Performance metrics exported to {metrics_file}")
+            logger.info(safe_emoji(f"📄 Performance metrics exported to {metrics_file}", f"[FILE] Performance metrics exported to {metrics_file}"))
             
             return final_metrics
             
@@ -523,46 +576,55 @@ async def demo_integrated_performance():
 async def main():
     """Main demonstration function."""
     logger = setup_logging()
-    logger.info("🔥 BAR Async Performance Demonstration Starting...")
+    logger.info(safe_emoji("🔥 BAR Async Performance Demonstration Starting...", "[START] BAR Async Performance Demonstration Starting..."))
     logger.info("=" * 60)
+    
+    # Set overall timeout for the entire demo (5 minutes max)
+    overall_timeout = 300  # 5 minutes
     
     try:
         # Individual component demonstrations
         logger.info("Phase 1: Individual Component Demonstrations")
         
         # 1. Async Encryption Demo
-        encryption_results = await demo_async_encryption()
+        encryption_results = await asyncio.wait_for(demo_async_encryption(), timeout=60)
         await asyncio.sleep(2)
         
         # 2. Async File Manager Demo
-        file_manager_results = await demo_async_file_manager() 
+        file_manager_results = await asyncio.wait_for(demo_async_file_manager(), timeout=60) 
         await asyncio.sleep(2)
         
         # 3. Async File Scanner Demo
-        scanner_results = await demo_async_file_scanner()
+        scanner_results = await asyncio.wait_for(demo_async_file_scanner(), timeout=60)
         await asyncio.sleep(2)
         
         # 4. Performance Monitoring Demo
-        monitoring_results = await demo_performance_monitoring()
+        monitoring_results = await asyncio.wait_for(demo_performance_monitoring(), timeout=60)
         await asyncio.sleep(2)
         
         logger.info("=" * 60)
         logger.info("Phase 2: Integrated Performance Demonstration")
         
         # 5. Integrated Demo
-        integrated_results = await demo_integrated_performance()
+        integrated_results = await asyncio.wait_for(demo_integrated_performance(), timeout=90)
         
         logger.info("=" * 60)
-        logger.info("🎉 All demonstrations completed successfully!")
+        logger.info(safe_emoji("🎉 All demonstrations completed successfully!", "[DONE] All demonstrations completed successfully!"))
         
         # Summary
-        logger.info("📊 DEMONSTRATION SUMMARY:")
-        logger.info(f"✅ Encryption operations: {len(encryption_results)} files processed")
-        logger.info(f"✅ File management: {len(file_manager_results)} files created")
-        logger.info(f"✅ File scanning: {len(scanner_results)} .bar files discovered")
-        logger.info(f"✅ Performance monitoring: {monitoring_results['monitoring_status']['metrics_collected']} metrics collected")
-        logger.info(f"✅ Integrated workflow: {integrated_results['system_health']['score']}/100 final health score")
+        logger.info(safe_emoji("📊 DEMONSTRATION SUMMARY:", "[SUMMARY] DEMONSTRATION SUMMARY:"))
+        logger.info(safe_emoji(f"✅ Encryption operations: {len(encryption_results)} files processed", f"[OK] Encryption operations: {len(encryption_results)} files processed"))
+        logger.info(safe_emoji(f"✅ File management: {len(file_manager_results)} files created", f"[OK] File management: {len(file_manager_results)} files created"))
+        logger.info(safe_emoji(f"✅ File scanning: {len(scanner_results)} .bar files discovered", f"[OK] File scanning: {len(scanner_results)} .bar files discovered"))
+        logger.info(safe_emoji(f"✅ Performance monitoring: {monitoring_results['monitoring_status']['metrics_collected']} metrics collected", f"[OK] Performance monitoring: {monitoring_results['monitoring_status']['metrics_collected']} metrics collected"))
+        logger.info(safe_emoji(f"✅ Integrated workflow: {integrated_results['system_health']['score']}/100 final health score", f"[OK] Integrated workflow: {integrated_results['system_health']['score']}/100 final health score"))
         
+    except asyncio.TimeoutError:
+        logger.error("❌ Demonstration timed out - operations took too long")
+        raise
+    except KeyboardInterrupt:
+        logger.warning("⚠️ Demonstration interrupted by user")
+        raise
     except Exception as e:
         logger.error(f"❌ Demonstration failed: {e}", exc_info=True)
         raise
