@@ -4,7 +4,7 @@
 PySide6==6.9.0
 
 # Cryptography
-cryptography==41.0.3
+cryptography>=43.0.1  # Security update: fixes CVE-2023-50782, CVE-2024-0727, PYSEC-2023-254, PYSEC-2024-225, GHSA-v8gr-m533-ghj9, GHSA-h4gh-qq45-vh27
 
 # Packaging
 pyinstaller==6.0.0
