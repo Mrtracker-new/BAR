@@ -1,0 +1,81 @@
+name: PR Build Check
+
+# ─────────────────────────────────────────────────────
+# Runs ONLY on pull requests targeting main (or develop).
+# Purpose: Confirm the EXE builds successfully before
+# a PR is allowed to be merged. Does NOT publish a release.
+#
+# This is your "gate" for the Phase 0 branching strategy:
+#   feature/fix-branch → open PR → this runs → review → merge
+# ─────────────────────────────────────────────────────
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  build-check:
+    name: Verify EXE builds on Windows
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Build EXE (PR validation)
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue build, dist, *.spec
+
+          $iconArg = @()
+          if (Test-Path "resources\BAR_logo.ico") {
+            $iconArg = @("--icon=resources\BAR_logo.ico")
+          }
+
+          $licenseArg = @()
+          if (Test-Path "LICENSE") {
+            $licenseArg = @("--add-data=LICENSE;.")
+          }
+
+          python -m PyInstaller `
+            --name=BAR `
+            --windowed `
+            --onefile `
+            --exclude-module=PyQt5 `
+            --exclude-module=PyQt6 `
+            --clean `
+            @iconArg `
+            @licenseArg `
+            main.py
+
+      - name: Confirm build succeeded
+        shell: pwsh
+        run: |
+          if (-Not (Test-Path "dist\BAR.exe")) {
+            Write-Error "PR build failed — dist\BAR.exe was not produced."
+            exit 1
+          }
+          $sizeMB = [math]::Round((Get-Item "dist\BAR.exe").Length / 1MB, 2)
+          Write-Host "✅ PR build verified: dist\BAR.exe ($sizeMB MB)"
+          Write-Host "This build will NOT be published. Merge to main to create a release."
+
+      # Upload so reviewers can download and manually test if they want
+      - name: Upload PR build for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: PR-${{ github.event.pull_request.number }}-BAR-preview
+          path: dist/BAR.exe
+          retention-days: 7

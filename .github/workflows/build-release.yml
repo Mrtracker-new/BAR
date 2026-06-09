@@ -1,0 +1,170 @@
+name: Build & Release BAR.exe
+
+# ─────────────────────────────────────────────────────
+# WHEN DOES THIS RUN?
+#
+# 1. On every push to `main` → builds the EXE and
+#    creates a new GitHub Release automatically.
+#
+# 2. On every Pull Request targeting `main` → builds
+#    the EXE but does NOT publish a release.
+#    This lets you verify the build succeeds before
+#    merging.
+#
+# 3. Manually via GitHub UI (Actions tab → Run workflow)
+#    Useful if you want to force a release without a push.
+# ─────────────────────────────────────────────────────
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      version_override:
+        description: "Optional version override (e.g. v1.1.0). Leave blank to auto-detect."
+        required: false
+        default: ""
+
+jobs:
+  build:
+    name: Build BAR.exe on Windows
+    runs-on: windows-latest
+
+    # Make the GITHUB_TOKEN able to create releases
+    permissions:
+      contents: write
+
+    steps:
+      # ── 1. Checkout the code ────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # Full history so we can count commits for version tagging
+
+      # ── 2. Set up Python ────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      # ── 3. Install all dependencies ─────────────────
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # ── 4. Determine the version number ─────────────
+      # Priority order:
+      #   a) Manual override from workflow_dispatch input
+      #   b) Latest git tag (e.g. v1.1.0) bumped by one patch
+      #   c) Fallback: v1.0.<commit_count>
+      - name: Determine version
+        id: version
+        shell: pwsh
+        run: |
+          $override = "${{ github.event.inputs.version_override }}"
+
+          if ($override -ne "") {
+            # Use the manual override exactly as typed
+            $version = $override.TrimStart('v')
+            Write-Host "Using manual version override: $version"
+          } else {
+            # Try to get the latest git tag
+            $latestTag = git tag --sort=-v:refname | Select-Object -First 1
+            if ($latestTag -match '^v?(\d+)\.(\d+)\.(\d+)$') {
+              $major = [int]$Matches[1]
+              $minor = [int]$Matches[2]
+              $patch = [int]$Matches[3] + 1
+              $version = "$major.$minor.$patch"
+              Write-Host "Bumped patch from tag $latestTag → v$version"
+            } else {
+              # No tags yet — use commit count as patch number
+              $commitCount = git rev-list --count HEAD
+              $version = "1.0.$commitCount"
+              Write-Host "No existing tags. Using commit count version: v$version"
+            }
+          }
+
+          # Export so later steps can use it
+          echo "VERSION=$version"         >> $env:GITHUB_OUTPUT
+          echo "TAG=v$version"            >> $env:GITHUB_OUTPUT
+          echo "EXE_NAME=BAR-v$version.exe" >> $env:GITHUB_OUTPUT
+
+      # ── 5. Build the EXE ─────────────────────────────
+      - name: Build EXE with PyInstaller
+        shell: pwsh
+        run: |
+          # Clean previous build artifacts
+          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue build, dist, *.spec
+
+          # Determine icon path
+          $iconArg = @()
+          if (Test-Path "resources\BAR_logo.ico") {
+            $iconArg = @("--icon=resources\BAR_logo.ico")
+          }
+
+          # Determine license data
+          $licenseArg = @()
+          if (Test-Path "LICENSE") {
+            $licenseArg = @("--add-data=LICENSE;.")
+          }
+
+          # Run PyInstaller
+          python -m PyInstaller `
+            --name=BAR `
+            --windowed `
+            --onefile `
+            --exclude-module=PyQt5 `
+            --exclude-module=PyQt6 `
+            --clean `
+            @iconArg `
+            @licenseArg `
+            main.py
+
+          # Rename the output to include the version
+          $exeName = "${{ steps.version.outputs.EXE_NAME }}"
+          Rename-Item -Path "dist\BAR.exe" -NewName $exeName
+          Write-Host "Built: dist\$exeName"
+
+      # ── 6. Verify the EXE was actually produced ──────
+      - name: Verify build output
+        shell: pwsh
+        run: |
+          $exePath = "dist\${{ steps.version.outputs.EXE_NAME }}"
+          if (-Not (Test-Path $exePath)) {
+            Write-Error "Build failed: $exePath not found!"
+            exit 1
+          }
+          $sizeMB = [math]::Round((Get-Item $exePath).Length / 1MB, 2)
+          Write-Host "✅ Build verified: $exePath ($sizeMB MB)"
+
+      # ── 7. Upload EXE as workflow artifact ───────────
+      # Available for download from the Actions run page
+      # regardless of whether this is a PR or a main push.
+      - name: Upload EXE as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BAR-${{ steps.version.outputs.VERSION }}-windows-x64
+          path: dist/${{ steps.version.outputs.EXE_NAME }}
+          retention-days: 30
+
+      # ── 8. Create GitHub Release (main branch only) ──
+      # This step is SKIPPED on pull requests.
+      - name: Create GitHub Release
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.TAG }}
+          name: "BAR ${{ steps.version.outputs.TAG }}"
+          body_path: RELEASE.md
+          draft: false
+          prerelease: false
+          files: |
+            dist/${{ steps.version.outputs.EXE_NAME }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

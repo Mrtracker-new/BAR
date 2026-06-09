@@ -317,6 +317,12 @@ docker-compose.override.yml
 *.yml   # Only if containing sensitive configs
 kube-config
 
+# Allow GitHub Actions workflow files (these must be committed)
+!.github/
+!.github/**
+!.github/workflows/*.yml
+!.github/workflows/*.yaml
+
 # Terraform
 *.tfstate
 *.tfstate.*
