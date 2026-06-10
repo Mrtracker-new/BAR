@@ -143,7 +143,61 @@ jobs:
           $sizeMB = [math]::Round((Get-Item $exePath).Length / 1MB, 2)
           Write-Host "✅ Build verified: $exePath ($sizeMB MB)"
 
-      # ── 7. Upload EXE as workflow artifact ───────────
+      # ── 7. Generate release notes from commits ───────
+      # Pulls every commit message since the previous git tag.
+      # This means each release shows ONLY what changed in
+      # that version — not the same static RELEASE.md every time.
+      - name: Generate release notes
+        id: release_notes
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        shell: pwsh
+        run: |
+          # Find the tag that existed before this release
+          $currentTag  = "${{ steps.version.outputs.TAG }}"
+          $previousTag = git tag --sort=-v:refname | Where-Object { $_ -ne $currentTag } | Select-Object -First 1
+
+          # Collect commits since the previous tag (or all commits if no previous tag)
+          if ($previousTag) {
+            Write-Host "Generating notes from $previousTag to HEAD"
+            $commits = git log "$previousTag..HEAD" --pretty=format:"- %s (%h)" --no-merges
+          } else {
+            Write-Host "No previous tag found — listing all commits"
+            $commits = git log --pretty=format:"- %s (%h)" --no-merges | Select-Object -First 20
+          }
+
+          # Build the release body
+          $version = "${{ steps.version.outputs.VERSION }}"
+          $date    = (Get-Date).ToString("MMMM dd, yyyy")
+
+          $body = @"
+          ## BAR $currentTag — $date
+
+          ### 🔒 What's in this release
+
+          $($commits -join "`n")
+
+          ---
+
+          ### 📥 Installation
+
+          **Quick start:** Download ``BAR-v$version.exe`` below and run it directly — no installation needed.
+
+          **From source:**
+          ``````bash
+          pip install -r requirements.txt
+          python main.py
+          ``````
+
+          ---
+
+          > ⚠️ **Remember:** BAR deletes files permanently. Back up anything important before using it.
+          "@
+
+          # Write to a temp file so the release action can read it
+          $body | Out-File -FilePath "release_notes.md" -Encoding utf8
+          Write-Host "Release notes written to release_notes.md"
+
+      # ── 8. Upload EXE as workflow artifact ───────────
       # Available for download from the Actions run page
       # regardless of whether this is a PR or a main push.
       - name: Upload EXE as artifact
@@ -153,7 +207,7 @@ jobs:
           path: dist/${{ steps.version.outputs.EXE_NAME }}
           retention-days: 30
 
-      # ── 8. Create GitHub Release (main branch only) ──
+      # ── 9. Create GitHub Release (main branch only) ──
       # This step is SKIPPED on pull requests.
       - name: Create GitHub Release
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
@@ -161,7 +215,7 @@ jobs:
         with:
           tag_name: ${{ steps.version.outputs.TAG }}
           name: "BAR ${{ steps.version.outputs.TAG }}"
-          body_path: RELEASE.md
+          body_path: release_notes.md
           draft: false
           prerelease: false
           files: |
