@@ -17,8 +17,8 @@ from cryptography.hazmat.primitives import hashes
 from src.crypto.encryption import EncryptionManager
 from src.file_manager.file_scanner import FileScanner
 from src.file_manager.format_detector import FileFormatDetector
+from src.security.secure_memory import SecureBytes, MemoryProtectionLevel, create_secure_bytes
 
-# Import comprehensive input validation system
 from src.security.input_validator import (
     get_file_validator, get_global_validator, FileValidationError,
     validate_string, validate_bytes, validate_integer
@@ -103,54 +103,53 @@ class FileManager:
         self.logger = logging.getLogger("FileManager")
     
     def set_metadata_key(self, device_password: str) -> None:
-        """Set the metadata encryption key derived from device password.
-        
-        This method MUST be called after device authentication and before
-        any file operations. The key is used to encrypt all metadata at rest.
-        
-        Args:
-            device_password: The authenticated device password
-            
-        Security Note:
-            The metadata key is derived using PBKDF2 with a deterministic salt.
-            This ensures consistent key derivation across sessions while
-            maintaining security through the device password strength.
+        """Derive and store the metadata encryption key for this session.
+
+        Must be called after device authentication and before any file
+        operation that reads or writes metadata.
         """
         try:
-            # Use a deterministic salt derived from a fixed application constant
-            # Hash the constant to create a proper cryptographic salt that passes validation
-            # This ensures the same salt is used across sessions (required for metadata decryption)
-            # while still appearing as a strong random salt to validators
             salt_constant = b'BAR_METADATA_ENCRYPTION_V2_SALT_2025'
-            metadata_salt = hashlib.sha256(salt_constant).digest()  # Creates 32-byte salt
-            
-            # Derive 32-byte key for AES-256
-            # SECURITY NOTE: skip_validation=True because device_password has already been
-            # authenticated by DeviceAuthManager. Re-validating would reject old passwords
-            # that don't meet new password requirements but are still valid.
-            self._metadata_key = self.encryption_manager.derive_key(
-                device_password, 
+            metadata_salt = hashlib.sha256(salt_constant).digest()
+
+            raw_key = self.encryption_manager.derive_key(
+                device_password,
                 metadata_salt,
-                skip_validation=True  # Already authenticated - don't re-validate
+                skip_validation=True
             )
-            
+
+            # Store under SecureBytes so the key material is memory-locked,
+            # guarded by canaries, and multi-pass zeroed on clear().
+            if self._metadata_key is not None:
+                try:
+                    self._metadata_key.clear()
+                except Exception:
+                    pass
+            self._metadata_key = SecureBytes(
+                raw_key, protection_level=MemoryProtectionLevel.MAXIMUM
+            )
+            # Zero the local copy immediately; SecureBytes holds the
+            # canonical copy from this point on.
+            raw_key = b'\x00' * len(raw_key)
+            del raw_key
+
             self._metadata_key_set = True
-            self.logger.info("Metadata encryption key initialized successfully")
-            
+            self.logger.info("Metadata encryption key initialized")
+
         except Exception as e:
             self.logger.error(f"Failed to initialize metadata encryption key: {e}")
             raise ValueError("Failed to initialize secure metadata system")
     
     def clear_metadata_key(self) -> None:
-        """Securely clear the metadata encryption key from memory.
-        
-        Should be called on logout or application exit.
+        """Securely erase the metadata encryption key from memory.
+
+        Call on logout or application exit.
         """
-        if self._metadata_key:
-            # Securely zero out the key
-            if isinstance(self._metadata_key, bytearray):
-                for i in range(len(self._metadata_key)):
-                    self._metadata_key[i] = 0
+        if self._metadata_key is not None:
+            try:
+                self._metadata_key.clear()
+            except Exception:
+                pass
             self._metadata_key = None
             self._metadata_key_set = False
             self.logger.info("Metadata encryption key cleared")
@@ -198,12 +197,15 @@ class FileManager:
             metadata_json = json.dumps(metadata, indent=2)
             metadata_bytes = metadata_json.encode('utf-8')
             
-            # Encrypt entire metadata
+            # Encrypt entire metadata — extract a short-lived copy of the key
+            # for the duration of this call only.
+            _key_bytes = self._metadata_key.get_bytes()
             encrypted_data = self.encryption_manager.encrypt_data(
                 metadata_bytes,
-                self._metadata_key,
-                aad=file_id.encode('utf-8')  # Bind to file_id
+                _key_bytes,
+                aad=file_id.encode('utf-8')
             )
+            del _key_bytes
             
             # Create encrypted metadata wrapper
             encrypted_wrapper = {
@@ -295,11 +297,13 @@ class FileManager:
                     'nonce': nonce
                 }
                 
+                _key_bytes = self._metadata_key.get_bytes()
                 decrypted_bytes = self.encryption_manager.decrypt_data(
                     encrypted_data,
-                    self._metadata_key,
+                    _key_bytes,
                     aad=file_id.encode('utf-8')
                 )
+                del _key_bytes
                 
                 # Parse JSON
                 metadata = json.loads(decrypted_bytes.decode('utf-8'))
