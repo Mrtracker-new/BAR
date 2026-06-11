@@ -89,6 +89,13 @@ class DeviceAuthManager:
         }
     }
     
+    # ── HMAC-protection constants for .auth_attempts ─────────────────────────
+    # Context salt is fixed and public — security comes from the hardware ID,
+    # not from keeping this constant secret.
+    _ATTEMPTS_HMAC_CONTEXT = b"BAR|auth_attempts_hmac|v1"
+    _ATTEMPTS_HMAC_ITERATIONS = 100_000  # Fast enough for write path; not on critical path
+    _ATTEMPTS_FILE_VERSION = 1
+
     def __init__(self):
         """Initialize the device authentication manager with secure memory."""
         self.logger = logging.getLogger("DeviceAuthManager")
@@ -97,24 +104,29 @@ class DeviceAuthManager:
         self._config_manager = ConfigManager(base_directory=str(self._config_dir))
         self._hardware_id = HardwareIdentifier()
         self._secure_file_ops = SecureFileOperations()
-        
+
         # Panic state
         self._panic_triggered = False
-        
+
         # Secure storage for sensitive data - all using maximum protection
         self._master_password = None  # Will be SecureString when set
         self._derived_key = None      # Will be SecureBytes when set
         self._hardware_fingerprint = None  # Will be SecureString when set
-        
+
+        # Cached HMAC key for .auth_attempts integrity — derived lazily from
+        # hardware ID the first time it is needed, then reused for the session.
+        # Never persisted to disk.
+        self._hmac_key: Optional[bytes] = None
+
         # Device state
         self._is_initialized = False
         self._is_authenticated = False
         self._device_name = ""
-        
+
         # Configuration paths
         self._device_config_path = self._config_dir / "device_config.enc"
         self._ensure_config_directory()
-        
+
         self.logger.debug("DeviceAuthManager initialized with secure memory protection")
     
     @property
@@ -124,19 +136,12 @@ class DeviceAuthManager:
     
     def _load_persistent_security_data(self) -> Optional[Dict[str, Any]]:
         """API compatibility: load persistent security data.
-        
-        Returns:
-            Dictionary with security data from .auth_attempts file or None
+
+        Delegates to _read_attempts_file() so callers automatically benefit
+        from HMAC verification. Returns the inner payload dict or None.
         """
-        try:
-            failed_attempts_path = self._config_dir / ".auth_attempts"
-            if not failed_attempts_path.exists():
-                return None
-            
-            with open(failed_attempts_path, 'r') as f:
-                return json.loads(f.read())
-        except Exception:
-            return None
+        result = self._read_attempts_file()
+        return result["data"]
     
     def _ensure_config_directory(self):
         """Ensure the configuration directory exists with proper permissions."""
@@ -213,9 +218,9 @@ class DeviceAuthManager:
             success = self._save_encrypted_config(device_config, self._derived_key.get_bytes())
             
             if success:
-                # Create security level tracking file for authentication enforcement
+                # Create security level tracking file for authentication enforcement.
+                # Written with HMAC signature so tampering is detectable on next read.
                 try:
-                    failed_attempts_path = self._config_dir / ".auth_attempts"
                     security_tracking = {
                         "count": 0,
                         "security_level": security_level or "standard",
@@ -223,9 +228,8 @@ class DeviceAuthManager:
                         "hardware_id": hw_fingerprint[:16],
                         "initialized_at": time.time()
                     }
-                    with open(failed_attempts_path, 'w') as f:
-                        f.write(json.dumps(security_tracking))
-                    self.logger.debug(f"Created security tracking with level: {security_level}")
+                    self._write_attempts_file(security_tracking, hardware_id=hw_fingerprint)
+                    self.logger.debug(f"Created signed security tracking with level: {security_level}")
                 except Exception as e:
                     self.logger.warning(f"Could not create security tracking file: {e}")
                 
@@ -263,49 +267,74 @@ class DeviceAuthManager:
         try:
             if not self.is_device_initialized():
                 return False, "Device not initialized. First-time setup required."
-            
-            # Check for active security lockout before attempting authentication
+
+            # ── Read and verify .auth_attempts ────────────────────────────────
+            # We need the hardware ID before we can derive the HMAC key, so read
+            # it now (it is needed for config decryption anyway).
+            current_hw_id = self._hardware_id.get_hardware_id()
+
             failed_attempts_path = self._config_dir / ".auth_attempts"
-            if failed_attempts_path.exists():
+            read_result = self._read_attempts_file(hardware_id=current_hw_id)
+
+            # ── Tamper detection ─────────────────────────────────────────────
+            if read_result["tampered"]:
+                self.logger.critical(
+                    "SECURITY VIOLATION: .auth_attempts MAC verification failed. "
+                    "File was tampered with. Initiating emergency wipe."
+                )
                 try:
-                    with open(failed_attempts_path, 'r') as f:
-                        attempt_data = json.loads(f.read())
-                        locked_until = attempt_data.get("locked_until", 0)
-                        security_level = attempt_data.get("security_level", "standard")
-                        
-                        # Check if device is currently locked
-                        if locked_until > 0 and time.time() < locked_until:
-                            remaining_seconds = int(locked_until - time.time())
-                            remaining_hours = remaining_seconds // 3600
-                            remaining_minutes = (remaining_seconds % 3600) // 60
-                            
-                            if security_level == "high":
-                                self.logger.warning(f"HIGH SECURITY LOCKOUT ACTIVE: {remaining_hours}h {remaining_minutes}m remaining")
-                                return False, f"🔒 DEVICE LOCKED: HIGH Security lockout active. {remaining_hours} hours, {remaining_minutes} minutes remaining."
-                            else:
-                                self.logger.warning(f"SECURITY LOCKOUT ACTIVE: {remaining_hours}h {remaining_minutes}m remaining")
-                                return False, f"⏰ DEVICE LOCKED: Security lockout active. {remaining_hours} hours, {remaining_minutes} minutes remaining."
-                        
-                        elif locked_until > 0 and time.time() >= locked_until:
-                            # Lockout period has expired, clear the lockout
-                            self.logger.info(f"Security lockout expired, clearing lockout status")
-                            attempt_data["locked_until"] = 0
-                            attempt_data["lockout_hours"] = 0
-                            # Reset failed attempts count after lockout expires
-                            attempt_data["count"] = 0
-                            with open(failed_attempts_path, 'w') as f:
-                                f.write(json.dumps(attempt_data))
-                            
-                except Exception as e:
-                    self.logger.warning(f"Could not check lockout status: {e}")
+                    self.emergency_wipe(wipe_user_data=True, wipe_temp_files=True)
+                except Exception as wipe_err:
+                    self.logger.critical(f"Emergency wipe failed during tamper response: {wipe_err}")
+                    try:
+                        self.reset_device(emergency=True)
+                    except Exception:
+                        pass
+                return False, (
+                    "SECURITY VIOLATION: Authentication state file was tampered with. "
+                    "All data has been permanently destroyed."
+                )
+
+            # ── Extract attempt data (safe default if file absent) ────────────
+            attempt_data = read_result["data"] or {}
+            locked_until = attempt_data.get("locked_until", 0)
+            security_level = attempt_data.get("security_level", "standard")
+
+            # ── Active lockout check ──────────────────────────────────────────
+            if locked_until > 0 and time.time() < locked_until:
+                remaining_seconds = int(locked_until - time.time())
+                remaining_hours = remaining_seconds // 3600
+                remaining_minutes = (remaining_seconds % 3600) // 60
+
+                if security_level == "high":
+                    self.logger.warning(
+                        f"HIGH SECURITY LOCKOUT ACTIVE: {remaining_hours}h {remaining_minutes}m remaining"
+                    )
+                    return False, (
+                        f"DEVICE LOCKED: HIGH Security lockout active. "
+                        f"{remaining_hours} hours, {remaining_minutes} minutes remaining."
+                    )
+                else:
+                    self.logger.warning(
+                        f"SECURITY LOCKOUT ACTIVE: {remaining_hours}h {remaining_minutes}m remaining"
+                    )
+                    return False, (
+                        f"DEVICE LOCKED: Security lockout active. "
+                        f"{remaining_hours} hours, {remaining_minutes} minutes remaining."
+                    )
+
+            elif locked_until > 0 and time.time() >= locked_until:
+                # Lockout period has expired — reset counter and re-sign.
+                self.logger.info("Security lockout expired, resetting lockout status")
+                attempt_data["locked_until"] = 0
+                attempt_data["lockout_hours"] = 0
+                attempt_data["count"] = 0
+                self._write_attempts_file(attempt_data, hardware_id=current_hw_id)
             
             self.logger.debug("Starting authentication process")
-            
+
             # Store password in secure memory
             secure_password = create_secure_string(password)
-            
-            # Get current hardware fingerprint
-            current_hw_id = self._hardware_id.get_hardware_id()
             secure_hw_id = create_secure_string(current_hw_id)
             
             # First, check file format and verify hardware tag if present
@@ -348,124 +377,117 @@ class DeviceAuthManager:
             config_data = self._load_encrypted_config(temp_derived_key.get_bytes())
             
             if not config_data:
-                # Authentication failed - implement security level enforcement
-                
-                # Track failed attempts in a separate unencrypted file for security enforcement
-                # This is necessary because we can't decrypt the main config without the correct password
-                failed_attempts = 0
-                security_level = "maximum"  # Assume maximum security by default for safety
-                
-                try:
-                    if failed_attempts_path.exists():
-                        with open(failed_attempts_path, 'r') as f:
-                            attempt_data = json.loads(f.read())
-                            failed_attempts = attempt_data.get("count", 0)
-                            security_level = attempt_data.get("security_level", "maximum")
-                except:
-                    failed_attempts = 0  # Start fresh if file is corrupted
-                
-                # Increment failed attempts
-                failed_attempts += 1
-                
-                # Check MAXIMUM SECURITY first (most restrictive)
+                # ── Authentication failed: enforce security level policy ────────
+                #
+                # Re-read the attempt data from the in-memory result we already
+                # verified above — avoids a second disk read with no verification.
+                failed_attempts = attempt_data.get("count", 0) + 1
+                # Use the security level from the file; fall back to "maximum" so
+                # we never silently weaken protection if the field is absent.
+                security_level = attempt_data.get("security_level", "maximum")
+
+                # ── MAXIMUM: 3-strike wipe ────────────────────────────────────
                 if security_level == "maximum" and failed_attempts >= 3:
-                    # MAXIMUM SECURITY: Destroy all data after 3 failed attempts
-                    self.logger.critical(f"🚨 MAXIMUM SECURITY BREACH: {failed_attempts} failed attempts - TRIGGERING EMERGENCY WIPE 🚨")
+                    self.logger.critical(
+                        f"MAXIMUM SECURITY BREACH: {failed_attempts} failed attempts — "
+                        "TRIGGERING EMERGENCY WIPE"
+                    )
                     try:
-                        # Remove the tracking file first
+                        # Destroy the tracking file before wipe so it cannot be
+                        # partially recovered.
                         if failed_attempts_path.exists():
-                            failed_attempts_path.unlink()
-                        
-                        # Immediate emergency data destruction
-                        wipe_results = self.emergency_wipe(wipe_user_data=True, wipe_temp_files=True)
-                        self.logger.critical(f"Emergency wipe completed: {wipe_results['total_files_wiped']} files destroyed")
-                        return False, "🚨 SECURITY BREACH: Maximum attempts exceeded. ALL DATA HAS BEEN PERMANENTLY DESTROYED for security. 🚨"
-                    except Exception as e:
-                        self.logger.critical(f"Emergency wipe failed: {e} - Attempting device reset")
+                            self._secure_delete_file(failed_attempts_path)
+                        wipe_results = self.emergency_wipe(
+                            wipe_user_data=True, wipe_temp_files=True
+                        )
+                        self.logger.critical(
+                            f"Emergency wipe completed: "
+                            f"{wipe_results['total_files_wiped']} files destroyed"
+                        )
+                        return False, (
+                            "SECURITY BREACH: Maximum attempts exceeded. "
+                            "ALL DATA HAS BEEN PERMANENTLY DESTROYED."
+                        )
+                    except Exception as wipe_err:
+                        self.logger.critical(
+                            f"Emergency wipe failed: {wipe_err} — attempting device reset"
+                        )
                         try:
                             self.reset_device(emergency=True)
-                        except:
+                        except Exception:
                             pass
-                        return False, "🚨 SECURITY BREACH: Data destruction initiated due to failed authentication attempts. 🚨"
-                
+                        return False, (
+                            "SECURITY BREACH: Data destruction initiated due to "
+                            "failed authentication attempts."
+                        )
+
+                # ── HIGH: Progressive lockout ─────────────────────────────────
                 elif security_level == "high" and failed_attempts >= 4:
-                    # HIGH SECURITY: Progressive lockout after 4 attempts (but preserve device config)
-                    lockout_hours = min(24, 2 ** (failed_attempts - 4))  # Exponential backoff, max 24h
-                    lockout_until = time.time() + (lockout_hours * 3600)  # Convert hours to seconds
-                    
-                    self.logger.warning(f"HIGH SECURITY: {failed_attempts} failed attempts - initiating {lockout_hours}h lockout until {lockout_until}")
-                    
-                    # Update tracking with lockout timestamp
-                    attempt_data = {
+                    lockout_hours = min(24, 2 ** (failed_attempts - 4))  # exponential backoff
+                    lockout_until = time.time() + (lockout_hours * 3600)
+                    self.logger.warning(
+                        f"HIGH SECURITY: {failed_attempts} failed attempts — "
+                        f"initiating {lockout_hours}h lockout"
+                    )
+                    updated = {
                         "count": failed_attempts,
                         "security_level": security_level,
                         "last_attempt": time.time(),
                         "hardware_id": current_hw_id[:16],
                         "locked_until": lockout_until,
-                        "lockout_hours": lockout_hours
+                        "lockout_hours": lockout_hours,
                     }
-                    
-                    try:
-                        with open(failed_attempts_path, 'w') as f:
-                            f.write(json.dumps(attempt_data))
-                    except Exception as e:
-                        self.logger.warning(f"Could not update lockout tracking: {e}")
-                    
-                    return False, f"🔒 HIGH SECURITY LOCKOUT: {failed_attempts} failed attempts. Device locked for {lockout_hours} hours until authentication is allowed again."
-                
+                    self._write_attempts_file(updated, hardware_id=current_hw_id)
+                    return False, (
+                        f"HIGH SECURITY LOCKOUT: {failed_attempts} failed attempts. "
+                        f"Device locked for {lockout_hours} hours."
+                    )
+
+                # ── STANDARD: 1-hour lockout after 5 attempts ─────────────────
                 elif failed_attempts >= 5:
-                    # STANDARD SECURITY: Basic lockout after 5 attempts  
-                    lockout_until = time.time() + (1 * 3600)  # 1 hour lockout
-                    self.logger.warning(f"STANDARD SECURITY: {failed_attempts} failed attempts - 1 hour lockout")
-                    
-                    # Update tracking with lockout timestamp
-                    attempt_data = {
+                    lockout_until = time.time() + 3600  # 1 hour
+                    self.logger.warning(
+                        f"STANDARD SECURITY: {failed_attempts} failed attempts — 1h lockout"
+                    )
+                    updated = {
                         "count": failed_attempts,
                         "security_level": security_level,
                         "last_attempt": time.time(),
                         "hardware_id": current_hw_id[:16],
                         "locked_until": lockout_until,
-                        "lockout_hours": 1
+                        "lockout_hours": 1,
                     }
-                    
-                    try:
-                        with open(failed_attempts_path, 'w') as f:
-                            f.write(json.dumps(attempt_data))
-                    except Exception as e:
-                        self.logger.warning(f"Could not update lockout tracking: {e}")
-                    
-                    return False, f"⏰ STANDARD SECURITY: Too many failed attempts. Device locked for 1 hour."
-                
-                # Update failed attempts tracking file
-                try:
-                    attempt_data = {
-                        "count": failed_attempts,
-                        "security_level": security_level,
-                        "last_attempt": time.time(),
-                        "hardware_id": current_hw_id[:16]  # Partial hardware ID for verification
-                    }
-                    with open(failed_attempts_path, 'w') as f:
-                        f.write(json.dumps(attempt_data))
-                except Exception as e:
-                    self.logger.warning(f"Could not update failed attempts tracking: {e}")
-                
-                # Return failure message with attempt count
-                remaining_attempts = max(0, 3 - failed_attempts) if security_level == "maximum" else "?"
-                if has_hardware_tag:
-                    self.logger.warning(f"Authentication failed (attempt {failed_attempts}) - incorrect password")
-                    return False, f"Authentication failed. Incorrect password. (Attempt {failed_attempts}/3 - Remaining: {remaining_attempts})"
-                else:
-                    self.logger.warning(f"Authentication failed (attempt {failed_attempts}) - legacy format")
-                    return False, f"Authentication failed. Incorrect password. (Attempt {failed_attempts}/3 - Remaining: {remaining_attempts})"
+                    self._write_attempts_file(updated, hardware_id=current_hw_id)
+                    return False, "STANDARD SECURITY: Too many failed attempts. Device locked for 1 hour."
+
+                # ── Increment counter and re-sign ─────────────────────────────
+                updated = {
+                    "count": failed_attempts,
+                    "security_level": security_level,
+                    "last_attempt": time.time(),
+                    "hardware_id": current_hw_id[:16],
+                }
+                self._write_attempts_file(updated, hardware_id=current_hw_id)
+
+                remaining = max(0, 3 - failed_attempts) if security_level == "maximum" else "?"
+                self.logger.warning(
+                    f"Authentication failed (attempt {failed_attempts}) — incorrect password"
+                )
+                return False, (
+                    f"Authentication failed. Incorrect password. "
+                    f"(Attempt {failed_attempts} — Remaining: {remaining})"
+                )
             
-            # Successfully decrypted - AES-256-GCM authenticated encryption proves
-            # both password and hardware ID are correct. Clear failed attempts immediately.
+            # Successfully decrypted — AES-256-GCM authenticated encryption proves
+            # both password and hardware ID are correct.
+            # Securely delete the tracking file; do NOT just unlink — wipe it so
+            # the previous failed-attempt count cannot be recovered from disk.
             try:
                 if failed_attempts_path.exists():
-                    failed_attempts_path.unlink()
-                    self.logger.debug("Cleared failed attempts tracking after successful decryption")
+                    self._secure_delete_file(failed_attempts_path)
+                    self.logger.debug("Securely wiped failed-attempts tracking after successful auth")
             except Exception as e:
-                self.logger.warning(f"Could not clear failed attempts tracking: {e}")
+                self.logger.warning(f"Could not wipe failed attempts tracking: {e}")
             
             # Verify hardware binding as additional check
             stored_hw_id = config_data.get("hardware_id", "")
@@ -936,7 +958,200 @@ class DeviceAuthManager:
             # Return a deterministic but unpredictable fallback
             fallback_data = f"fallback|{hardware_id}".encode('utf-8')
             return hashlib.sha256(fallback_data).digest()
-    
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # .auth_attempts HMAC protection (C1 fix)
+    # ══════════════════════════════════════════════════════════════════════════
+
+    def _derive_attempts_hmac_key(self, hardware_id: Optional[str] = None) -> bytes:
+        """Derive a 32-byte HMAC key for .auth_attempts integrity protection.
+
+        The key is derived from the device hardware ID using PBKDF2-HMAC-SHA256
+        with a fixed, domain-separated context salt.  When called with the
+        device's own hardware ID (``hardware_id=None``) the result is cached in
+        ``self._hmac_key`` so subsequent calls within the same session are fast.
+        When an explicit override is provided the key is derived fresh (no cache)
+        so that cross-machine verification works correctly in tests.
+
+        Args:
+            hardware_id: Override the hardware ID.  When ``None`` the current
+                         device hardware ID is used and the result is cached.
+
+        Returns:
+            32-byte HMAC key (bytes).
+        """
+        if hardware_id is None:
+            # Use and populate the session cache
+            if self._hmac_key is not None:
+                return self._hmac_key
+            hw_id = self._hardware_id.get_hardware_id()
+            kdf = PBKDF2HMAC(
+                algorithm=hashes.SHA256(),
+                length=32,
+                salt=self._ATTEMPTS_HMAC_CONTEXT,
+                iterations=self._ATTEMPTS_HMAC_ITERATIONS,
+                backend=default_backend(),
+            )
+            self._hmac_key = kdf.derive(hw_id.encode("utf-8"))
+            return self._hmac_key
+
+        # Explicit override — derive fresh, do NOT pollute the cache
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=self._ATTEMPTS_HMAC_CONTEXT,
+            iterations=self._ATTEMPTS_HMAC_ITERATIONS,
+            backend=default_backend(),
+        )
+        return kdf.derive(hardware_id.encode("utf-8"))
+
+    def _sign_attempts(self, payload: dict, hardware_id: Optional[str] = None) -> str:
+        """Return a hex HMAC-SHA256 signature over the canonical JSON of *payload*.
+
+        The canonical form is ``json.dumps(payload, sort_keys=True,
+        separators=(',', ':'))`` — deterministic regardless of insertion order.
+
+        Args:
+            payload:     The inner data dict to sign.
+            hardware_id: Forwarded to ``_derive_attempts_hmac_key``.
+
+        Returns:
+            Lowercase hex string (64 chars).
+        """
+        key = self._derive_attempts_hmac_key(hardware_id)
+        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        h = hmac.HMAC(key, hashes.SHA256(), backend=default_backend())
+        h.update(canonical)
+        return h.finalize().hex()
+
+    def _verify_attempts_integrity(self, envelope: dict,
+                                   hardware_id: Optional[str] = None) -> bool:
+        """Verify the HMAC signature embedded in *envelope*.
+
+        Args:
+            envelope:    The full deserialized file contents (must contain
+                         ``"v"``, ``"d"``, and ``"mac"`` keys).
+            hardware_id: Forwarded to ``_derive_attempts_hmac_key``.
+
+        Returns:
+            ``True`` if the MAC is valid, ``False`` otherwise.
+        """
+        try:
+            stored_mac = envelope.get("mac", "")
+            payload = envelope.get("d", {})
+            if not stored_mac or not isinstance(payload, dict):
+                return False
+            expected_mac = self._sign_attempts(payload, hardware_id)
+            # Constant-time comparison via the already-imported secure_compare.
+            return secure_compare(expected_mac, stored_mac)
+        except Exception as e:
+            self.logger.warning(f"HMAC verification error: {e}")
+            return False
+
+    def _write_attempts_file(self, payload: dict,
+                             hardware_id: Optional[str] = None) -> None:
+        """Persist *payload* to .auth_attempts with an HMAC signature.
+
+        Write procedure (atomic on both Windows and POSIX):
+        1. Serialise the v1 envelope to a temp file alongside the real file.
+        2. ``os.replace()`` the temp file onto the real path — a single,
+           atomic filesystem operation that cannot leave a partial write.
+
+        Args:
+            payload:     Dict to persist (the inner data, not the envelope).
+            hardware_id: Override the hardware ID for HMAC derivation.
+        """
+        attempts_path = self._config_dir / ".auth_attempts"
+        tmp_path = self._config_dir / ".auth_attempts.tmp"
+
+        envelope = {
+            "v": self._ATTEMPTS_FILE_VERSION,
+            "ts": time.time(),
+            "d": payload,
+            "mac": self._sign_attempts(payload, hardware_id),
+        }
+        serialised = json.dumps(envelope, separators=(",", ":"))
+
+        try:
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                f.write(serialised)
+                f.flush()
+                os.fsync(f.fileno())  # Flush OS buffer to disk before rename
+            os.replace(str(tmp_path), str(attempts_path))  # Atomic rename
+            self.logger.debug("Signed .auth_attempts written successfully")
+        except Exception as e:
+            self.logger.warning(f"Could not write .auth_attempts: {e}")
+            # Clean up temp file if rename failed
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+    def _read_attempts_file(
+        self, hardware_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Read and verify the .auth_attempts file.
+
+        Return value is always a dict with three keys:
+
+        ``data``
+            The inner payload dict, or ``None`` if the file is absent or
+            on any read/parse error.
+        ``tampered``
+            ``True`` when the file exists but its MAC is invalid.  The caller
+            MUST treat this as a security violation and wipe immediately.
+        ``legacy``
+            ``True`` when the file contained plain JSON (pre-fix format).
+            The caller should re-write it with a signature on the next write.
+
+        Args:
+            hardware_id: Override the hardware ID for HMAC derivation.
+        """
+        result: Dict[str, Any] = {"data": None, "tampered": False, "legacy": False}
+        attempts_path = self._config_dir / ".auth_attempts"
+
+        if not attempts_path.exists():
+            # Absent file → safe default (0 attempts), NOT a tamper event.
+            # An attacker who deletes the file after 0–2 failed attempts gains
+            # nothing: they still need the correct password to decrypt the config.
+            return result
+
+        try:
+            raw = attempts_path.read_text(encoding="utf-8")
+            envelope = json.loads(raw)
+        except Exception as e:
+            # Unreadable / malformed → treat as tampered
+            self.logger.warning(f"Could not parse .auth_attempts: {e} — treating as tampered")
+            result["tampered"] = True
+            return result
+
+        # ── v1 signed format ──────────────────────────────────────────────────
+        if isinstance(envelope, dict) and envelope.get("v") == self._ATTEMPTS_FILE_VERSION:
+            if not self._verify_attempts_integrity(envelope, hardware_id):
+                self.logger.critical(
+                    ".auth_attempts MAC verification FAILED — file was tampered with"
+                )
+                result["tampered"] = True
+                return result
+            result["data"] = envelope.get("d", {})
+            return result
+
+        # ── Legacy plain-JSON (pre-fix) ───────────────────────────────────────
+        # Accept the data once.  The next call to _write_attempts_file() will
+        # persist it with a proper signature.
+        if isinstance(envelope, dict):
+            self.logger.info(
+                ".auth_attempts is in legacy format — trusting once, will re-sign on next write"
+            )
+            result["data"] = envelope
+            result["legacy"] = True
+            return result
+
+        # Unknown format → tamper
+        self.logger.warning(".auth_attempts has unrecognised format — treating as tampered")
+        result["tampered"] = True
+        return result
+
     def _derive_key(self, password: str, hardware_id: str, salt: bytes) -> SecureBytes:
         """Derive encryption key from password and hardware ID using PBKDF2.
         
