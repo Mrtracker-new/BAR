@@ -902,8 +902,12 @@ class MainWindow(QMainWindow):
         # Use the FileViewer component for displaying content
         print(f"Creating FileViewer for {metadata['filename']}")
         print(f"Content size: {len(content)} bytes")
-        
-        file_viewer = FileViewer()
+
+        # Pass the application-level SecureFileOperations instance so the
+        # viewer uses DoD-grade deletion (C2 fix) and shares the existing
+        # instance rather than creating an orphaned one.
+        _secure_ops = getattr(self.device_auth, "_secure_file_ops", None)
+        file_viewer = FileViewer(secure_file_ops=_secure_ops)
         
         print(f"Calling display_content...")
         try:

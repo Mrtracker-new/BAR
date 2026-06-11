@@ -2,6 +2,7 @@ import os
 import sys
 import subprocess
 import tempfile
+import logging
 from typing import Optional, Dict, Any, Callable
 
 from PySide6.QtWidgets import (
@@ -15,6 +16,7 @@ from PySide6.QtGui import QPixmap, QImage, QFont, QColor, QSyntaxHighlighter, QT
 # Using the ultimate consolidated screen protection system
 # All screenshot prevention features are now consolidated in this enhanced module
 from ..security.ENHANCED_advanced_screen_protection import AdvancedScreenProtectionManager
+from ..security.secure_file_ops import SecureFileOperations, SecureDeletionMethod
 from ..file_manager.format_detector import FileFormatDetector
 from .styles import StyleManager
 
@@ -163,14 +165,31 @@ class FileViewer(QWidget):
     # Signal emitted when export is requested
     export_requested = pyqtSignal()
     
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, secure_file_ops: Optional[SecureFileOperations] = None):
         """Initialize the enhanced file viewer.
-        
+
         Args:
-            parent: The parent widget
+            parent:           The parent widget.
+            secure_file_ops:  Optional ``SecureFileOperations`` instance used to
+                              perform DoD-grade deletion of temp files on cleanup.
+                              When ``None`` the viewer falls back to a freshly
+                              created instance so secure deletion is always used.
         """
         super().__init__(parent)
-        
+
+        self._logger = logging.getLogger(__name__)
+
+        # ── Secure file ops for temp-file cleanup (C2 fix) ──────────────────
+        # Prefer the injected instance (shares the caller's registry/stats).
+        # Always create a local fallback so cleanup never silently regresses to
+        # os.unlink() if the caller omits the argument.
+        if secure_file_ops is not None:
+            self._secure_file_ops = secure_file_ops
+            self._owns_secure_file_ops = False  # Do not call .cleanup() on a shared instance
+        else:
+            self._secure_file_ops = SecureFileOperations()
+            self._owns_secure_file_ops = True
+
         # Initialize components
         self.format_detector = FileFormatDetector()
         self.content_type = "unknown"
@@ -182,11 +201,21 @@ class FileViewer(QWidget):
         self.current_format_info = None
         self.export_handler = None
         self.temp_files = []  # Track temporary files for cleanup
-        
+
         # Set up exception handling
         sys.excepthook = self._handle_uncaught_exception
-        
+
         self._setup_ui()
+
+        # ── Register for application-level quit signal ────────────────────────
+        # QApplication.aboutToQuit fires before the event loop exits, in the
+        # correct Qt teardown order — more reliable than atexit for GUI apps.
+        # This guarantees cleanup even when the user closes the main window
+        # without explicitly closing this viewer widget first.
+        from PySide6.QtWidgets import QApplication
+        app = QApplication.instance()
+        if app is not None:
+            app.aboutToQuit.connect(self._cleanup_resources)
         
     def _handle_uncaught_exception(self, exc_type, exc_value, exc_traceback):
         """Handle uncaught exceptions to prevent app crashes.
@@ -700,33 +729,86 @@ class FileViewer(QWidget):
         self.close_requested.emit()
     
     def _cleanup_resources(self):
-        """Clean up resources and temporary files."""
-        # Clean up temporary files
-        for temp_file in self.temp_files:
+        """Clean up resources and temporary files.
+
+        Each temp file written for an external viewer is securely overwritten
+        using three DoD-standard passes (DoD 5220.22-M) before deletion.
+        Three passes are chosen over seven because:
+        - The file is in %TEMP%, typically on an SSD where wear-levelling
+          makes additional passes no more effective.
+        - Three passes still overwrites the filesystem-visible data and
+          defeats casual and intermediate forensic tools.
+        - Three passes completes imperceptibly fast for typical file sizes.
+
+        If secure deletion fails for any reason the file is still unlinked
+        via the OS as a last resort so the list is always cleared.
+        """
+        for temp_file in list(self.temp_files):  # iterate a snapshot
             try:
                 if os.path.exists(temp_file):
-                    os.unlink(temp_file)
+                    deleted = self._secure_file_ops.secure_delete_file(
+                        temp_file,
+                        method=SecureDeletionMethod.DOD_3_PASS,
+                        verify=False,  # Verification not needed for temp files
+                    )
+                    if not deleted:
+                        # Secure deletion reported failure — fall back to unlink
+                        # so the plaintext is at least not directory-listed.
+                        self._logger.warning(
+                            "Secure deletion failed for temp file %s — falling back to os.unlink()",
+                            temp_file,
+                        )
+                        try:
+                            os.unlink(temp_file)
+                        except OSError as unlink_err:
+                            self._logger.warning(
+                                "os.unlink() also failed for %s: %s", temp_file, unlink_err
+                            )
             except Exception as e:
-                print(f"Failed to clean up temporary file {temp_file}: {e}")
+                self._logger.warning(
+                    "Exception during secure cleanup of temp file %s: %s", temp_file, e
+                )
+                # Last-resort: attempt plain unlink so the loop always progresses
+                try:
+                    if os.path.exists(temp_file):
+                        os.unlink(temp_file)
+                except OSError:
+                    pass
         self.temp_files.clear()
-        
-        # Clean up large objects
+
+        # Clear large in-memory content so it can be GC'd
         self.current_content = None
-        
+
         # Force garbage collection
         import gc
         gc.collect()
+
+    def _teardown_secure_ops(self):
+        """Release the SecureFileOperations instance if we own it.
+
+        Called from ``closeEvent`` and ``__del__`` only — not from
+        ``_cleanup_resources()`` itself so that the latter can be called
+        multiple times safely (e.g. from aboutToQuit AND closeEvent).
+        """
+        if self._owns_secure_file_ops and self._secure_file_ops is not None:
+            try:
+                self._secure_file_ops.cleanup()
+            except Exception:
+                pass
+            self._secure_file_ops = None
     
     def closeEvent(self, event):
         """Handle widget close event."""
         self._cleanup_resources()
+        self._teardown_secure_ops()
         super().closeEvent(event)
-    
+
     def __del__(self):
         """Destructor to ensure cleanup."""
         try:
             self._cleanup_resources()
-        except:
+            self._teardown_secure_ops()
+        except Exception:
             pass
     
     def _display_image(self, pixmap: QPixmap):
