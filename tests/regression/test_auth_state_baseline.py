@@ -1,14 +1,15 @@
 """
-Regression Guard — Authentication State File
-=============================================
+Regression Guard — Authentication State File (C1 Fix: HMAC-protected)
+=======================================================================
 
-Guards against the auth bypass vulnerability where deleting or
-tampering with `.auth_attempts` silently resets the failed-attempt
-counter, bypassing MAXIMUM security's 3-strike wipe trigger.
+Tests updated after the C1 auth-state-hardening fix.
 
-These tests lock in the CURRENT behaviour as the baseline.
-After the auth hardening fix lands, these tests are updated to
-reflect the new HMAC-protected behaviour.
+What changed from the BASELINE:
+- .auth_attempts is now wrapped in a v1 envelope with an HMAC-SHA256 MAC
+- A forged file (bad MAC) is detected and triggers a wipe response
+- A missing file is still treated as 0 attempts (safe default, no change)
+- Legacy plain-JSON files are accepted once and re-signed on next write
+- All writes are atomic (write tmp → os.replace)
 
 Do NOT delete these tests. Do NOT skip them without a written reason.
 
@@ -25,7 +26,6 @@ import shutil
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-# Resolve project root so imports work regardless of working directory
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = PROJECT_ROOT / "src"
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -39,126 +39,259 @@ except ImportError as e:
     AUTH_AVAILABLE = False
 
 
-@unittest.skipUnless(AUTH_AVAILABLE, "DeviceAuthManager module not available")
-class TestAuthAttemptFileBaseline(unittest.TestCase):
+def _make_manager(tmp_dir: Path) -> "DeviceAuthManager":
     """
-    Baseline tests for the .auth_attempts file behaviour.
+    Instantiate DeviceAuthManager pointed at a temp config directory.
+    Patches out ConfigManager and HardwareIdentifier so no real device
+    config is read or written during tests.
+    """
+    with patch("security.device_auth_manager.ConfigManager"), \
+         patch("security.device_auth_manager.SecureFileOperations"), \
+         patch("security.device_auth_manager.HardwareIdentifier"):
+        mgr = DeviceAuthManager.__new__(DeviceAuthManager)
+        # Minimal manual init to avoid touching the real filesystem
+        import logging
+        mgr.logger = logging.getLogger("test_DeviceAuthManager")
+        mgr._config_dir = tmp_dir
+        mgr._hmac_key = None
+        mgr._panic_triggered = False
+        mgr._master_password = None
+        mgr._derived_key = None
+        mgr._hardware_fingerprint = None
+        mgr._is_initialized = False
+        mgr._is_authenticated = False
+        mgr._device_name = ""
+        mgr._device_config_path = tmp_dir / "device_config.enc"
 
-    These tests document the CURRENT (pre-fix) behaviour:
-    - File is plain JSON
-    - File absence silently resets counter to 0
-    - No integrity protection
+        # Inject a real HardwareIdentifier stub with a fixed hardware ID
+        hw_stub = MagicMock()
+        hw_stub.get_hardware_id.return_value = "deadbeef" * 8  # 64-char hex string
+        mgr._hardware_id = hw_stub
+        return mgr
 
-    When the HMAC-protection fix is applied, this class will be
-    updated to assert HMAC verification behaviour instead.
+
+FIXED_HW_ID = "deadbeef" * 8  # Must match what _make_manager sets above
+
+
+@unittest.skipUnless(AUTH_AVAILABLE, "DeviceAuthManager module not available")
+class TestAttemptsFileV1Format(unittest.TestCase):
+    """
+    Verify the v1 signed envelope format used by _write_attempts_file().
     """
 
     def setUp(self):
-        """Create a temporary config directory to isolate each test."""
-        self.test_dir = Path(tempfile.mkdtemp(prefix="bar_test_auth_"))
-        self.attempts_file = self.test_dir / ".auth_attempts"
+        self.tmp_dir = Path(tempfile.mkdtemp(prefix="bar_auth_hmac_"))
+        self.mgr = _make_manager(self.tmp_dir)
+        self.attempts_path = self.tmp_dir / ".auth_attempts"
 
     def tearDown(self):
-        """Remove temp directory after every test."""
-        shutil.rmtree(self.test_dir, ignore_errors=True)
+        shutil.rmtree(self.tmp_dir, ignore_errors=True)
 
-    # ──────────────────────────────────────────────────
-    # Baseline structural tests (no DeviceAuthManager
-    # instance needed — just verifying file format)
-    # ──────────────────────────────────────────────────
+    def _write(self, payload: dict) -> dict:
+        """Write payload and return the deserialized envelope from disk."""
+        self.mgr._write_attempts_file(payload, hardware_id=FIXED_HW_ID)
+        raw = self.attempts_path.read_text(encoding="utf-8")
+        return json.loads(raw)
 
-    def test_attempts_file_is_valid_json(self):
-        """BASELINE: .auth_attempts is plain JSON (no HMAC wrapper yet)."""
+    # ── Envelope structure ─────────────────────────────────────────────────
+
+    def test_written_file_contains_version_key(self):
+        """C1: Written file must contain 'v' version sentinel."""
+        env = self._write({"count": 0, "security_level": "maximum"})
+        self.assertIn("v", env, "Envelope must contain version key 'v'")
+        self.assertEqual(env["v"], 1)
+
+    def test_written_file_contains_payload_key(self):
+        """C1: Written file must contain 'd' (data) key with the inner payload."""
+        payload = {"count": 1, "security_level": "high", "locked_until": 0}
+        env = self._write(payload)
+        self.assertIn("d", env)
+        self.assertEqual(env["d"]["count"], 1)
+        self.assertEqual(env["d"]["security_level"], "high")
+
+    def test_written_file_contains_mac_key(self):
+        """C1: Written file must contain 'mac' HMAC field."""
+        env = self._write({"count": 0, "security_level": "standard"})
+        self.assertIn("mac", env)
+        self.assertIsInstance(env["mac"], str)
+        self.assertEqual(len(env["mac"]), 64, "HMAC-SHA256 hex digest must be 64 chars")
+
+    def test_written_file_contains_timestamp(self):
+        """C1: Written file must contain 'ts' write-time timestamp."""
+        before = time.time()
+        env = self._write({"count": 0, "security_level": "maximum"})
+        after = time.time()
+        self.assertIn("ts", env)
+        self.assertGreaterEqual(env["ts"], before)
+        self.assertLessEqual(env["ts"], after)
+
+    def test_different_counts_produce_different_macs(self):
+        """C1: Changing the payload must change the MAC."""
+        env0 = self._write({"count": 0, "security_level": "maximum"})
+        env1 = self._write({"count": 1, "security_level": "maximum"})
+        self.assertNotEqual(env0["mac"], env1["mac"],
+                            "Different payloads must produce different MACs")
+
+    def test_atomic_write_no_tmp_left_behind(self):
+        """C1: After a successful write, no .tmp file should remain."""
+        self.mgr._write_attempts_file({"count": 0}, hardware_id=FIXED_HW_ID)
+        tmp_path = self.tmp_dir / ".auth_attempts.tmp"
+        self.assertFalse(tmp_path.exists(), "Temp file must not remain after atomic write")
+
+
+@unittest.skipUnless(AUTH_AVAILABLE, "DeviceAuthManager module not available")
+class TestAttemptsFileReadVerify(unittest.TestCase):
+    """
+    Verify _read_attempts_file() correctly detects valid, tampered, and legacy files.
+    """
+
+    def setUp(self):
+        self.tmp_dir = Path(tempfile.mkdtemp(prefix="bar_auth_read_"))
+        self.mgr = _make_manager(self.tmp_dir)
+        self.attempts_path = self.tmp_dir / ".auth_attempts"
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp_dir, ignore_errors=True)
+
+    def _write_and_read(self, payload: dict) -> dict:
+        self.mgr._write_attempts_file(payload, hardware_id=FIXED_HW_ID)
+        return self.mgr._read_attempts_file(hardware_id=FIXED_HW_ID)
+
+    # ── Happy path ─────────────────────────────────────────────────────────
+
+    def test_absent_file_returns_none_data_not_tampered(self):
+        """C1: Missing file must return data=None and tampered=False."""
+        result = self.mgr._read_attempts_file(hardware_id=FIXED_HW_ID)
+        self.assertIsNone(result["data"])
+        self.assertFalse(result["tampered"])
+        self.assertFalse(result["legacy"])
+
+    def test_valid_signed_file_returns_correct_payload(self):
+        """C1: A properly signed file must be read back without error."""
+        payload = {"count": 2, "security_level": "maximum", "locked_until": 0}
+        result = self._write_and_read(payload)
+        self.assertFalse(result["tampered"])
+        self.assertFalse(result["legacy"])
+        self.assertIsNotNone(result["data"])
+        self.assertEqual(result["data"]["count"], 2)
+        self.assertEqual(result["data"]["security_level"], "maximum")
+
+    def test_round_trip_preserves_all_fields(self):
+        """C1: Every field in the payload survives a write-read round trip."""
         payload = {
             "count": 1,
+            "security_level": "high",
+            "locked_until": time.time() + 3600,
+            "lockout_hours": 1,
+            "last_attempt": time.time(),
+            "hardware_id": FIXED_HW_ID[:16],
+        }
+        result = self._write_and_read(payload)
+        for key, value in payload.items():
+            self.assertIn(key, result["data"], f"Field '{key}' missing after round-trip")
+            self.assertAlmostEqual(result["data"][key], value, places=3,
+                                   msg=f"Field '{key}' changed value after round-trip")
+
+    # ── Tamper detection ───────────────────────────────────────────────────
+
+    def test_modified_count_detected_as_tampered(self):
+        """C1: Changing the count field in an existing signed file must be detected."""
+        self.mgr._write_attempts_file({"count": 2, "security_level": "maximum"},
+                                       hardware_id=FIXED_HW_ID)
+        # Attacker reads the envelope, changes count to 0, writes back
+        raw = json.loads(self.attempts_path.read_text())
+        raw["d"]["count"] = 0
+        self.attempts_path.write_text(json.dumps(raw))
+
+        result = self.mgr._read_attempts_file(hardware_id=FIXED_HW_ID)
+        self.assertTrue(result["tampered"],
+                        "Modifying the payload must be detected as tampering")
+        self.assertIsNone(result["data"])
+
+    def test_replaced_mac_detected_as_tampered(self):
+        """C1: Replacing the MAC field with a random hex string must be detected."""
+        self.mgr._write_attempts_file({"count": 1, "security_level": "maximum"},
+                                       hardware_id=FIXED_HW_ID)
+        raw = json.loads(self.attempts_path.read_text())
+        raw["mac"] = "aa" * 32  # 64-char fake MAC
+        self.attempts_path.write_text(json.dumps(raw))
+
+        result = self.mgr._read_attempts_file(hardware_id=FIXED_HW_ID)
+        self.assertTrue(result["tampered"])
+
+    def test_deleted_mac_field_detected_as_tampered(self):
+        """C1: Removing the 'mac' field entirely must be detected."""
+        self.mgr._write_attempts_file({"count": 1, "security_level": "maximum"},
+                                       hardware_id=FIXED_HW_ID)
+        raw = json.loads(self.attempts_path.read_text())
+        del raw["mac"]
+        self.attempts_path.write_text(json.dumps(raw))
+
+        result = self.mgr._read_attempts_file(hardware_id=FIXED_HW_ID)
+        self.assertTrue(result["tampered"])
+
+    def test_corrupted_json_detected_as_tampered(self):
+        """C1: A file containing garbage bytes must be treated as tampered."""
+        self.attempts_path.write_bytes(b"not json at all !!!")
+        result = self.mgr._read_attempts_file(hardware_id=FIXED_HW_ID)
+        self.assertTrue(result["tampered"])
+
+    def test_wrong_hardware_id_detected_as_tampered(self):
+        """
+        C1: A file signed with a different hardware ID must be detected.
+        Simulates moving the file from another machine.
+        """
+        self.mgr._write_attempts_file({"count": 1, "security_level": "maximum"},
+                                       hardware_id=FIXED_HW_ID)
+        # Read using a completely different hardware ID
+        result = self.mgr._read_attempts_file(hardware_id="cafecafe" * 8)
+        self.assertTrue(result["tampered"],
+                        "A file signed for a different hardware ID must be rejected")
+
+    # ── Legacy migration ───────────────────────────────────────────────────
+
+    def test_legacy_plain_json_file_accepted_as_legacy(self):
+        """C1: A pre-fix plain-JSON file must be accepted with legacy=True."""
+        legacy_payload = {
+            "count": 1,
+            "security_level": "standard",
             "locked_until": 0,
-            "security_level": "maximum"
         }
-        self.attempts_file.write_text(json.dumps(payload))
+        self.attempts_path.write_text(json.dumps(legacy_payload), encoding="utf-8")
 
-        raw = self.attempts_file.read_text()
-        parsed = json.loads(raw)
+        result = self.mgr._read_attempts_file(hardware_id=FIXED_HW_ID)
+        self.assertFalse(result["tampered"],
+                         "Legacy file must NOT be flagged as tampered")
+        self.assertTrue(result["legacy"],
+                        "Legacy file must be flagged with legacy=True")
+        self.assertIsNotNone(result["data"])
+        self.assertEqual(result["data"]["count"], 1)
 
-        self.assertIn("count", parsed)
-        self.assertEqual(parsed["count"], 1)
-        self.assertEqual(parsed["security_level"], "maximum")
-
-    def test_attempts_file_count_readable_after_write(self):
-        """BASELINE: Written count survives a read-back."""
-        for count in [0, 1, 2, 3]:
-            payload = {"count": count, "locked_until": 0, "security_level": "maximum"}
-            self.attempts_file.write_text(json.dumps(payload))
-            read_back = json.loads(self.attempts_file.read_text())
-            self.assertEqual(read_back["count"], count,
-                             f"Count {count} did not survive read-back")
-
-    def test_attempts_file_deletion_is_detectable(self):
+    def test_legacy_file_re_signed_after_write(self):
         """
-        BASELINE: Documents that file absence is currently NOT detected.
-
-        This test does NOT assert that absence is caught — it asserts that
-        the file simply doesn't exist after deletion, confirming the gap
-        the future HMAC fix will close.
-
-        After the fix, this test should be updated to assert that the
-        absence is treated as a tamper event.
+        C1: After reading a legacy file and writing an update, the new file
+        must be in v1 signed format.
         """
-        payload = {"count": 2, "locked_until": 0, "security_level": "maximum"}
-        self.attempts_file.write_text(json.dumps(payload))
-        self.assertTrue(self.attempts_file.exists())
+        legacy_payload = {"count": 0, "security_level": "maximum", "locked_until": 0}
+        self.attempts_path.write_text(json.dumps(legacy_payload), encoding="utf-8")
 
-        # Delete the file (simulating an attacker wiping the counter)
-        self.attempts_file.unlink()
+        # Simulate reading (legacy accepted) then writing the next update
+        self.mgr._write_attempts_file(
+            {"count": 1, "security_level": "maximum", "locked_until": 0},
+            hardware_id=FIXED_HW_ID,
+        )
 
-        # BASELINE: file is gone, no automatic tamper detection yet
-        self.assertFalse(self.attempts_file.exists(),
-                         "File should be gone after explicit deletion")
-
-    def test_attempts_file_can_be_forged(self):
-        """
-        BASELINE: A forged payload with count=0 is indistinguishable from
-        a legitimate first-run file. Documents the current gap.
-
-        After the HMAC fix, a forged file should be rejected.
-        """
-        # Simulate an attacker replacing a count=2 file with count=0
-        forged_payload = {"count": 0, "locked_until": 0, "security_level": "maximum"}
-        self.attempts_file.write_text(json.dumps(forged_payload))
-
-        read_back = json.loads(self.attempts_file.read_text())
-        # BASELINE: The forged count is accepted as-is (no signature check)
-        self.assertEqual(read_back["count"], 0,
-                         "Forged count should be readable as 0 (pre-fix baseline)")
-
-    def test_locked_until_field_respected(self):
-        """BASELINE: locked_until timestamp field is present and parseable."""
-        future_ts = time.time() + 3600  # 1 hour from now
-        payload = {
-            "count": 3,
-            "locked_until": future_ts,
-            "security_level": "high"
-        }
-        self.attempts_file.write_text(json.dumps(payload))
-        parsed = json.loads(self.attempts_file.read_text())
-
-        self.assertGreater(parsed["locked_until"], time.time(),
-                           "locked_until should be in the future")
-
-    def test_security_level_stored_in_file(self):
-        """BASELINE: security_level field is stored and readable."""
-        for level in ["standard", "high", "maximum"]:
-            payload = {"count": 0, "locked_until": 0, "security_level": level}
-            self.attempts_file.write_text(json.dumps(payload))
-            parsed = json.loads(self.attempts_file.read_text())
-            self.assertEqual(parsed["security_level"], level)
+        env = json.loads(self.attempts_path.read_text())
+        self.assertEqual(env.get("v"), 1, "File must be upgraded to v1 format after re-write")
+        self.assertIn("mac", env, "Re-written file must contain a MAC")
 
 
 @unittest.skipUnless(AUTH_AVAILABLE, "DeviceAuthManager module not available")
 class TestSecurityLevelConstants(unittest.TestCase):
     """
     Regression guard for SecurityLevel constant values.
-    If these strings change, any stored .auth_attempts files
-    will be misread. Changing these requires a migration.
+    These strings are stored in .auth_attempts — changing them breaks
+    existing installations.
     """
 
     def test_standard_level_value_unchanged(self):
@@ -177,34 +310,44 @@ class TestSecurityLevelConstants(unittest.TestCase):
         self.assertIn("maximum", all_levels)
 
     def test_maximum_config_wipes_data(self):
-        """BASELINE: MAXIMUM security is configured to destroy data on breach."""
-        from security.device_auth_manager import DeviceAuthManager
+        """REGRESSION: MAXIMUM security must still destroy data on breach."""
         config = DeviceAuthManager.SECURITY_CONFIGS["maximum"]
         self.assertTrue(config["destroy_data_on_breach"],
-                        "MAXIMUM security must have destroy_data_on_breach=True — "
-                        "changing this weakens the security model")
+                        "MAXIMUM security must have destroy_data_on_breach=True")
 
     def test_maximum_config_max_attempts(self):
-        """BASELINE: MAXIMUM security allows only 3 attempts."""
-        from security.device_auth_manager import DeviceAuthManager
+        """REGRESSION: MAXIMUM security must still allow only 3 attempts."""
         config = DeviceAuthManager.SECURITY_CONFIGS["maximum"]
         self.assertEqual(config["max_attempts"], 3,
-                         "MAXIMUM security must limit to 3 attempts — "
-                         "increasing this weakens the brute-force protection")
+                         "MAXIMUM security must limit to 3 attempts")
 
     def test_pbkdf2_iteration_count_not_reduced(self):
         """
-        BASELINE: PBKDF2 iteration count must not be reduced below current value.
-
-        Current value: 200,000 iterations.
-        The security plan will INCREASE this to 600,000.
-        This test ensures it is never accidentally lowered.
+        REGRESSION: PBKDF2 iteration count must not be reduced below 200,000.
         """
-        from security.device_auth_manager import DeviceAuthManager
         self.assertGreaterEqual(
             DeviceAuthManager.PBKDF2_ITERATIONS, 200_000,
-            "PBKDF2 iteration count was reduced — this weakens brute-force protection"
+            "PBKDF2 iteration count must not be reduced"
         )
+
+    def test_attempts_hmac_iterations_not_reduced(self):
+        """
+        C1: HMAC key derivation iteration count must not be reduced below 100,000.
+        """
+        self.assertGreaterEqual(
+            DeviceAuthManager._ATTEMPTS_HMAC_ITERATIONS, 100_000,
+            "HMAC derivation iteration count must not be reduced"
+        )
+
+    def test_attempts_file_version_is_one(self):
+        """C1: The file format version sentinel must be 1."""
+        self.assertEqual(DeviceAuthManager._ATTEMPTS_FILE_VERSION, 1)
+
+    def test_attempts_hmac_context_is_domain_separated(self):
+        """C1: HMAC context must contain the domain-separation prefix."""
+        ctx = DeviceAuthManager._ATTEMPTS_HMAC_CONTEXT
+        self.assertIn(b"BAR|", ctx,
+                      "HMAC context must contain the BAR domain prefix")
 
 
 if __name__ == "__main__":

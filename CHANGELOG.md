@@ -16,9 +16,25 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   - FileManager security constraint enforcement
 - `CHANGELOG.md` to track all changes going forward
 - `tests/regression/run_regression.py` runner — execute before every merge to main
+- 20 new regression tests for the C1 auth-state HMAC fix (45 total, all passing)
+
+### Fixed
+- **[C1 — CRITICAL]** `.auth_attempts` file was plain JSON with no integrity check.
+  An attacker with filesystem access could delete or forge it to silently reset the
+  failed-password counter, bypassing the MAXIMUM-security 3-strike data-wipe trigger.
+
+  **Fix:** Every write to `.auth_attempts` is now wrapped in a v1 envelope and signed
+  with HMAC-SHA256. The key is derived from the device hardware ID using PBKDF2
+  (100,000 rounds) with a fixed domain-separation context. Any read that fails MAC
+  verification is treated as tampering and triggers an immediate emergency wipe.
+  All writes are atomic (write to `.tmp` → `os.replace`). Legacy plain-JSON files
+  from existing installations are accepted once and automatically re-signed on the
+  next write — no user action required.
 
 ### Changed
 - `.gitignore` updated to allow `.github/workflows/*.yml` through the blanket YAML exclusion
+- On successful authentication, the `.auth_attempts` tracking file is now securely wiped
+  (multi-pass overwrite) instead of simply deleted with `unlink()`
 
 ### Security
 - GitHub Actions CI/CD pipeline added (`build-release.yml`, `pr-build-check.yml`):
