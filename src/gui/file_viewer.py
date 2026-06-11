@@ -357,8 +357,11 @@ class FileViewer(QWidget):
             # Clean up any previous content to free memory
             self._cleanup_resources()
             
-            # Store for later use
-            self.current_content = content
+            # Convert to mutable bytearray so the buffer can be explicitly
+            # zeroed before it is released. bytes objects are immutable and
+            # cannot be zeroed; bytearray.decode(), QPixmap.loadFromData(),
+            # and file.write() all accept bytearray identically.
+            self.current_content = bytearray(content)
             self.current_metadata = metadata
             self.username = username
             # Use the simple watermarker for view-only file protection
@@ -777,6 +780,10 @@ class FileViewer(QWidget):
         self.temp_files.clear()
 
         # Clear large in-memory content so it can be GC'd
+        if isinstance(self.current_content, bytearray) and len(self.current_content) > 0:
+            for i in range(len(self.current_content)):
+                self.current_content[i] = 0
+            self.current_content.clear()
         self.current_content = None
 
         # Force garbage collection

@@ -16,8 +16,9 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   - FileManager security constraint enforcement
 - `CHANGELOG.md` to track all changes going forward
 - `tests/regression/run_regression.py` runner — execute before every merge to main
-- 20 new regression tests for the C1 auth-state HMAC fix (45 total, all passing)
-- 13 new regression tests for the C2 secure temp-file deletion fix (48 total, all passing/skipped on headless)
+- 20 new regression tests for the C1 auth-state HMAC fix (48 passing before this change)
+- 13 new regression tests for the C2 secure temp-file deletion fix
+- 17 new regression tests for the memory security hardening (65 total, all passing/skipped on headless)
 
 ### Fixed
 - **[C1 — CRITICAL]** `.auth_attempts` file was plain JSON with no integrity check.
@@ -31,6 +32,28 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   All writes are atomic (write to `.tmp` → `os.replace`). Legacy plain-JSON files
   from existing installations are accepted once and automatically re-signed on the
   next write — no user action required.
+
+- **[Metadata Key]** `FileManager._metadata_key` was stored as a raw `bytes` object.
+  A raw `bytes` reference cannot be zeroed; if the GC delayed collection the key
+  material could remain readable in process memory for an unbounded time.
+
+  **Fix:** `set_metadata_key()` now wraps the derived key in a
+  `SecureBytes(MemoryProtectionLevel.MAXIMUM)` instance immediately after derivation
+  and zeros the transient local copy. `_save_metadata()` and `_load_metadata()` extract
+  a function-scoped copy via `get_bytes()` for the duration of each cipher call only.
+  `clear_metadata_key()` now calls `SecureBytes.clear()` (multi-pass overwrite + memory
+  unlock) before setting the reference to `None`.
+
+- **[Content Buffer]** `FileViewer.current_content` was an immutable `bytes` object.
+  Setting it to `None` drops the reference but Python's GC does not guarantee prompt
+  collection or zeroing. Decrypted file content could remain in the heap after the
+  viewer is closed.
+
+  **Fix:** `display_content()` now converts the incoming `bytes` to a `bytearray`
+  before storing it. `_cleanup_resources()` zeros every byte in-place before calling
+  `.clear()` and dropping the reference. `bytearray` is accepted identically to
+  `bytes` by `QPixmap.loadFromData()`, `QImage.loadFromData()`, `.decode()`, and
+  `tempfile.write()` — no consumer code required changes.
 
 ### Changed
 - `.gitignore` updated to allow `.github/workflows/*.yml` through the blanket YAML exclusion
