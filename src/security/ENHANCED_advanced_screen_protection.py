@@ -28,6 +28,7 @@ import json
 import subprocess
 import ctypes
 import ctypes.wintypes
+from ctypes import wintypes
 import logging
 from datetime import datetime, timedelta
 from typing import Callable, Optional, Dict, List, Any, Tuple
