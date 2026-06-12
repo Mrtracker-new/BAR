@@ -248,9 +248,10 @@ class EmergencyProtocol:
         try:
             # 1. Clear active session data only
             session_paths = [
-                self.base_directory / "temp",      # Only temp files
-                self.base_directory / "logs" / "session.log",  # Only session log
-                self.base_directory / "cache" / "active",     # Only active cache
+                self.base_directory / "temp",
+                self.base_directory / "logs",           # full log directory
+                self.base_directory / "logs" / "session.log",
+                self.base_directory / "cache" / "active",
             ]
             
             for path in session_paths:

@@ -1254,18 +1254,19 @@ class FileManager:
                 target_path = self.metadata_directory / f"{file_id}.json"
                 self.logger.info(f"Renamed imported file from {old_file_id} to {file_id}")
             
-            # Save with encryption if metadata key is set, otherwise plaintext
-            if self._metadata_key_set:
-                self._save_metadata(file_id, metadata)
-            else:
-                # Fallback to plaintext for legacy compatibility
-                with open(target_path, "w") as f:
-                    json.dump(metadata, f, indent=2)
-                self.logger.warning(f"Imported file without metadata encryption (key not set): {file_id}")
+            # Metadata key must be set before importing; there is no plaintext fallback.
+            if not self._metadata_key_set:
+                raise RuntimeError(
+                    "Cannot import file: metadata encryption key is not initialised. "
+                    "Authenticate before calling import_file()."
+                )
+            self._save_metadata(file_id, metadata)
             
-            self.logger.info(f"Imported file: {file_id} ({metadata.get('filename', 'unknown')})")
+            self.logger.info(f"Imported file: {file_id[:8]}…")
             return file_id
             
+        except RuntimeError:
+            raise
         except Exception as e:
             self.logger.error(f"Failed to import file: {str(e)}")
             raise ValueError(f"Failed to import file: {str(e)}")

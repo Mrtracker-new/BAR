@@ -26,31 +26,51 @@ from src.file_manager.file_manager import FileManager
 from PySide6.QtWidgets import QApplication, QDialog, QMessageBox, QLineEdit, QInputDialog
 
 
+import re
+
+
+class _SensitiveDataFilter(logging.Filter):
+    """Truncate hex/UUID-like tokens in log messages to prevent forensic leakage.
+
+    Any contiguous hex run of 16 or more characters is replaced with its
+    first 8 characters followed by '…'.  This covers file IDs, device IDs,
+    and similar identifiers while leaving enough context for debugging.
+    """
+    _HEX_RE = re.compile(r'\b([0-9a-fA-F]{8})([0-9a-fA-F]{8,})\b')
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.msg = self._HEX_RE.sub(r'\1…', str(record.msg))
+        record.args = None
+        return True
+
+
 def setup_logging():
     """Set up application logging with security considerations."""
     log_dir = Path.home() / '.bar' / 'logs'
     log_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Fort Knox mode: Nobody's reading these logs except us! 🔐
+
     if hasattr(os, 'chmod'):
         os.chmod(str(log_dir), 0o700)
-    
+
     log_file = log_dir / 'bar_app.log'
-    
-    # Let's get chatty - setting up our diary to remember everything 📝
+
+    sensitive_filter = _SensitiveDataFilter()
+
+    file_handler = logging.FileHandler(str(log_file), encoding='utf-8')
+    file_handler.addFilter(sensitive_filter)
+
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.addFilter(sensitive_filter)
+
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(str(log_file), encoding='utf-8'),
-            logging.StreamHandler(sys.stdout)
-        ]
+        handlers=[file_handler, console_handler]
     )
-    
-    # Double-locking the diary because we're paranoid like that 🔒🔒
+
     if hasattr(os, 'chmod') and log_file.exists():
         os.chmod(str(log_file), 0o600)
-    
+
     return log_file
 
 

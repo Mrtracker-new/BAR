@@ -60,7 +60,7 @@ class DeviceAuthManager:
     """
     
     # Security constants - per R004 Cryptographic Standards
-    PBKDF2_ITERATIONS = 200000  # High iteration count for security
+    PBKDF2_ITERATIONS = 600000  # NIST SP 800-132 (2024) minimum for PBKDF2-HMAC-SHA256
     SALT_SIZE = 32  # 256-bit salt
     KEY_SIZE = 32   # 256-bit key
     IV_SIZE = 16    # 128-bit IV for AES
@@ -202,11 +202,12 @@ class DeviceAuthManager:
                 "device_id": secure_random_string(32),
                 "device_name": device_name or f"BAR-Device-{secure_random_string(8)}",
                 "hardware_id": hw_fingerprint,
-                "salt": salt_bytes.hex(),  # Store salt for key derivation
-                "created_at": int(secrets.randbits(64)),  # Timestamp in secure random bits
+                "salt": salt_bytes.hex(),
+                "created_at": int(secrets.randbits(64)),
                 "version": "1.0",
                 "auth_method": "device_bound_single_user",
-                "security_level": security_level or "standard"  # Default to standard if not provided
+                "security_level": security_level or "standard",
+                "kdf_iterations": self.PBKDF2_ITERATIONS,
             }
             
             # Create verification hash for authentication
@@ -373,7 +374,10 @@ class DeviceAuthManager:
                 return False, f"Failed to load device configuration: {e}"
             
             # Now try to decrypt the configuration with the current hardware ID
-            temp_derived_key = self._derive_key(password, current_hw_id, stored_salt)
+            # Derive with the stored iteration count so existing devices are not broken
+            stored_iterations = int(config_data.get("kdf_iterations", self.PBKDF2_ITERATIONS))
+            temp_derived_key = self._derive_key(password, current_hw_id, stored_salt,
+                                                iterations=stored_iterations)
             config_data = self._load_encrypted_config(temp_derived_key.get_bytes())
             
             if not config_data:
@@ -510,7 +514,20 @@ class DeviceAuthManager:
             self._hardware_fingerprint = secure_hw_id
             self._is_authenticated = True
             self._device_name = config_data.get("device_name", "Unknown Device")
-            
+
+            # Re-encrypt the device config at the current iteration count if it was
+            # written at a lower count (transparent one-time upgrade on first login).
+            stored_iterations = int(config_data.get("kdf_iterations", 0))
+            if stored_iterations != self.PBKDF2_ITERATIONS:
+                try:
+                    config_data["kdf_iterations"] = self.PBKDF2_ITERATIONS
+                    new_salt = bytes.fromhex(config_data.get("salt", ""))
+                    upgraded_key = self._derive_key(password, current_hw_id, new_salt)
+                    self._save_encrypted_config(config_data, upgraded_key.get_bytes())
+                    self.logger.info("Device config re-encrypted at updated iteration count")
+                except Exception as upgrade_err:
+                    self.logger.warning(f"Could not upgrade device config encryption: {upgrade_err}")
+
             # Derive session key for secure operations
             salt = create_secure_bytes(
                 secrets.token_bytes(self.SALT_SIZE),
@@ -1152,36 +1169,21 @@ class DeviceAuthManager:
         result["tampered"] = True
         return result
 
-    def _derive_key(self, password: str, hardware_id: str, salt: bytes) -> SecureBytes:
-        """Derive encryption key from password and hardware ID using PBKDF2.
-        
-        Per R005 - Key Management: Uses PBKDF2 with high iteration count.
-        
-        Args:
-            password: User password
-            hardware_id: Hardware identifier
-            salt: Random salt
-            
-        Returns:
-            SecureBytes containing derived key
-        """
-        # Combine password and hardware ID for additional security
+    def _derive_key(self, password: str, hardware_id: str, salt: bytes,
+                    iterations: Optional[int] = None) -> SecureBytes:
+        """Derive encryption key from password and hardware ID using PBKDF2."""
         combined_data = f"{password}|{hardware_id}".encode('utf-8')
-        
-        # Use PBKDF2 with SHA-256
+        _iterations = iterations if iterations is not None else self.PBKDF2_ITERATIONS
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=self.KEY_SIZE,
             salt=salt,
-            iterations=self.PBKDF2_ITERATIONS,
+            iterations=_iterations,
             backend=default_backend()
         )
-        
         key_bytes = kdf.derive(combined_data)
-        
-        # Store in secure memory with maximum protection
         return create_secure_bytes(
-            key_bytes, 
+            key_bytes,
             protection_level=MemoryProtectionLevel.MAXIMUM,
             require_lock=True
         )

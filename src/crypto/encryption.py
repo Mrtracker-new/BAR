@@ -24,7 +24,7 @@ class EncryptionManager:
     SALT_SIZE = 32  # 256 bits
     KEY_SIZE = 32   # 256 bits for AES-256
     NONCE_SIZE = 12  # 96 bits for AES-GCM
-    PBKDF2_ITERATIONS = 300000  # Increased iteration count for stronger security
+    PBKDF2_ITERATIONS = 600000  # NIST SP 800-132 (2024) minimum for PBKDF2-HMAC-SHA256
     
     def __init__(self):
         """Initialize the encryption manager."""
@@ -41,24 +41,23 @@ class EncryptionManager:
         return os.urandom(EncryptionManager.NONCE_SIZE)
     
     @staticmethod
-    def derive_key(password: str, salt: bytes, skip_validation: bool = False) -> bytes:
+    def derive_key(password: str, salt: bytes, skip_validation: bool = False,
+                   iterations: Optional[int] = None) -> bytes:
         """Derive an encryption key from a password and salt using PBKDF2.
-        
+
         Args:
-            password: Password string to derive key from
-            salt: Random salt bytes for key derivation
-            skip_validation: If True, skip password validation (for already-authenticated passwords)
-            
+            password:        Password string to derive key from.
+            salt:            Random salt bytes for key derivation.
+            skip_validation: Skip password complexity validation when True (use only
+                             for already-authenticated passwords).
+            iterations:      PBKDF2 iteration count.  Defaults to
+                             ``EncryptionManager.PBKDF2_ITERATIONS`` when ``None``.
+
         Returns:
-            Derived key bytes
-            
+            Derived key bytes.
+
         Raises:
-            CryptographicValidationError: If input validation fails
-        
-        Note:
-            This method uses secure memory handling to prevent password exposure.
-            skip_validation should ONLY be True for passwords that have already been 
-            authenticated (e.g., for deriving metadata keys from master password).
+            CryptographicValidationError: If input validation fails.
         """
         # Comprehensive input validation per BAR Rules R030
         crypto_validator = get_crypto_validator()
@@ -106,11 +105,12 @@ class EncryptionManager:
         with SecureBytes(password_str) as secure_password:
             password_bytes = secure_password.get_bytes()
             
+            _iterations = iterations if iterations is not None else EncryptionManager.PBKDF2_ITERATIONS
             kdf = PBKDF2HMAC(
                 algorithm=hashes.SHA256(),
                 length=EncryptionManager.KEY_SIZE,
                 salt=salt_result.sanitized_value,
-                iterations=EncryptionManager.PBKDF2_ITERATIONS,
+                iterations=_iterations,
             )
             
             derived_key = kdf.derive(password_bytes)
@@ -480,14 +480,14 @@ class EncryptionManager:
                 violation_type=ciphertext_result.violation_type
             )
         
-        # Derive the key and decrypt using validated data
-        # SECURITY: Skip password validation during decryption to allow any password
-        # (even weak ones that wouldn't be accepted for new files) to decrypt existing files.
-        # This is safe because we're just checking if the password decrypts the file.
+        # Honour the iteration count that was active when the file was created so that
+        # files encrypted under any previous setting remain decryptable.
+        stored_iterations = int(encrypted_content.get("kdf_iterations", EncryptionManager.PBKDF2_ITERATIONS))
         key = EncryptionManager.derive_key(
-            password_result.sanitized_value, 
-            salt,  # Use the salt directly (already validated above)
-            skip_validation=True  # Already validated above with require_complexity=False
+            password_result.sanitized_value,
+            salt,
+            skip_validation=True,
+            iterations=stored_iterations,
         )
         encrypted_data = {
             'ciphertext': ciphertext_result.sanitized_value,

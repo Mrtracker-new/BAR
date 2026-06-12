@@ -1,5 +1,7 @@
 import os
 import json
+import hmac as _hmac
+import hashlib
 import logging
 from typing import Dict, Any, Optional
 from pathlib import Path
@@ -28,6 +30,10 @@ class ConfigManager:
         "logging_level": "INFO",
     }
     
+    # Fixed, domain-separated context for the config HMAC key.
+    # Security comes from the hardware ID, not this constant.
+    _CONFIG_HMAC_CONTEXT = b"BAR|config_integrity|v1"
+
     def __init__(self, base_directory: str):
         """Initialize the configuration manager.
         
@@ -355,31 +361,32 @@ class ConfigManager:
         return validated_config
     
     def _load_config(self) -> Dict[str, Any]:
-        """Load configuration from file or create default.
-        
-        Returns:
-            Dictionary containing configuration
-        """
+        """Load configuration from file or create default."""
         if self.config_file.exists():
             try:
-                with open(self.config_file, "r") as f:
-                    config = json.load(f)
-                
-                # Update with any missing default values
+                raw_bytes = self.config_file.read_bytes()
+                if not self._verify_config_integrity(raw_bytes):
+                    self.logger.warning(
+                        "config.json integrity check failed — possible tampering detected. "
+                        "Falling back to built-in defaults."
+                    )
+                    return self._create_default_config()
+
+                config = json.loads(raw_bytes.decode("utf-8"))
+
                 updated = False
                 for key, value in self.DEFAULT_CONFIG.items():
                     if key not in config:
                         config[key] = value
                         updated = True
-                
-                # Set file storage path if not already set
+
                 if not config["file_storage_path"]:
                     config["file_storage_path"] = str(self.base_directory / "data")
                     updated = True
-                
+
                 if updated:
                     self._save_config(config)
-                
+
                 return config
             except Exception as e:
                 self.logger.error(f"Error loading configuration: {str(e)}")
@@ -399,18 +406,62 @@ class ConfigManager:
         self._save_config(config)
         return config
     
-    def _save_config(self, config: Dict[str, Any]) -> bool:
-        """Save configuration to file.
-        
-        Args:
-            config: The configuration to save
-            
-        Returns:
-            True if configuration was saved successfully, False otherwise
-        """
+    # ── Config integrity helpers ───────────────────────────────────────────────
+
+    def _derive_config_hmac_key(self) -> bytes:
+        """Derive a 32-byte HMAC key from the device hardware ID."""
         try:
-            with open(self.config_file, "w") as f:
-                json.dump(config, f, indent=2)
+            from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+            from cryptography.hazmat.primitives import hashes
+            from src.security.hardware_id import HardwareIdentifier
+            hw_id = HardwareIdentifier().get_hardware_id()
+            kdf = PBKDF2HMAC(
+                algorithm=hashes.SHA256(),
+                length=32,
+                salt=self._CONFIG_HMAC_CONTEXT,
+                iterations=100_000,
+            )
+            return kdf.derive(hw_id[:32].encode("utf-8"))
+        except Exception:
+            # If hardware ID is unavailable fall back to a machine-specific secret
+            # so the HMAC still provides meaningful protection.
+            import platform
+            fallback = f"BAR|{platform.node()}|config".encode()
+            return hashlib.sha256(fallback).digest()
+
+    def _sign_config(self, raw_bytes: bytes) -> str:
+        """Return a hex HMAC-SHA256 of *raw_bytes*."""
+        key = self._derive_config_hmac_key()
+        return _hmac.new(key, raw_bytes, hashlib.sha256).hexdigest()
+
+    def _verify_config_integrity(self, raw_bytes: bytes) -> bool:
+        """Return True iff the stored .sig matches *raw_bytes*."""
+        sig_path = self.config_file.with_suffix(".json.sig")
+        if not sig_path.exists():
+            return True  # No sig yet — trust once, will be created on next save
+        try:
+            stored = sig_path.read_text(encoding="utf-8").strip()
+            expected = self._sign_config(raw_bytes)
+            return _hmac.compare_digest(expected, stored)
+        except Exception:
+            return False
+
+    def _save_config(self, config: Dict[str, Any]) -> bool:
+        """Save configuration to file with an HMAC integrity sidecar."""
+        try:
+            raw = json.dumps(config, indent=2)
+            raw_bytes = raw.encode("utf-8")
+            sig = self._sign_config(raw_bytes)
+
+            # Write config atomically (tmp → replace)
+            tmp_cfg = self.config_file.with_name(self.config_file.name + ".tmp")
+            tmp_sig = self.config_file.with_suffix(".json.sig.tmp")
+            sig_path = self.config_file.with_suffix(".json.sig")
+
+            tmp_cfg.write_bytes(raw_bytes)
+            tmp_sig.write_text(sig, encoding="utf-8")
+            os.replace(str(tmp_cfg), str(self.config_file))
+            os.replace(str(tmp_sig), str(sig_path))
             return True
         except Exception as e:
             self.logger.error(f"Error saving configuration: {str(e)}")
