@@ -67,7 +67,8 @@ class MainWindow(QMainWindow):
         # Set up the UI
         self._setup_ui()
         self._apply_theme()
-        
+        self._ssd_warning_shown: bool = False
+
         # Device is already authenticated, show main app directly
         self._initialize_main_app()
     
@@ -1166,24 +1167,52 @@ class MainWindow(QMainWindow):
         """Delete a secure file."""
         if not self.current_user:
             return
-        
-        # Get the file ID from the sender button
+
         sender = self.sender()
         file_id = sender.property("file_id")
-        
-        # Confirm deletion
+
         reply = QMessageBox.question(
-            self, "Confirm Deletion", 
+            self, "Confirm Deletion",
             "Are you sure you want to delete this file? This action cannot be undone.",
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-        
+
         if reply == QMessageBox.Yes:
             try:
                 self.file_manager.delete_file(file_id)
                 QMessageBox.information(self, "File Deleted", "File has been permanently deleted.")
                 self._refresh_files()
+                self._maybe_show_ssd_warning()
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to delete file: {str(e)}")
+
+    def _maybe_show_ssd_warning(self) -> None:
+        """Show a one-time SSD storage advisory after a successful deletion."""
+        if self._ssd_warning_shown:
+            return
+        try:
+            sfo = self.file_manager.secure_file_ops
+            if not getattr(sfo, "storage_is_ssd", False):
+                return
+        except AttributeError:
+            return
+        self._ssd_warning_shown = True
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Storage Notice")
+        msg.setIcon(QMessageBox.Information)
+        msg.setTextFormat(Qt.RichText)
+        msg.setText(
+            "<b>Solid-State Drive Detected</b><br><br>"
+            "Your files were overwritten using multiple-pass deletion, but on "
+            "SSD / NVMe storage the drive's wear-levelling firmware may redirect "
+            "writes to spare blocks, meaning the original data could remain in "
+            "unaddressable flash cells.<br><br>"
+            "<b>For stronger guarantees, enable full-disk encryption</b> "
+            "(e.g. BitLocker or VeraCrypt) so that all data at rest — including "
+            "flash cells outside the visible address space — is encrypted at all times."
+        )
+        msg.setStandardButtons(QMessageBox.Ok)
+        msg.exec()
+
     
     def _change_theme(self, theme_name):
         """Change the application theme."""
@@ -1431,7 +1460,66 @@ class MainWindow(QMainWindow):
         
         result = msg_box.exec()
         if result == QMessageBox.Yes:
-            self.emergency.trigger_emergency_destruction(reason=f"User-initiated {level} wipe", level=level)
+            report = self.emergency.trigger_emergency_destruction(
+                reason=f"User-initiated {level} wipe", level=level
+            )
+            if level == "scorched" and report:
+                self._show_wipe_report(report)
+
+    def _show_wipe_report(self, report: dict) -> None:
+        """Display a structured scorched-earth operation report to the user."""
+        vss = report.get("vss", {})
+        traces = report.get("windows_traces", [])
+        errors = report.get("errors", [])
+
+        if vss.get("attempted"):
+            if vss.get("success"):
+                vss_line = "✅ Volume Shadow Copies deleted"
+            else:
+                vss_line = f"❌ VSS deletion failed: {vss.get('error', 'unknown error')}"
+        elif vss.get("reason") == "insufficient_privileges":
+            vss_line = (
+                "⚠️ Volume Shadow Copies NOT deleted — process was not run as administrator.<br>"
+                "&nbsp;&nbsp;&nbsp;Restart as administrator and re-run to remove shadow copies."
+            )
+        elif vss.get("reason") == "not_windows":
+            vss_line = "ℹ️ Volume Shadow Copies: not applicable (non-Windows)"
+        else:
+            vss_line = "ℹ️ Volume Shadow Copies: not attempted"
+
+        if traces:
+            succeeded = sum(1 for r in traces if r["success"])
+            trace_lines = []
+            for r in traces:
+                icon = "✅" if r["success"] else "❌"
+                detail = f" ({r['error']})" if not r["success"] else ""
+                trace_lines.append(f"&nbsp;&nbsp;{icon} {r['op']}{detail}")
+            traces_section = (
+                f"<b>Windows Traces ({succeeded}/{len(traces)} succeeded):</b><br>"
+                + "<br>".join(trace_lines)
+            )
+        else:
+            traces_section = "<b>Windows Traces:</b> not applicable"
+
+        errors_section = ""
+        if errors:
+            errors_section = "<br><br><b>Errors:</b><br>" + "<br>".join(
+                f"&nbsp;&nbsp;⚠️ {e}" for e in errors
+            )
+
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Scorched Earth — Operation Report")
+        msg.setIcon(QMessageBox.Information)
+        msg.setTextFormat(Qt.RichText)
+        msg.setText(
+            f"<b>Scorched Earth completed.</b><br><br>"
+            f"{vss_line}<br><br>"
+            f"{traces_section}"
+            f"{errors_section}"
+        )
+        msg.setStandardButtons(QMessageBox.Ok)
+        msg.exec()
+
 
     def _panic_wipe(self):
         """Immediate scorched-earth wipe."""

@@ -143,11 +143,20 @@ class EmergencyProtocol:
             scrub_free_space=True
         )
     
-    def trigger_emergency_destruction(self, reason: str = "Manual trigger", level: str = "aggressive", scrub_free_space: Optional[bool] = None):
+    def trigger_emergency_destruction(
+        self,
+        reason: str = "Manual trigger",
+        level: str = "aggressive",
+        scrub_free_space: Optional[bool] = None,
+    ) -> Optional[Dict[str, Any]]:
         """Trigger emergency data destruction with truly graded intensity.
-        
+
+        Returns a report dict for the 'scorched' level so the caller can
+        display operation-by-operation outcome to the user.  Returns None
+        for other levels.
+
         MEANINGFUL DESTRUCTION LEVELS:
-        
+
         - "selective": MINIMAL - Only current session data and active files
           * Current encrypted files being processed
           * Active memory dumps and temp files
@@ -155,7 +164,7 @@ class EmergencyProtocol:
           * Does NOT exit application (allows continued use)
           * No free space scrubbing
           * Preserves user data and history
-        
+
         - "aggressive": COMPREHENSIVE - All BAR data but preserves system
           * Everything from selective level
           * All BAR application data and user files
@@ -164,9 +173,10 @@ class EmergencyProtocol:
           * Free space scrubbing on BAR volumes
           * Exits application after cleanup
           * Preserves non-BAR system data
-        
+
         - "scorched": MAXIMUM - Complete system sanitization
-          * Everything from aggressive level  
+          * Everything from aggressive level
+          * VSS / Volume Shadow Copy deletion
           * Extended forensic counter-measures
           * Hardware-level entropy injection
           * Registry/system traces cleanup (Windows)
@@ -174,26 +184,25 @@ class EmergencyProtocol:
           * Maximum free space scrubbing
           * Self-destruct application binary
           * Force system restart/shutdown
-        
+
         Args:
             reason: Reason for triggering emergency protocol
             level: Destruction level (selective|aggressive|scorched)
             scrub_free_space: Override free space scrubbing behavior
         """
         if self._emergency_active:
-            return  # Already in progress
-            
+            return None
+
         self._emergency_active = True
-        
+        report: Optional[Dict[str, Any]] = None
+
         try:
-            # Call registered callbacks first
             for callback in self._emergency_callbacks:
                 try:
                     callback()
                 except Exception:
-                    pass  # Ignore errors during emergency
-            
-            # Enhanced logging per level
+                    pass
+
             try:
                 log_file = self.base_directory / "emergency.log"
                 with open(log_file, "a") as f:
@@ -204,38 +213,33 @@ class EmergencyProtocol:
                     f.write("--- DESTRUCTION SEQUENCE STARTED ---\n")
             except Exception:
                 pass
-            
-            # LEVEL-SPECIFIC DESTRUCTION LOGIC
-            
+
             if level == "selective":
                 self._selective_destruction(reason)
-                # SELECTIVE DOES NOT EXIT - allows continued use
-                return
-                
+                return None
+
             elif level == "aggressive":
                 self._aggressive_destruction(reason, scrub_free_space)
-                # AGGRESSIVE EXITS after cleanup
-                
+
             elif level == "scorched":
-                self._scorched_earth_destruction(reason, scrub_free_space)
-                # SCORCHED forces system shutdown
-                
+                report = self._scorched_earth_destruction(reason, scrub_free_space)
+
             else:
-                # Fallback to aggressive for unknown levels
                 try:
                     self.logger.warning(f"Unknown destruction level '{level}', using aggressive")
-                except:
-                    pass  # In case logger fails
+                except Exception:
+                    pass
                 self._aggressive_destruction(reason, scrub_free_space)
-                
-        except Exception as e:
-            self.logger.critical(f"Emergency destruction failed: {e}")
-            # Even on failure, still try to exit for security
-            pass
-        
+
+        except Exception as exc:
+            self.logger.critical(f"Emergency destruction failed: {exc}")
+
         finally:
-            if level != "selective":  # Selective level doesn't exit
+            if level != "selective":
                 self._force_application_exit(level)
+
+        return report
+
     
     def _selective_destruction(self, reason: str):
         """SELECTIVE: Minimal destruction - only active session data.
@@ -381,63 +385,109 @@ class EmergencyProtocol:
         except Exception as e:
             self.logger.error(f"Aggressive destruction failed: {e}")
     
-    def _scorched_earth_destruction(self, reason: str, scrub_free_space: Optional[bool]):
-        """SCORCHED EARTH: Maximum destruction with complete application reset.
-        
-        This level performs maximum data destruction with anti-forensic measures
-        and ensures BAR will start as a completely fresh installation after restart.
-        Designed for extreme security threats or when complete sanitization is required.
+    def _attempt_vss_cleanup(self) -> Dict[str, Any]:
+        """Attempt to delete all Volume Shadow Copies via vssadmin.
+
+        Returns a structured result dict the caller can surface to the user.
         """
-        self.logger.critical(f"SCORCHED EARTH DESTRUCTION: {reason}")
-        
+        result: Dict[str, Any] = {
+            "attempted": False,
+            "success": False,
+            "reason": "",
+            "error": "",
+        }
+        if os.name != "nt":
+            result["reason"] = "not_windows"
+            return result
         try:
+            import ctypes as _ct
+            is_admin = bool(_ct.windll.shell32.IsUserAnAdmin())
+        except Exception:
+            is_admin = False
+        if not is_admin:
+            result["reason"] = "insufficient_privileges"
+            result["error"] = "Restart as administrator to delete shadow copies"
+            self.logger.warning("VSS cleanup skipped: process is not elevated")
+            return result
+        result["attempted"] = True
+        try:
+            proc = subprocess.run(
+                ["vssadmin", "delete", "shadows", "/all", "/quiet"],
+                capture_output=True, text=True, timeout=120
+            )
+            result["success"] = proc.returncode == 0
+            if not result["success"]:
+                result["error"] = proc.stderr.strip() or f"vssadmin exit code {proc.returncode}"
+                self.logger.error(f"VSS deletion failed: {result['error']}")
+            else:
+                self.logger.info("Volume Shadow Copies deleted")
+        except Exception as exc:
+            result["error"] = str(exc)
+            self.logger.error(f"VSS deletion exception: {exc}")
+        return result
+
+    def _scorched_earth_destruction(self, reason: str, scrub_free_space: Optional[bool]) -> Dict[str, Any]:
+        """SCORCHED EARTH: Maximum destruction with complete application reset."""
+        self.logger.critical(f"SCORCHED EARTH DESTRUCTION: {reason}")
+        report: Dict[str, Any] = {
+            "vss": {},
+            "windows_traces": [],
+            "errors": [],
+        }
+
+        try:
+            # 0. Delete Volume Shadow Copies before any data removal
+            report["vss"] = self._attempt_vss_cleanup()
+
             # 1. Perform all aggressive destruction first
-            self._aggressive_destruction(reason, scrub_free_space=False)  # We'll do our own
-            
+            self._aggressive_destruction(reason, scrub_free_space=False)
+
             # 2. COMPLETE APPLICATION RESET - Remove ALL traces of BAR
             self._complete_application_reset()
-            
+
             # 3. Extended forensic countermeasures
             self._deploy_forensic_countermeasures()
-            
+
             # 4. Hardware entropy injection
             self._inject_hardware_entropy()
-            
+
             # 5. Registry/system traces cleanup (Windows specific)
-            if os.name == 'nt':
-                self._cleanup_windows_traces()
-            
+            if os.name == "nt":
+                report["windows_traces"] = self._cleanup_windows_traces()
+
             # 6. Multiple-pass overwriting of sensitive areas
             self._multi_pass_overwrite_sensitive_areas()
-            
+
             # 7. Maximum free space scrubbing
             do_scrub = scrub_free_space if scrub_free_space is not None else True
             if do_scrub:
-                # Use maximum scrubbing with multiple patterns
-                patterns = ["zeros", "ones", "random", "dod"]
-                for pattern in patterns:
+                for pattern in ["zeros", "ones", "random", "dod"]:
                     try:
                         self.hardware_wipe.wipe_volume_free_space(
                             self.base_directory,
-                            max_bytes=None,  # No limit for scorched earth
+                            max_bytes=None,
                             pattern=pattern
                         )
                     except Exception:
-                        pass  # Continue even if free space wipe fails
-            
+                        pass
+
             # 8. Self-destruct application binary (if possible)
             self._attempt_binary_self_destruct()
-            
+
             # 9. Final confirmation and cleanup
             self._finalize_scorched_earth_destruction(reason)
-                
+
             self.logger.critical("SCORCHED EARTH destruction completed - forcing system restart")
-            
-        except Exception as e:
+
+        except Exception as exc:
             try:
-                self.logger.error(f"Scorched earth destruction failed: {e}")
-            except:
-                pass  # Even logging might fail at this point
+                self.logger.error(f"Scorched earth destruction failed: {exc}")
+                report["errors"].append(str(exc))
+            except Exception:
+                pass
+
+        return report
+
     
     def _deploy_forensic_countermeasures(self):
         """Deploy anti-forensic countermeasures."""
@@ -476,105 +526,99 @@ class EmergencyProtocol:
         except Exception:
             pass
     
-    def _cleanup_windows_traces(self):
-        """Clean up Windows-specific traces for complete application reset.
-        
-        Removes BAR traces from:
-        - Registry (recent files, run history, etc.)
-        - Prefetch files
-        - Windows event logs
-        - Jump lists
+    def _cleanup_windows_traces(self) -> List[Dict[str, Any]]:
+        """Clean up Windows-specific forensic traces.
+
+        Returns a list of per-operation result dicts so the caller can report
+        exactly what succeeded and what failed.
         """
-        if os.name != 'nt':
-            return
-            
+        results: List[Dict[str, Any]] = []
+
+        def _record(op: str, success: bool, error: str = "") -> None:
+            results.append({"op": op, "success": success, "error": error})
+
+        if os.name != "nt":
+            return results
+
         try:
             import winreg
-            
-            # 1. Clean up registry entries related to BAR
+
             registry_cleanup_keys = [
-                # Recent documents and files
                 (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Explorer\RecentDocs"),
                 (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Explorer\RunMRU"),
-                
-                # File associations and shell extensions
                 (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts"),
-                
-                # Application data
                 (winreg.HKEY_CURRENT_USER, r"Software\BAR"),
                 (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\BAR"),
-                
-                # Windows search index
                 (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Search"),
             ]
-            
+
             for hkey, subkey_path in registry_cleanup_keys:
                 try:
                     self._clean_registry_key_for_bar(hkey, subkey_path, winreg)
-                except Exception as e:
-                    self.logger.debug(f"Registry cleanup warning for {subkey_path}: {e}")
-            
-            # 2. Clean Windows prefetch files
-            try:
-                prefetch_dir = Path("C:") / "Windows" / "Prefetch"
-                if prefetch_dir.exists():
-                    for pf_file in prefetch_dir.glob("*BAR*"):
-                        if pf_file.is_file():
+                    _record(f"registry:{subkey_path.split(chr(92))[-1]}", True)
+                except Exception as exc:
+                    _record(f"registry:{subkey_path.split(chr(92))[-1]}", False, str(exc))
+                    self.logger.debug(f"Registry cleanup warning for {subkey_path}: {exc}")
+
+        except Exception as exc:
+            _record("registry", False, str(exc))
+
+        try:
+            prefetch_dir = Path("C:") / "Windows" / "Prefetch"
+            removed = 0
+            if prefetch_dir.exists():
+                for pf_file in prefetch_dir.glob("*BAR*"):
+                    if pf_file.is_file():
+                        try:
+                            pf_file.unlink()
+                            removed += 1
+                        except Exception:
+                            pass
+            _record("prefetch", True, f"{removed} files removed")
+        except Exception as exc:
+            _record("prefetch", False, str(exc))
+
+        try:
+            jumplist_dirs = [
+                Path.home() / "AppData" / "Roaming" / "Microsoft" / "Windows" / "Recent" / "AutomaticDestinations",
+                Path.home() / "AppData" / "Roaming" / "Microsoft" / "Windows" / "Recent" / "CustomDestinations",
+            ]
+            removed = 0
+            for jl_dir in jumplist_dirs:
+                if jl_dir.exists():
+                    for jl_file in jl_dir.iterdir():
+                        if jl_file.is_file():
                             try:
-                                pf_file.unlink()
+                                jl_file.unlink()
+                                removed += 1
                             except Exception:
-                                pass  # Prefetch files might be locked
-                                
-            except Exception:
-                pass  # Prefetch cleanup is optional
-            
-            # 3. Clean Windows jump lists
-            try:
-                jumplist_dirs = [
-                    Path.home() / "AppData" / "Roaming" / "Microsoft" / "Windows" / "Recent" / "AutomaticDestinations",
-                    Path.home() / "AppData" / "Roaming" / "Microsoft" / "Windows" / "Recent" / "CustomDestinations",
-                ]
-                
-                for jl_dir in jumplist_dirs:
-                    if jl_dir.exists():
-                        # Remove all jump list files (they're hard to parse)
-                        for jl_file in jl_dir.iterdir():
-                            if jl_file.is_file():
-                                try:
-                                    jl_file.unlink()
-                                except Exception:
-                                    pass  # Some files might be locked
-                                    
-            except Exception:
-                pass  # Jump list cleanup is optional
-            
-            # 4. Clear Windows Search database references
-            try:
-                search_dirs = [
-                    Path.home() / "AppData" / "Local" / "Microsoft" / "Windows" / "Search",
-                    Path("C:") / "ProgramData" / "Microsoft" / "Search",
-                ]
-                
-                for search_dir in search_dirs:
-                    if search_dir.exists():
-                        # Look for BAR-related search index files
-                        for search_file in search_dir.rglob("*"):
-                            if search_file.is_file() and "bar" in search_file.name.lower():
-                                try:
-                                    search_file.unlink()
-                                except Exception:
-                                    pass
-                                    
-            except Exception:
-                pass  # Search index cleanup is optional
-                
-            self.logger.info("Windows traces cleanup completed")
-                    
-        except Exception as e:
-            try:
-                self.logger.warning(f"Windows cleanup error: {e}")
-            except:
-                pass  # Even logging might fail
+                                pass
+            _record("jump_lists", True, f"{removed} files removed")
+        except Exception as exc:
+            _record("jump_lists", False, str(exc))
+
+        try:
+            search_dirs = [
+                Path.home() / "AppData" / "Local" / "Microsoft" / "Windows" / "Search",
+                Path("C:") / "ProgramData" / "Microsoft" / "Search",
+            ]
+            removed = 0
+            for search_dir in search_dirs:
+                if search_dir.exists():
+                    for search_file in search_dir.rglob("*"):
+                        if search_file.is_file() and "bar" in search_file.name.lower():
+                            try:
+                                search_file.unlink()
+                                removed += 1
+                            except Exception:
+                                pass
+            _record("search_index", True, f"{removed} files removed")
+        except Exception as exc:
+            _record("search_index", False, str(exc))
+
+        self.logger.info(f"Windows traces cleanup: {sum(1 for r in results if r['success'])}/{len(results)} operations succeeded")
+        return results
+
     
     def _clean_registry_key_for_bar(self, hkey, subkey_path: str, winreg):
         """Clean BAR-related entries from a specific registry key.
