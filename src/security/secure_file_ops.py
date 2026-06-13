@@ -2,6 +2,7 @@ import os
 import json
 import logging
 import secrets
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -9,6 +10,10 @@ from typing import List, Set, Optional, Dict, Any, Tuple, Union
 from dataclasses import dataclass
 from enum import Enum
 import hashlib
+
+if os.name == "nt":
+    import ctypes
+    import ctypes.wintypes as _wt
 
 from .secure_memory import (
     SecureBytes, SecureString, create_secure_bytes, create_secure_string,
@@ -93,17 +98,50 @@ class SecureFileOperations:
         
         self._ensure_config_directory()
         self._load_blacklist()
-        
-        self.logger.info("SecureFileOperations initialized with enhanced security")
+        self._storage_is_ssd: bool = self._detect_storage_type()
+        self.logger.info("SecureFileOperations initialized")
     
     def _ensure_config_directory(self):
         """Ensure configuration directory exists with proper permissions."""
         self._config_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-        
-        # Set restrictive permissions (owner only)
-        if hasattr(os, 'chmod'):
+        if hasattr(os, "chmod"):
             os.chmod(str(self._config_dir), 0o700)
-    
+
+    @property
+    def storage_is_ssd(self) -> bool:
+        """True if the system drive appears to be an SSD or NVMe device."""
+        return self._storage_is_ssd
+
+    def _detect_storage_type(self) -> bool:
+        """Detect whether the primary storage device is solid-state.
+
+        Uses WMI on Windows and /sys/block on Linux.  Returns True (SSD) on
+        any detection failure so behaviour is conservative.
+        """
+        try:
+            if os.name == "nt":
+                result = subprocess.run(
+                    ["wmic", "diskdrive", "get", "MediaType", "/format:csv"],
+                    capture_output=True, text=True, timeout=10
+                )
+                output = result.stdout.upper()
+                if "SSD" in output or "SOLID" in output or "NVME" in output:
+                    return True
+                if "FIXED HARD" in output or "EXTERNAL HARD" in output:
+                    return False
+                return True  # unknown → conservative
+            else:
+                import glob
+                for rotational in glob.glob("/sys/block/*/queue/rotational"):
+                    try:
+                        if open(rotational).read().strip() == "0":
+                            return True
+                    except OSError:
+                        pass
+                return False
+        except Exception:
+            return True  # detection failed → conservative (assume SSD)
+
     def _compute_path_hash(self, file_path: Union[str, Path]) -> str:
         """Compute SHA-256 hash of file path for secure storage.
         
@@ -348,29 +386,122 @@ class SecureFileOperations:
                     pass
             return False
     
-    def secure_delete_file(self, file_path: Union[str, Path], 
-                          method: SecureDeletionMethod = SecureDeletionMethod.DOD_7_PASS,
-                          verify: bool = True) -> bool:
+    def _wipe_alternate_data_streams(self, file_path: Path) -> None:
+        """Overwrite all non-default NTFS Alternate Data Streams attached to *file_path*.
+
+        Windows-only.  Silently skipped on other platforms.  ADS enumeration
+        failure is logged as a warning and does not abort the calling delete.
+        """
+        if os.name != "nt":
+            return
+        try:
+            kernel32 = ctypes.windll.kernel32
+
+            FindFirstStreamW = kernel32.FindFirstStreamW
+            FindFirstStreamW.restype = ctypes.c_void_p
+            FindFirstStreamW.argtypes = [
+                ctypes.c_wchar_p,   # lpFileName
+                ctypes.c_int,       # InfoLevel (FindStreamInfoStandard = 0)
+                ctypes.c_void_p,    # lpFindStreamData
+                ctypes.c_ulong,     # dwFlags (reserved, must be 0)
+            ]
+
+            FindNextStreamW = kernel32.FindNextStreamW
+            FindNextStreamW.restype = ctypes.c_bool
+            FindNextStreamW.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+
+            FindClose = kernel32.FindClose
+            FindClose.restype = ctypes.c_bool
+            FindClose.argtypes = [ctypes.c_void_p]
+
+            CreateFileW = kernel32.CreateFileW
+            CreateFileW.restype = ctypes.c_void_p
+            CreateFileW.argtypes = [
+                ctypes.c_wchar_p,   # lpFileName
+                ctypes.c_ulong,     # dwDesiredAccess
+                ctypes.c_ulong,     # dwShareMode
+                ctypes.c_void_p,    # lpSecurityAttributes
+                ctypes.c_ulong,     # dwCreationDisposition
+                ctypes.c_ulong,     # dwFlagsAndAttributes
+                ctypes.c_void_p,    # hTemplateFile
+            ]
+
+            CloseHandle = kernel32.CloseHandle
+            CloseHandle.restype = ctypes.c_bool
+            CloseHandle.argtypes = [ctypes.c_void_p]
+
+            WriteFile = kernel32.WriteFile
+            WriteFile.restype = ctypes.c_bool
+
+            INVALID_HANDLE = ctypes.c_void_p(-1).value
+            GENERIC_WRITE   = 0x40000000
+            OPEN_EXISTING   = 3
+            FILE_SHARE_READ = 0x00000001
+
+            class WIN32_FIND_STREAM_DATA(ctypes.Structure):
+                _fields_ = [("StreamSize", ctypes.c_longlong),
+                             ("cStreamName", ctypes.c_wchar * 296)]
+
+            data = WIN32_FIND_STREAM_DATA()
+            path_str = str(file_path)
+            handle = FindFirstStreamW(path_str, 0, ctypes.byref(data), 0)
+            if handle is None or handle == INVALID_HANDLE:
+                return
+            try:
+                while True:
+                    stream_name = data.cStreamName
+                    if stream_name and stream_name not in ("::$DATA", ""):
+                        stream_path = f"{path_str}{stream_name}"
+                        stream_size = max(data.StreamSize, 1)
+                        fh = CreateFileW(
+                            stream_path, GENERIC_WRITE, FILE_SHARE_READ,
+                            None, OPEN_EXISTING, 0, None
+                        )
+                        if fh is not None and fh != INVALID_HANDLE:
+                            try:
+                                payload = secrets.token_bytes(stream_size)
+                                written = ctypes.c_ulong(0)
+                                WriteFile(fh, payload, len(payload),
+                                          ctypes.byref(written), None)
+                            finally:
+                                CloseHandle(fh)
+                    if not FindNextStreamW(handle, ctypes.byref(data)):
+                        break
+            finally:
+                FindClose(handle)
+        except Exception as exc:
+            self.logger.warning(f"ADS wipe skipped for {file_path.name}: {exc}")
+
+    def secure_delete_file(self, file_path: Union[str, Path],
+                           method: SecureDeletionMethod = SecureDeletionMethod.DOD_7_PASS,
+                           verify: bool = True) -> Dict[str, Any]:
         """Securely delete a file using military-grade overwrite methods.
-        
-        Args:
-            file_path: Path to file to delete
-            method: Deletion method to use
-            verify: Whether to verify deletion was successful
-            
-        Returns:
-            True if successful, False otherwise
+
+        Returns a dict:
+            deleted (bool)      — True if the file was successfully removed.
+            ssd_warning (bool)  — True when deleted on a solid-state device,
+                                  where multi-pass overwrite has limited effect.
         """
         file_path = Path(file_path)
-        
+
+        def _result(deleted: bool) -> Dict[str, Any]:
+            return {"deleted": deleted,
+                    "ssd_warning": deleted and self._storage_is_ssd}
+
         if not file_path.exists():
             self.logger.info(f"File already deleted: {file_path.name}")
-            return True
-        
+            return _result(True)
+
         try:
             file_size = file_path.stat().st_size
-            self.logger.info(f"Starting secure deletion: {file_path.name} ({file_size} bytes) using {method.value}")
-            
+            self.logger.info(
+                f"Secure deletion: {file_path.name} ({file_size} bytes) "
+                f"method={method.value} ssd={self._storage_is_ssd}"
+            )
+
+            if os.name == "nt":
+                self._wipe_alternate_data_streams(file_path)
+
             if method == SecureDeletionMethod.BASIC:
                 success = self._secure_delete_basic(file_path, file_size)
             elif method == SecureDeletionMethod.DOD_3_PASS:
@@ -381,32 +512,26 @@ class SecureFileOperations:
                 success = self._secure_delete_gutmann(file_path, file_size)
             else:
                 raise ValueError(f"Unknown deletion method: {method}")
-            
+
             if success:
-                # Final deletion
                 file_path.unlink()
-                
-                # Update blacklist if file was blacklisted
                 path_hash = self._compute_path_hash(file_path)
                 if path_hash in self._blacklist:
                     self._blacklist[path_hash].wiped = True
                     self._save_blacklist()
-                
-                # Verify deletion if requested
                 if verify and file_path.exists():
                     self.logger.error(f"File still exists after deletion: {file_path}")
-                    return False
-                
+                    return _result(False)
                 self._access_stats["files_securely_deleted"] += 1
-                self.logger.info(f"Successfully deleted file: {file_path.name}")
-                return True
+                self.logger.info(f"Deleted: {file_path.name}")
+                return _result(True)
             else:
-                self.logger.error(f"Failed to securely overwrite file: {file_path}")
-                return False
-                
-        except Exception as e:
-            self.logger.error(f"Secure deletion failed for {file_path}: {e}")
-            return False
+                self.logger.error(f"Overwrite failed: {file_path}")
+                return _result(False)
+
+        except Exception as exc:
+            self.logger.error(f"Secure deletion failed for {file_path}: {exc}")
+            return _result(False)
     
     def secure_delete_directory(self, directory_path: Union[str, Path], 
                                method: SecureDeletionMethod = SecureDeletionMethod.DOD_7_PASS) -> bool:
@@ -439,10 +564,10 @@ class SecureFileOperations:
             success_count = 0
             for file_path in files_only:
                 try:
-                    if self.secure_delete_file(file_path, method=method, verify=False):
+                    if self.secure_delete_file(file_path, method=method, verify=False)["deleted"]:
                         success_count += 1
-                except Exception as e:
-                    self.logger.warning(f"Failed to delete file {file_path.name}: {e}")
+                except Exception as exc:
+                    self.logger.warning(f"Failed to delete file {file_path.name}: {exc}")
             
             # Remove empty directories (bottom-up)
             try:
@@ -633,7 +758,7 @@ class SecureFileOperations:
                     file_size = file_path.stat().st_size
                     results["total_bytes"] += file_size
                     
-                    if self.secure_delete_file(file_path, method=method, verify=False):
+                    if self.secure_delete_file(file_path, method=method, verify=False)["deleted"]:
                         results["wiped_files"] += 1
                     else:
                         results["failed_files"] += 1
